@@ -237,7 +237,7 @@ services:
     entrypoint: [/bin/sh, /scripts/create-namespace.sh]
 
   temporal-ui:
-    image: temporalio/ui:2.55.0
+    image: temporalio/ui:2.57.0
     profiles: [core, observability]
     restart: unless-stopped
     networks: [sdlc]
