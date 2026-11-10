@@ -117,7 +117,7 @@ services:
   # The same as in ../docker-compose.yml; the socket is the runner Engine's own
   # (rootless: $XDG_RUNTIME_DIR/docker.sock).
   docker-socket-proxy:
-    image: wollomatic/socket-proxy:1.13.1@sha256:3935b709275e4ec35d6ed5a5c4a1f0d01ed31eec5e7234efc3357ecd47689002
+    image: wollomatic/socket-proxy:1.13.2@sha256:ff95d6ff6c27853005ef85eb8f4ab5923dc3d2f1e055f98fb6aeeaceec3fe848
     profiles: [sandbox]
     restart: unless-stopped
     network_mode: none
@@ -147,7 +147,7 @@ services:
 
   # The same as in ../docker-compose.yml: it holds no secret and no client data (ADR-M91 §2.2).
   npm-proxy:
-    image: verdaccio/verdaccio:6.10.4@sha256:43c4067288b050422265407ea2fe747e511fcd0c407a85ec90ab9a326d9400cd
+    image: verdaccio/verdaccio:6.11.1@sha256:82f4decaf1c9eff885bf7a1227335f78581ff715288d5f38898e67e28b3bfbdd
     profiles: [sandbox]
     restart: unless-stopped
     networks: [sdlc]

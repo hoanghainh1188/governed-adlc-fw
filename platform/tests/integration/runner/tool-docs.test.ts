@@ -49,7 +49,7 @@ const GATEWAY =
 const NODE =
   'docker.io/library/node:24.21.0-alpine3.23@sha256:9ec4a2e289874ed0d722e1772ec2de45d2801541db8612f3638b26f128c69ac2';
 const PGVECTOR =
-  'pgvector/pgvector:0.8.1-pg17@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21';
+  'pgvector/pgvector:0.8.6-pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f';
 const TENANT = '33333333-3333-4333-8333-333333333333';
 const MODEL = 'bge-m3';
 const suffix = crypto.randomBytes(4).toString('hex');
