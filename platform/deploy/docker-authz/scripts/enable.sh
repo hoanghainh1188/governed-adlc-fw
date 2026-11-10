@@ -134,16 +134,16 @@ node -e '
 if [ "$uid" -ne 0 ] && command -v systemctl >/dev/null; then
   drop_in="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/docker.service.d"
   mkdir -p "$drop_in"
-  exec_line=$(systemctl --user cat docker.service 2>/dev/null | sed -n 's/^ExecStart=//p' | head -1)
+  # Read the unit file itself (not merged drop-ins) so ExecStart= resets do not yield an empty line.
+  frag=$(systemctl --user show docker.service -p FragmentPath --value 2>/dev/null || true)
+  exec_line=""
+  if [ -n "$frag" ] && [ -f "$frag" ]; then
+    exec_line=$(sed -n 's/^ExecStart=//p' "$frag" | head -1)
+  fi
   if [ -n "$exec_line" ]; then
-    case "$exec_line" in
-      *--authorization-plugin=sdlc-authz*) ;;
-      *)
-        printf '%s\n' '[Service]' 'ExecStart=' "ExecStart=$exec_line --authorization-plugin=sdlc-authz" \
-          >"$drop_in/sdlc-authz.conf"
-        systemctl --user daemon-reload
-        ;;
-    esac
+    printf '%s\n' '[Service]' 'ExecStart=' "ExecStart=$exec_line --authorization-plugin=sdlc-authz" \
+      >"$drop_in/sdlc-authz.conf"
+    systemctl --user daemon-reload
   fi
 fi
 
