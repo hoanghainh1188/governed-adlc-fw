@@ -126,9 +126,7 @@ export async function runClientDataDeletionCommand(
     return EXIT.ok;
   } catch (error) {
     if (error instanceof AdminError) {
-      ctx.stderr(
-        t('cli.ops.refused', { code: error.code, reason: error.extra.reason ?? '-' }),
-      );
+      ctx.stderr(t('cli.ops.refused', { code: error.code, reason: error.extra.reason ?? '-' }));
       return error.code === 'invalid_value' ? EXIT.usage : EXIT.failed;
     }
     throw error;

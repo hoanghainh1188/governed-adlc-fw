@@ -26,8 +26,7 @@ async function request(args: readonly string[], ctx: CliContext): Promise<number
   }
   const json = parsed.values.json === true;
   return withApi(ctx, json, async (client) => {
-    const body =
-      basis === undefined ? {} : { legal_basis: basis };
+    const body = basis === undefined ? {} : { legal_basis: basis };
     const view = await client.post('/v1/client/data-deletion', clientDataDeletionSchema, body);
     print(ctx, view, json, 'cli.client.requested');
     return EXIT.ok;

@@ -13,14 +13,7 @@ import { DEFAULT_CLIENT_DELETION_GRACE_DAYS } from '../retention/client-purge-pa
 
 /** Lifecycle phase derived from the tenant row plus the `client_data.*` audit chain. */
 export type ClientDeletionPhase =
-  | 'none'
-  | 'requested'
-  | 'approved'
-  | 'started'
-  | 'blocked'
-  | 'deleted'
-  | 'cancelled'
-  | 'purged';
+  'none' | 'requested' | 'approved' | 'started' | 'blocked' | 'deleted' | 'cancelled' | 'purged';
 
 export interface ClientDeletionView {
   readonly tenant_id: string;
