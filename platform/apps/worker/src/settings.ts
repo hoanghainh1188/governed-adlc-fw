@@ -50,6 +50,7 @@ export const WORKER_ENV = {
   retentionGuardFloor: 'SDLC_WORKER_RETENTION_GUARD_FLOOR',
   retentionArchiveGraceDays: 'SDLC_WORKER_RETENTION_ARCHIVE_GRACE_DAYS',
   retentionOrphanGraceHours: 'SDLC_WORKER_RETENTION_ORPHAN_GRACE_HOURS',
+  clientDeletionGraceDays: 'SDLC_CLIENT_DELETION_GRACE_DAYS',
   housekeepingMode: 'SDLC_WORKER_HOUSEKEEPING_MODE',
   sessionKeepDays: 'SDLC_WORKER_SESSION_KEEP_DAYS',
   challengeKeepHours: 'SDLC_WORKER_CHALLENGE_KEEP_HOURS',
@@ -189,6 +190,8 @@ const schema = z.object({
   // Days after `project.archived` before its evidence is purged: a mistaken archive is noticed first.
   [WORKER_ENV.retentionArchiveGraceDays]: z.coerce.number().int().min(1).max(365).default(7),
   [WORKER_ENV.retentionOrphanGraceHours]: z.coerce.number().int().min(24).max(720).default(24),
+  // H03b (ADR-M97 §2.4): grace after `client_data.deletion_approved` before the physical purge.
+  [WORKER_ENV.clientDeletionGraceDays]: z.coerce.number().int().min(1).max(365).default(14),
   // O04 (ADR-M103): ended web sessions and used or expired passkey challenges, removed in the
   // retention loop at its interval. Needs only the database. The floors are the database's own
   // (migration 0046): 7 days and 1 hour.
@@ -310,6 +313,8 @@ export interface WorkerRetentionSettings {
   readonly guardFloor: number;
   readonly archiveGraceDays: number;
   readonly orphanGraceHours: number;
+  /** Days after `client_data.deletion_approved` before H03b may purge (ADR-M97). */
+  readonly clientDeletionGraceDays: number;
 }
 
 /** O04: housekeeping of the session tables (ADR-M103), in the retention loop. */
@@ -575,6 +580,7 @@ export function loadSettings(env: Readonly<Record<string, string | undefined>>):
             guardFloor: v[WORKER_ENV.retentionGuardFloor],
             archiveGraceDays: v[WORKER_ENV.retentionArchiveGraceDays],
             orphanGraceHours: v[WORKER_ENV.retentionOrphanGraceHours],
+            clientDeletionGraceDays: v[WORKER_ENV.clientDeletionGraceDays],
           },
     anchor:
       v[WORKER_ENV.anchorUrl] === 'off'

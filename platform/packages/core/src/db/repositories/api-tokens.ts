@@ -70,6 +70,19 @@ export class ApiTokenRepository extends TenantRepository {
     );
   }
 
+  /** Revokes every active token of this tenant. Returns how many this call revoked. */
+  revokeAllActive(at: Date = new Date()): Promise<number> {
+    return this.run(
+      this.db
+        .updateTable('api_tokens')
+        .set({ revoked_at: at })
+        .where('tenant_id', '=', this.tenantId)
+        .where('revoked_at', 'is', null)
+        .executeTakeFirst()
+        .then((r) => Number(r.numUpdatedRows)),
+    );
+  }
+
   touchLastUsed(id: string, at: Date = new Date()): Promise<void> {
     return this.run(
       this.db

@@ -237,6 +237,55 @@ export async function langfuseTenantPass(
   }
 }
 
+/**
+ * Langfuse step for a tenant in client-data deletion (H03b): every finished, not-held intent is
+ * due now (no retention age, no archive status). Uses cause `client_deletion`.
+ */
+export async function langfuseClientDeletionTenantPass(
+  deps: RetentionPassDeps,
+  scope: TenantScope,
+  tenantSlug: string,
+  counts: RetentionCounts,
+): Promise<void> {
+  const langfuse = deps.langfuse;
+  if (langfuse?.status !== 'on' || langfuse.state.verified !== true) return;
+  const now = deps.now();
+  const setAside = (langfuse.state.setAside ??= new Map<string, number>());
+  for (const [id, until] of setAside) if (until <= now.getTime()) setAside.delete(id);
+  for (const project of await scope.retention.listProjects()) {
+    try {
+      const candidates = await scope.langfusePurges.candidates({
+        projectId: project.id,
+        cutoff: now,
+        limit: langfuse.settings.batch,
+        excludeIds: [...(langfuse.state.setAside?.keys() ?? [])],
+      });
+      for (const candidate of candidates) {
+        counts.langfuseDue += 1;
+        if (deps.settings.mode !== 'purge') continue;
+        await purgeIntent(
+          deps,
+          langfuse,
+          scope,
+          tenantSlug,
+          project,
+          candidate,
+          counts,
+          true,
+          true,
+        );
+      }
+    } catch (error) {
+      counts.failed += 1;
+      deps.logger.log('error', 'retention.langfuse_project_failed', {
+        tenant_id: scope.tenantId,
+        project_id: project.id,
+        error: errorCode(error),
+      });
+    }
+  }
+}
+
 interface ProjectPlan {
   readonly project: { readonly id: string; readonly slug: string };
   readonly retentionDays: number | null;
@@ -309,6 +358,7 @@ async function purgeIntent(
   candidate: LangfuseCandidate,
   counts: RetentionCounts,
   retentionAllowed: boolean,
+  clientDeletion = false,
 ): Promise<void> {
   const log = (level: 'info' | 'warn' | 'error', event: string, fields = {}) =>
     deps.logger.log(level, event, {
@@ -332,6 +382,7 @@ async function purgeIntent(
       const fresh = await tx.projects.getById(project.id);
       const reportDeps = { ...deps, settings: { ...deps.settings, mode: 'report' as const } };
       const archiveDue =
+        !clientDeletion &&
         fresh?.status === 'archived' &&
         (await archiveDueFor(reportDeps, tx, project.id, now, emptyArchiveCounts()));
       const decision = purgeDecision({
@@ -340,8 +391,9 @@ async function purgeIntent(
         intentUpdatedAt: new Date(intent.updated_at),
         createdAt: new Date(intent.updated_at),
         held: await tx.retention.isHeld(intent.id),
-        retentionDays: await retentionDaysOf(tx, project.id),
+        retentionDays: clientDeletion ? 180 : await retentionDaysOf(tx, project.id),
         archivePurgeDue: archiveDue,
+        clientDeletionDue: clientDeletion,
       });
       if (!decision.purge || (decision.cause === 'retention' && !retentionAllowed)) {
         return { kind: 'none' };

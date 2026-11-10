@@ -290,6 +290,88 @@ export class RetentionRepository extends TenantRepository {
   }
 
   /**
+   * Finished, not-held, not-purged evidence of the project (any age): the client-data purge
+   * (H03b) deletes these with the GOVERNANCE bypass. Open and held intents stay out.
+   */
+  async clientPurgeCandidates(projectId: string, limit: number): Promise<RetentionRow[]> {
+    if (!isUuid(projectId) || limit <= 0) return [];
+    const items = await this.run(
+      this.itemBase()
+        .where('i.project_id', '=', projectId)
+        .where('i.status', 'in', [...FINISHED_FOR_RETENTION])
+        .where((eb) => eb.not(this.held(eb as never, 'e')))
+        .orderBy('e.created_at')
+        .orderBy('e.id')
+        .limit(limit)
+        .execute(),
+    );
+    const packs = await this.run(
+      this.packBase()
+        .where('i.project_id', '=', projectId)
+        .where('i.status', 'in', [...FINISHED_FOR_RETENTION])
+        .where((eb) => eb.not(this.held(eb as never, 'e')))
+        .orderBy('e.created_at')
+        .orderBy('e.id')
+        .limit(limit)
+        .execute(),
+    );
+    return merge(items.map(itemRow), packs.map(packRow), limit);
+  }
+
+  /**
+   * How many finished, not-held evidence rows of the tenant are still stored: the client purge
+   * may finish only when this is 0 (held and open rows may remain and block completion).
+   */
+  async clientPurgeableRemaining(): Promise<number> {
+    const count = async (table: 'items' | 'packs') => {
+      const base = table === 'items' ? this.itemBase() : this.packBase();
+      const row = await this.run(
+        base
+          .clearSelect()
+          .select((eb) => eb.fn.countAll<string>().as('n'))
+          .where('i.status', 'in', [...FINISHED_FOR_RETENTION])
+          .where((eb) => eb.not(this.held(eb as never, 'e')))
+          .executeTakeFirstOrThrow(),
+      );
+      return Number(row.n);
+    };
+    return (await count('items')) + (await count('packs'));
+  }
+
+  /** Open intents and active holds that block completing a client purge (H03b AC2). */
+  async clientPurgeBlockers(): Promise<{ openIntents: number; activeHolds: number }> {
+    const open = await this.run(
+      this.db
+        .selectFrom('intents')
+        .select((eb) => eb.fn.countAll<string>().as('n'))
+        .where('tenant_id', '=', this.tenantId)
+        .where('status', 'not in', [...FINISHED_FOR_RETENTION])
+        .executeTakeFirstOrThrow(),
+    );
+    const holds = await this.run(
+      this.db
+        .selectFrom('evidence_holds')
+        .select((eb) => eb.fn.countAll<string>().as('n'))
+        .where('tenant_id', '=', this.tenantId)
+        .where('released_at', 'is', null)
+        .executeTakeFirstOrThrow(),
+    );
+    return { openIntents: Number(open.n), activeHolds: Number(holds.n) };
+  }
+
+  /** How many audit_log rows this tenant holds (retained after a client purge). */
+  async auditRowCount(): Promise<number> {
+    const row = await this.run(
+      this.db
+        .selectFrom('audit_log')
+        .select((eb) => eb.fn.countAll<string>().as('n'))
+        .where('tenant_id', '=', this.tenantId)
+        .executeTakeFirstOrThrow(),
+    );
+    return Number(row.n);
+  }
+
+  /**
    * Inside a transaction, after the intent lock: the row again, locked, when its files are still
    * stored. The purge decides on this, never on the selection.
    */

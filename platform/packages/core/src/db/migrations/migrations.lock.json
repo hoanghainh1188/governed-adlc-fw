@@ -45,5 +45,6 @@
   "0044-dependency-checks.ts": "4afa4b71365eba5ec0038e9d670654421b6caa28ea145fc1ea85449a45aea188",
   "0045-web-decision-source.ts": "5e4f09e8179a5830fe27b6c0a6f14587cb5978509aad9826f9c4bf71c54b015b",
   "0046-housekeeping.ts": "7ec5536b118649460b601401dee97a93524938e7011991c6dbe50fc0122e39ad",
-  "0047-client-data-deletion.ts": "a657f1017adabeb519b0ae9f8a3c43b5022db0a85fc5c2b33041ac317e872e8f"
+  "0047-client-data-deletion.ts": "a657f1017adabeb519b0ae9f8a3c43b5022db0a85fc5c2b33041ac317e872e8f",
+  "0048-client-purge.ts": "035aee253e3e9e90d6d8eff9dcfb81c849d1f48994a7fda174791ef57caa662a"
 }

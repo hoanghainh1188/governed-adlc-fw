@@ -63,6 +63,27 @@ export class WebauthnCredentialRepository extends TenantRepository {
     );
   }
 
+  /**
+   * Revokes every active passkey of this tenant. `revoked_by` is the passkey's own user (the
+   * foreign key requires a user of this tenant; the system actor has none).
+   */
+  async revokeAllActive(at: Date): Promise<number> {
+    const active = await this.run(
+      this.db
+        .selectFrom('webauthn_credentials')
+        .select(['id', 'user_id'])
+        .where('tenant_id', '=', this.tenantId)
+        .where('revoked_at', 'is', null)
+        .execute(),
+    );
+    let n = 0;
+    for (const row of active) {
+      const done = await this.revoke(row.id, row.user_id, row.user_id, at);
+      if (done) n += 1;
+    }
+    return n;
+  }
+
   /** Revokes one passkey of a user. Returns it when this call revoked it. */
   revoke(
     id: string,

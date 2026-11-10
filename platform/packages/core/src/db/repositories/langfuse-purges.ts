@@ -14,7 +14,7 @@ import { isUuid } from '../tenant-id.js';
 import { TenantRepository } from './base.js';
 import { FINISHED_FOR_RETENTION } from './retention.js';
 
-export type LangfusePurgeCause = 'retention' | 'archive';
+export type LangfusePurgeCause = 'retention' | 'archive' | 'client_deletion';
 
 /** A finished intent whose Langfuse purge is not confirmed. */
 export interface LangfuseCandidate {

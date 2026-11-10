@@ -49,6 +49,7 @@ describe('worker settings', () => {
         guardPercent: 20,
         guardFloor: 20,
         archiveGraceDays: 7,
+        clientDeletionGraceDays: 14,
         orphanGraceHours: 24,
       },
       anchor: {

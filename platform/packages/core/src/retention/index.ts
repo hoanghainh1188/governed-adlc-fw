@@ -4,6 +4,7 @@ export * from './errors.js';
 export * from './holds.js';
 export * from './housekeeping.js';
 export * from './knowledge-pass.js';
+export * from './client-purge-pass.js';
 export * from './langfuse-pass.js';
 export * from './pass.js';
 export * from './report.js';

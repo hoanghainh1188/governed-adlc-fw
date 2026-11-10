@@ -382,7 +382,7 @@ async function purgeOne(
       let versions = 0;
       for (const uri of fresh.uris) {
         versions += await deps.store.deleteAllVersions(uri, {
-          bypassLock: decision.cause === 'archive',
+          bypassLock: decision.cause === 'archive' || decision.cause === 'client_deletion',
         });
       }
       await tx.retention.markPurged(fresh.kind, fresh.id);

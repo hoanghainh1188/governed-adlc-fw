@@ -565,7 +565,7 @@ export interface EvidenceHoldsTable {
 export interface LangfusePurgesTable {
   tenant_id: Immutable<string>;
   intent_id: Immutable<string>;
-  cause: Immutable<'retention' | 'archive'>;
+  cause: Immutable<'retention' | 'archive' | 'client_deletion'>;
   /** Traces found by the last request. */
   traces: ColumnType<number, number, number>;
   attempts: ColumnType<number, number | undefined, number>;
@@ -914,7 +914,13 @@ type NullableImmutable<T> = ColumnType<T | null, T | null | undefined, never>;
 
 /** Why a session ended (`web_session.ended`). */
 export type WebSessionEndReason =
-  'sign_out' | 'all' | 'admin' | 'user_disabled' | 'identity_unlinked' | 'replaced';
+  | 'sign_out'
+  | 'all'
+  | 'admin'
+  | 'user_disabled'
+  | 'identity_unlinked'
+  | 'replaced'
+  | 'client_purged';
 
 type Mutable<T> = ColumnType<T, T | undefined, T>;
 type MutableNullable<T> = ColumnType<T | null, T | null | undefined, T | null>;

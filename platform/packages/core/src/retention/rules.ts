@@ -11,6 +11,8 @@
 // - An archived project: after the archive grace period (from `project.archived`), every finished
 //   intent's evidence is purged, also before the 180 days: the purge identity then bypasses the
 //   GOVERNANCE lock (FR-44).
+// - A tenant in client-data deletion after its grace period: the same bypass for finished,
+//   not-held evidence (H03b, ADR-M97 §2.1).
 const DAY_MS = 86_400_000;
 
 /** No row is purged for retention before this age (ADR-M51 §2.4); independent of configuration. */
@@ -27,7 +29,7 @@ export const FINISHED_INTENT_STATUSES_FOR_RETENTION: readonly string[] = [
   'blocked',
 ];
 
-export type PurgeCause = 'retention' | 'archive';
+export type PurgeCause = 'retention' | 'archive' | 'client_deletion';
 
 export type KeepReason =
   /** The intent is still open. */
@@ -54,6 +56,8 @@ export interface RowFacts {
   readonly retentionDays: number | null;
   /** Set when the project is archived and its grace period is over. */
   readonly archivePurgeDue: boolean;
+  /** Set when the tenant's client-data purge may delete finished, not-held evidence (H03b). */
+  readonly clientDeletionDue?: boolean;
 }
 
 export const addDays = (from: Date, count: number): Date =>
@@ -77,6 +81,7 @@ export function retentionEnds(facts: {
 export function purgeDecision(facts: RowFacts): PurgeDecision {
   if (!isFinished(facts.intentStatus)) return { purge: false, reason: 'open' };
   if (facts.held) return { purge: false, reason: 'held' };
+  if (facts.clientDeletionDue) return { purge: true, cause: 'client_deletion' };
   if (facts.archivePurgeDue) return { purge: true, cause: 'archive' };
   if (facts.retentionDays === null) return { purge: false, reason: 'retention' };
   const now = facts.now.getTime();

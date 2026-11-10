@@ -86,6 +86,19 @@ export class WebSessionRepository extends TenantRepository {
     );
   }
 
+  /** Ends every open session of this tenant. Returns how many this call ended. */
+  endAllOpen(reason: WebSessionEndReason, at: Date): Promise<number> {
+    return this.run(
+      this.db
+        .updateTable('web_sessions')
+        .set({ revoked_at: at, end_reason: reason })
+        .where('tenant_id', '=', this.tenantId)
+        .where('revoked_at', 'is', null)
+        .executeTakeFirst()
+        .then((r) => Number(r.numUpdatedRows)),
+    );
+  }
+
   /** Ends every session of a user that is not ended yet. Returns how many this call ended. */
   endAllForUser(userId: string, reason: WebSessionEndReason, at: Date): Promise<number> {
     return this.run(

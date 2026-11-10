@@ -99,8 +99,8 @@ export const AUDIT_ACTIONS = {
   'web_session.started': { entityType: 'user', fields: { provider: 'code' } },
   /**
    * Dashboard sessions of a user ended (U05): `reason` is `sign_out`, `all` (sign out everywhere),
-   * `admin`, `user_disabled`, `identity_unlinked` or `replaced` (a new sign-in in the same
-   * browser); `count` how many. Never a session ID. The idle and absolute timeouts are not events.
+   * `admin`, `user_disabled`, `identity_unlinked`, `replaced` (a new sign-in in the same
+   * browser) or `client_purged` (H03b); `count` how many. Never a session ID. The idle and absolute timeouts are not events.
    */
   'web_session.ended': { entityType: 'user', fields: { reason: 'code', count: 'count' } },
   /**
@@ -585,6 +585,60 @@ export const AUDIT_ACTIONS = {
   'housekeeping.removed': {
     entityType: 'tenant',
     fields: { sessions: 'count', challenges: 'count' },
+  },
+  /**
+   * A tenant admin asked to delete the client's data (H03c, ADR-M97 §2.3). Declared here so H03b
+   * can read the approval clock; H03c writes it. Codes and IDs only; never a ticket URL text.
+   */
+  'client_data.deletion_requested': {
+    entityType: 'tenant',
+    fields: { requested_by: 'uuid', grace_period_days: 'count', legal_basis: 'code' },
+  },
+  /**
+   * A platform operator approved the deletion (H03c, ADR-M97 §2.3). The grace period starts at
+   * this event's `occurred_at` (H03b). Never a free-text reason.
+   */
+  'client_data.deletion_approved': {
+    entityType: 'tenant',
+    fields: { operator_id: 'uuid', confirmed_scope: 'code' },
+  },
+  /**
+   * The requester and the operator cancelled a pending deletion (H03c). Codes and IDs only.
+   */
+  'client_data.deletion_cancelled': {
+    entityType: 'tenant',
+    fields: { cancelled_by: 'uuid', role: 'code' },
+  },
+  /**
+   * The retention loop began the physical purge after the grace period (H03b, ADR-M97 §2.3).
+   * `targets` lists the subsystems it will touch (`s3`, `langfuse`, `knowledge_db`, `users_pii`).
+   */
+  'client_data.deletion_started': {
+    entityType: 'tenant',
+    fields: { targets: 'codes' },
+  },
+  /**
+   * An active evidence hold or an open intent blocks completing the client purge (H03b, ADR-M97
+   * §2.4). Counts only; the held or open intent IDs stay out of the payload.
+   */
+  'client_data.purge_blocked_by_hold': {
+    entityType: 'tenant',
+    fields: { open_intents: 'count', active_holds: 'count' },
+  },
+  /**
+   * Tier-1 client content is gone; the tenant is `purged` (H03b AC3, ADR-M97 §2.3). Counts and the
+   * receipt hash only. Append-only rows stay.
+   */
+  'client_data.deleted': {
+    entityType: 'tenant',
+    fields: {
+      evidence_files_purged: 'count',
+      langfuse_intents_purged: 'count',
+      knowledge_indexes_dropped: 'count',
+      users_anonymized: 'count',
+      retained_audit_rows: 'count',
+      deletion_receipt_hash: 'sha256',
+    },
   },
   /**
    * The daily audit anchor check found anchors that do not match this tenant's chain (E05 PR 2,
