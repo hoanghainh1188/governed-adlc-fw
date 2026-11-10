@@ -475,7 +475,7 @@ The socket proxy limits method and path, not the body of `containers/create` or 
 
 1. Build once from the repo: `pnpm exec tsc -b platform/deploy/docker-authz` (or `pnpm build`).
 2. As the Engine's user: `platform/deploy/docker-authz/scripts/install-rootless.sh`
-3. Check: `docker info` shows an authorization plugin (`sdlc-authz` or the socket path). `pnpm doctor` check `runner.authz` is ok.
+3. Check: `docker info` shows an authorization plugin named `sdlc-authz`. `pnpm doctor` check `runner.authz` is ok. On rootless Engines the plugin listens under `$HOME/.local/share/sdlc-docker-authz/` (not under `$XDG_RUNTIME_DIR`); the install script writes `/etc/docker/plugins/sdlc-authz.spec` (may need `sudo` once).
 4. CI enables the same plugin in `platform/deploy/scripts/test-rootless-docker.sh`.
 
 **Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then `systemctl --user restart docker.service`.
