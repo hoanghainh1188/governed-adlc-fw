@@ -119,6 +119,15 @@ export {
 export type { UserIdentityQuery } from './repositories/user-identities.js';
 export type { ProjectUpdate } from './repositories/projects.js';
 export type { UserUpdate } from './repositories/users.js';
+export {
+  anonymizedDisplayName,
+  anonymizedEmail,
+  anonymizedExternalLogin,
+  projectConfigTombstoneHash,
+  projectConfigTombstoneYaml,
+  type AnonymizeUserResult,
+  type ScrubProjectConfigsResult,
+} from './repositories/client-data-deletion.js';
 export type { RoleBindingQuery } from './repositories/role-bindings.js';
 export type { SaveProjectAiRecord } from './repositories/project-ai-records.js';
 export type {

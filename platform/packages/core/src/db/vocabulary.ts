@@ -97,7 +97,7 @@ export const DB_ENUMS = {
 } as const;
 
 // Text columns with a CHECK constraint (D-05 section 6.1).
-export const TENANT_STATUSES = ['active', 'suspended'] as const;
+export const TENANT_STATUSES = ['active', 'suspended', 'pending_deletion', 'purged'] as const;
 export type TenantStatus = (typeof TENANT_STATUSES)[number];
 
 export const PROJECT_STATUSES = ['active', 'archived'] as const;

@@ -45,6 +45,7 @@ import { UserIdentityRepository } from './repositories/user-identities.js';
 import { UserRepository } from './repositories/users.js';
 import { WebSessionRepository } from './repositories/web-sessions.js';
 import { HousekeepingRepository } from './repositories/housekeeping.js';
+import { ClientDataDeletionRepository } from './repositories/client-data-deletion.js';
 import { PasskeyChallengeRepository } from './repositories/passkey-challenges.js';
 import { WebauthnCredentialRepository } from './repositories/webauthn-credentials.js';
 
@@ -98,6 +99,7 @@ export class TenantScope {
   readonly webauthnCredentials: WebauthnCredentialRepository;
   readonly passkeyChallenges: PasskeyChallengeRepository;
   readonly housekeeping: HousekeepingRepository;
+  readonly clientDataDeletion: ClientDataDeletionRepository;
 
   private readonly db: Kysely<Database>;
   #savepoints = 0;
@@ -154,6 +156,7 @@ export class TenantScope {
     this.webauthnCredentials = new WebauthnCredentialRepository(this.db, this.tenantId);
     this.passkeyChallenges = new PasskeyChallengeRepository(this.db, this.tenantId);
     this.housekeeping = new HousekeepingRepository(this.db, this.tenantId);
+    this.clientDataDeletion = new ClientDataDeletionRepository(this.db, this.tenantId);
   }
 
   /**

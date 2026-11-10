@@ -358,9 +358,13 @@ describeDb('B13: admin onboarding on PostgreSQL', () => {
         404,
         'identity_not_found',
       );
+      // H03a / ADR-M97: an unlinked identity may still have its login scrubbed; other columns stay
+      // final (SDA11). The owner role is used so the trigger, not the column grant, is what refuses.
+      await sql`UPDATE user_identities SET external_login = 'redacted-login'
+                 WHERE id = ${linked.id}`.execute(t0.appRaw);
       await expect(
-        sql`UPDATE user_identities SET external_login = 'x' WHERE id = ${linked.id}`.execute(
-          t0.appRaw,
+        sql`UPDATE user_identities SET external_id = '9999' WHERE id = ${linked.id}`.execute(
+          t0.owner,
         ),
       ).rejects.toMatchObject({ code: 'SDA11' });
     });
