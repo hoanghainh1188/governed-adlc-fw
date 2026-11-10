@@ -2,6 +2,12 @@
 # Start the AuthZ plugin and enable it on the current user's Docker Engine (H07, ADR-M105).
 # Works for rootless (XDG paths) and for a rootful Engine run as root (system paths).
 #
+# Rootless note: RootlessKit uses --copy-up=/run, so a Unix socket under $XDG_RUNTIME_DIR is not
+# reliably visible to dockerd inside the namespace. The plugin listens under $HOME (shared).
+# Legacy AuthZ discovery only scans /etc/docker/plugins and /usr/lib/docker/plugins; for rootless
+# we write the .spec into the host /etc/docker/plugins (sudo) so the next RootlessKit start copies
+# it up. daemon.json lists the plugin by name only.
+#
 # Usage:
 #   platform/deploy/docker-authz/scripts/enable.sh [--dist <main.js>] [--socket <path>]
 #
@@ -33,15 +39,20 @@ if [ "$uid" -eq 0 ]; then
   runtime_plugins="/run/docker/plugins"
   config_plugins="/etc/docker/plugins"
   daemon_json="/etc/docker/daemon.json"
+  [ -n "$socket" ] || socket="$runtime_plugins/sdlc-authz.sock"
+  discovery_spec="/etc/docker/plugins/sdlc-authz.spec"
 else
-  runtime="${XDG_RUNTIME_DIR:-/run/user/$uid}"
-  config="${XDG_CONFIG_HOME:-$HOME/.config}"
-  runtime_plugins="$runtime/docker/plugins"
+  home="${HOME:?HOME is required for rootless AuthZ}"
+  config="${XDG_CONFIG_HOME:-$home/.config}"
+  share="${XDG_DATA_HOME:-$home/.local/share}"
   config_plugins="$config/docker/plugins"
   daemon_json="$config/docker/daemon.json"
+  # Socket under $HOME: shared with dockerd inside RootlessKit (not under copy-up /run).
+  [ -n "$socket" ] || socket="$share/sdlc-docker-authz/sdlc-authz.sock"
+  # Host /etc path is copy-up'd into the rootless namespace on dockerd start (needs sudo once).
+  discovery_spec="/etc/docker/plugins/sdlc-authz.spec"
 fi
-[ -n "$socket" ] || socket="$runtime_plugins/sdlc-authz.sock"
-mkdir -p "$runtime_plugins" "$config_plugins" "$(dirname "$daemon_json")"
+mkdir -p "$(dirname "$socket")" "$config_plugins" "$(dirname "$daemon_json")"
 
 # Stop a previous plugin on the same socket.
 if [ -S "$socket" ]; then
@@ -86,31 +97,36 @@ until [ -S "$socket" ]; do
   waited=$((waited + 1))
 done
 
-# Spec file for discovery by name; daemon.json also lists the absolute socket so rootless
-# Engines do not depend on /run/docker/plugins inside the user namespace (ADR-M105).
+# Spec file: name sdlc-authz → unix socket. Also keep a copy under the user config tree.
 printf 'unix://%s\n' "$socket" >"$config_plugins/sdlc-authz.spec"
-
-if [ -f "$daemon_json" ]; then
-  node -e '
-    const fs = require("fs");
-    const p = process.argv[1];
-    const sock = process.argv[2];
-    const j = JSON.parse(fs.readFileSync(p, "utf8"));
-    const list = Array.isArray(j["authorization-plugins"]) ? j["authorization-plugins"] : [];
-    for (const id of ["sdlc-authz", sock]) {
-      if (!list.includes(id)) list.push(id);
-    }
-    j["authorization-plugins"] = list;
-    fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
-  ' "$daemon_json" "$socket"
+if [ "$uid" -eq 0 ]; then
+  mkdir -p "$(dirname "$discovery_spec")"
+  cp "$config_plugins/sdlc-authz.spec" "$discovery_spec"
 else
-  node -e '
-    const fs = require("fs");
-    const p = process.argv[1];
-    const sock = process.argv[2];
-    fs.writeFileSync(p, JSON.stringify({ "authorization-plugins": ["sdlc-authz", sock] }, null, 2) + "\n");
-  ' "$daemon_json" "$socket"
+  # Rootless: dockerd only scans /etc/docker/plugins (copy-up from the host).
+  if [ -w /etc/docker/plugins ] 2>/dev/null || mkdir -p /etc/docker/plugins 2>/dev/null; then
+    cp "$config_plugins/sdlc-authz.spec" "$discovery_spec"
+  elif command -v sudo >/dev/null; then
+    sudo mkdir -p /etc/docker/plugins
+    sudo cp "$config_plugins/sdlc-authz.spec" "$discovery_spec"
+  else
+    echo "enable: cannot write $discovery_spec (need sudo for rootless AuthZ discovery)" >&2
+    exit 1
+  fi
 fi
+
+# daemon.json: plugin by name only (path entries are not valid AuthZ plugin ids).
+node -e '
+  const fs = require("fs");
+  const p = process.argv[1];
+  const j = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : {};
+  const prev = Array.isArray(j["authorization-plugins"]) ? j["authorization-plugins"] : [];
+  // Drop prior absolute-socket entries from older enable.sh; keep other named plugins.
+  const next = prev.filter((id) => typeof id === "string" && !id.includes("/") && id !== "sdlc-authz");
+  next.push("sdlc-authz");
+  j["authorization-plugins"] = next;
+  fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
+' "$daemon_json"
 
 if [ "${SDLC_DOCKER_AUTHZ_NO_RESTART:-}" != "1" ]; then
   if [ "$uid" -eq 0 ]; then
@@ -120,4 +136,4 @@ if [ "${SDLC_DOCKER_AUTHZ_NO_RESTART:-}" != "1" ]; then
   fi
 fi
 
-echo "enable: sdlc-authz on $socket (spec $config_plugins/sdlc-authz.spec)"
+echo "enable: sdlc-authz on $socket (spec $discovery_spec)"
