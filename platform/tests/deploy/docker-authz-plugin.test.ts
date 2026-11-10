@@ -45,7 +45,7 @@ function post(
 
 describe('AuthZ plugin server (H07)', () => {
   const dirs: string[] = [];
-  afterEach(async () => {
+  afterEach(() => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 

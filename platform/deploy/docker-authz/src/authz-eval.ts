@@ -34,7 +34,7 @@ export interface AuthzRules {
 }
 
 /** The denylist file both callers must use (AC2). */
-export const AUTHZ_RULES: AuthzRules = rulesJson as AuthzRules;
+export const AUTHZ_RULES: AuthzRules = rulesJson;
 
 /** Absolute path of the shared rules file next to this module (parity tests). */
 export const AUTHZ_RULES_PATH = join(dirname(fileURLToPath(import.meta.url)), 'authz-rules.json');
@@ -137,7 +137,8 @@ function checkNetworkCreate(body: unknown): AuthzDecision {
   const cfg = AUTHZ_RULES.networkCreate;
   const top = asRecord(body) ?? {};
 
-  if (cfg.refuseDrivers.includes(String(top.Driver ?? ''))) return deny('network_driver');
+  const driver = typeof top.Driver === 'string' ? top.Driver : '';
+  if (cfg.refuseDrivers.includes(driver)) return deny('network_driver');
   if (cfg.requireInternal && top.Internal !== true) return deny('network_not_internal');
 
   return { allow: true };

@@ -129,7 +129,7 @@ export async function startAuthzPlugin(options: AuthzPluginOptions): Promise<{
         chmodSync(socketPath, 0o660);
         resolve();
       } catch (err) {
-        reject(err);
+        reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
   });
