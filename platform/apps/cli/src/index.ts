@@ -8,6 +8,7 @@ import { t } from '@sdlc/messages';
 import { renderBanner } from './banner.js';
 import { runAdminApi } from './commands/admin-api.js';
 import { runAiRecord } from './commands/ai-record.js';
+import { runClient } from './commands/client.js';
 import { runEval } from './commands/eval.js';
 import { runAuditVerify } from './commands/audit-verify-api.js';
 import { runCost } from './commands/cost.js';
@@ -55,6 +56,7 @@ const USER_COMMANDS: Readonly<
   metrics: runMetrics,
   trial: (args, ctx) => runTrial(args, ctx),
   evidence: runEvidence,
+  client: runClient,
   token: runToken,
   admin: runAdminApi,
 };

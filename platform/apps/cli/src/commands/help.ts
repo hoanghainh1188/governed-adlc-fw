@@ -33,6 +33,7 @@ export const COMMAND_HELP = {
   eval: { usage: 'cli.eval.usage', example: 'cli.help.example.eval' },
   trial: { usage: 'cli.trial.usage', example: 'cli.help.example.trial' },
   evidence: { usage: 'cli.evidence.usage', example: 'cli.help.example.evidence' },
+  client: { usage: 'cli.client.usage', example: 'cli.help.example.client' },
   token: { usage: 'cli.token.usage', example: 'cli.help.example.token' },
   admin: { usage: 'cli.admin.api.usage', example: 'cli.help.example.admin' },
   audit: { usage: 'cli.audit.usage', example: 'cli.help.example.audit' },

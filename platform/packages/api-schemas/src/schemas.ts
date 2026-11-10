@@ -714,6 +714,26 @@ export const evidenceHoldListSchema = z.object({
 });
 
 /**
+ * `GET|POST|DELETE /v1/client/data-deletion` (H03c, ADR-M97 §2.4): tenant admin request, cancel
+ * and status. Codes and IDs only; never a ticket URL or free-text reason.
+ */
+export const clientDataDeletionSchema = z.object({
+  tenant_id: id,
+  tenant_slug: code,
+  tenant_status: code,
+  phase: code,
+  requested_by: id.nullable(),
+  requested_at: time.nullable(),
+  grace_period_days: z.number().int().min(0).max(365).nullable(),
+  legal_basis: code.nullable(),
+  operator_id: id.nullable(),
+  approved_at: time.nullable(),
+  cancelled_by: id.nullable(),
+  cancelled_at: time.nullable(),
+});
+export type ClientDataDeletionView = z.infer<typeof clientDataDeletionSchema>;
+
+/**
  * `GET /v1/auth/session` (U06, ADR-M73 §2.3): the session's CSRF token, kept in memory and sent in
  * `X-SDLC-CSRF` with every write; when the person signed in; are actions on.
  */

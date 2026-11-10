@@ -16,10 +16,15 @@ export interface NewTenant {
   readonly monthlyBudgetUsd?: string | null;
 }
 
+/** Tenant statuses that may still authenticate (H03c: cancel during the grace period). */
+export type AuthTenantStatus = Extract<TenantStatus, 'active' | 'pending_deletion'>;
+
 export interface ResolvedApiToken {
   readonly tenantId: TenantId;
   readonly userId: string;
   readonly tokenId: string;
+  /** `pending_deletion`: the API allows only the client data-deletion routes (H03c). */
+  readonly tenantStatus: AuthTenantStatus;
 }
 
 /** A dashboard session found by its secret's hash (U05, ADR-M73 §2.2): IDs and times only. */
@@ -32,6 +37,8 @@ export interface ResolvedWebSession {
   readonly createdAt: Date;
   /** SHA-256 of the session's CSRF token (U06); null for a session made before U06. */
   readonly csrfSha256: string | null;
+  /** `pending_deletion`: the API allows only the client data-deletion routes (H03c). */
+  readonly tenantStatus: AuthTenantStatus;
 }
 
 /** An escalation whose clock is due (task B11): IDs only. */
@@ -123,12 +130,13 @@ export class SystemScope {
   }
 
   /**
-   * Client data deletion (H03b, ADR-M97): moves a tenant to `pending_deletion` or `purged`.
-   * Tenant scopes cannot UPDATE `tenants` (tenant guard); only the system scope may.
+   * Client data deletion (H03b/H03c, ADR-M97): moves a tenant to `pending_deletion` or `purged`,
+   * or restores `active` when a deletion is cancelled during the grace period. Tenant scopes
+   * cannot UPDATE `tenants` (tenant guard); only the system scope may.
    */
   setTenantStatus(
     tenantId: TenantId,
-    status: Extract<TenantStatus, 'pending_deletion' | 'purged'>,
+    status: Extract<TenantStatus, 'active' | 'pending_deletion' | 'purged'>,
   ): Promise<Tenant | undefined> {
     return run(
       this.db
@@ -451,7 +459,9 @@ export class SystemScope {
   /**
    * Authentication (task B03): the tenant is only known after the token is found, so this lookup
    * crosses tenants. Takes the SHA-256 hash, never the token. Returns undefined unless the token
-   * is not revoked, not expired, and its user and tenant are active.
+   * is not revoked, not expired, its user is active, and the tenant is `active` or
+   * `pending_deletion` (H03c: cancel during the grace period; the API then allows only the
+   * data-deletion routes).
    */
   async resolveApiToken(
     tokenHash: string,
@@ -465,16 +475,21 @@ export class SystemScope {
           join.onRef('u.tenant_id', '=', 't.tenant_id').onRef('u.id', '=', 't.user_id'),
         )
         .innerJoin('tenants as tn', 'tn.id', 't.tenant_id')
-        .select(['t.id as token_id', 't.tenant_id', 't.user_id'])
+        .select(['t.id as token_id', 't.tenant_id', 't.user_id', 'tn.status as tenant_status'])
         .where('t.token_hash', '=', tokenHash)
         .where('t.revoked_at', 'is', null)
         .where('t.expires_at', '>', now)
         .where('u.status', '=', 'active')
-        .where('tn.status', '=', 'active')
+        .where('tn.status', 'in', ['active', 'pending_deletion'])
         .executeTakeFirst(),
     );
     return row
-      ? { tenantId: parseTenantId(row.tenant_id), userId: row.user_id, tokenId: row.token_id }
+      ? {
+          tenantId: parseTenantId(row.tenant_id),
+          userId: row.user_id,
+          tokenId: row.token_id,
+          tenantStatus: row.tenant_status as AuthTenantStatus,
+        }
       : undefined;
   }
 
@@ -482,8 +497,8 @@ export class SystemScope {
    * The API's guard (U05, ADR-M73 §2.2): a session cookie names no tenant, so the lookup crosses
    * tenants, as for API tokens. Takes the SHA-256 of the session secret, never the secret.
    * Returns undefined unless the session is not ended, not past its absolute end, seen after
-   * `idleSince`, its user and tenant are active and the identity it was opened with is still
-   * linked.
+   * `idleSince`, its user is active, the tenant is `active` or `pending_deletion` (H03c), and the
+   * identity it was opened with is still linked.
    */
   async resolveWebSession(
     secretHash: string,
@@ -511,6 +526,7 @@ export class SystemScope {
           's.last_seen_at',
           's.created_at',
           's.csrf_sha256',
+          'tn.status as tenant_status',
         ])
         .where('s.secret_sha256', '=', secretHash)
         .where('s.revoked_at', 'is', null)
@@ -518,7 +534,7 @@ export class SystemScope {
         .where('s.last_seen_at', '>', idleSince)
         .where('i.unlinked_at', 'is', null)
         .where('u.status', '=', 'active')
-        .where('tn.status', '=', 'active')
+        .where('tn.status', 'in', ['active', 'pending_deletion'])
         .executeTakeFirst(),
     );
     return row
@@ -527,6 +543,7 @@ export class SystemScope {
           userId: row.user_id,
           sessionId: row.session_id,
           lastSeenAt: row.last_seen_at,
+          tenantStatus: row.tenant_status as AuthTenantStatus,
           createdAt: row.created_at,
           csrfSha256: row.csrf_sha256,
         }

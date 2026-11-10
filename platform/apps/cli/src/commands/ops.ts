@@ -32,6 +32,10 @@ import { parseAgentCommand, runAgentCommand } from './ops-agent.js';
 import { parseAiRecordCommand, runAiRecordCommand } from './ops-ai-record.js';
 import { parseRoleCommand, runRoleCommand } from './ops-roles.js';
 import { parseRetentionCommand, runRetentionCommand } from './ops-retention.js';
+import {
+  parseClientDataDeletionCommand,
+  runClientDataDeletionCommand,
+} from './ops-client-data-deletion.js';
 import { parseEvalCommand, runEvalCommand } from './ops-eval.js';
 import { parseRunCommand, runRunCommand } from './ops-run.js';
 
@@ -96,6 +100,9 @@ export async function runOps(args: readonly string[], ctx: CliContext): Promise<
   if (first === 'retention') {
     const parsed = parseRetentionCommand(args.slice(1));
     return runScoped(parsed, runRetentionCommand, 'cli.ops.retention.usage', ctx);
+  }
+  if (first === 'client-data-deletion') {
+    return runClientDataDeletion(args.slice(1), ctx);
   }
   if (first === 'ai-record') {
     const parsed = parseAiRecordCommand(args.slice(1));
@@ -277,6 +284,35 @@ async function revoke(db: PlatformDatabase, values: Values, ctx: CliContext): Pr
       : t('cli.admin.token.revoked', { id: revoked.id }),
   );
   return EXIT.ok;
+}
+
+/** `adlc ops client-data-deletion …` (H03c): list needs no tenant; approve/status do. */
+async function runClientDataDeletion(args: readonly string[], ctx: CliContext): Promise<number> {
+  const parsed = parseClientDataDeletionCommand(args);
+  if (!parsed) {
+    ctx.stderr(t('cli.ops.client_data.usage'));
+    return EXIT.usage;
+  }
+  const url = ctx.env.SDLC_DB_URL;
+  if (!url) {
+    ctx.stderr(t('cli.admin.missing_url'));
+    return EXIT.usage;
+  }
+  const db = ctx.connect({
+    connectionString: url,
+    maxConnections: 1,
+    applicationName: 'sdlc-admin',
+  });
+  try {
+    let scope: TenantScope | undefined;
+    if (parsed.needsTenant) {
+      scope = await tenantScope(db, String(parsed.values.tenant), ctx);
+      if (!scope) return EXIT.usage;
+    }
+    return await runClientDataDeletionCommand(db, scope, parsed.command, parsed.values, ctx);
+  } finally {
+    await db.close();
+  }
 }
 
 async function tenantScope(
