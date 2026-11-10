@@ -169,7 +169,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
       # 1. Push the scanned build by digest. Same inputs: the layers come from the cache the job
       # scan wrote; BuildKit adds the SBOM and the provenance (ADR-M66 §2.3, §2.4).
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -211,7 +211,7 @@ jobs:
             echo "::error::no digest from the push"; exit 1; }
           mkdir -p "$RUNNER_TEMP/digests"
           printf '%s\n' "$DIGEST" > "$RUNNER_TEMP/digests/$NAME"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: digest-${{ matrix.image }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/${{ matrix.image }}-${{ matrix.arch }}
@@ -246,13 +246,13 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: platform/tools/release
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: digest-${{ matrix.image }}-*
           path: ${{ runner.temp }}/digests
           merge-multiple: true
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -298,7 +298,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/refs"
           printf '%s\n' "$REF" > "$RUNNER_TEMP/refs/$IMAGE"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ref-${{ matrix.image }}
           path: ${{ runner.temp }}/refs/${{ matrix.image }}
@@ -312,7 +312,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ref-*
           path: ${{ runner.temp }}/refs
@@ -340,7 +340,7 @@ jobs:
             cat "$out"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: images-lock-${{ inputs.version }}
           path: ${{ runner.temp }}/images.lock
