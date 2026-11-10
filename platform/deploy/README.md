@@ -458,6 +458,7 @@ The runner's settings do not change: it reaches `postgres`, `openbao`, `temporal
    3. cgroup v2 delegation: `/etc/systemd/system/user@.service.d/delegate.conf` with `[Service]` and `Delegate=cpu cpuset io memory pids`, then `sudo systemctl daemon-reload`. Without `cpu`, the sandbox's CPU limit is accepted but not applied.
    4. `sudo loginctl enable-linger sdlc-runner`; then, as `sdlc-runner`, `dockerd-rootless-setuptool.sh install`.
    5. Check, as `sdlc-runner`: `docker info --format '{{.SecurityOptions}} {{.CgroupVersion}} {{.CgroupDriver}}'` shows `rootless`, `2` and `systemd`. The socket is `/run/user/<uid>/docker.sock`.
+   6. **AuthZ plugin (H07, ADR-M105):** from the repo, as `sdlc-runner`, `pnpm exec tsc -b platform/deploy/docker-authz` then `platform/deploy/docker-authz/scripts/install-rootless.sh`. Check: `docker info` lists an authorization plugin. Runbook T11 §5g-1. `pnpm doctor` warns (`runner.authz`) when it is missing.
 2. **The link.**
    - A separate VM: the infrastructure operator sets up a WireGuard tunnel between the two machines, for example `10.66.0.1` (the platform host) and `10.66.0.2` (the VM). Generate the WireGuard private keys on each machine, in the owner's terminal; never put them in the repository, a chat or a log. Let the platform host accept the link ports from the VM's tunnel address only.
    - The same server: a dummy interface with one address, for example `10.203.0.1/32` (systemd-networkd: a `.netdev` file with `Kind=dummy` and a `.network` file with `Address=10.203.0.1/32`).

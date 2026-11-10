@@ -467,6 +467,21 @@ The worker (service `sdlc-worker`, task B06) polls GitHub and handles the commen
 
 The runner (service `sdlc-runner`, task C04) creates one hardened sandbox per agent run (`design/ADR-M25-runner-sandbox.md`). It logs in with the AppRole `runner` and reads the password of the database role `platform_app` from `kv/runner/database` once, when it starts. It reaches Docker only through the socket proxy (`docker-socket-proxy`); it never mounts the Docker socket itself.
 
+### 5g-1. Docker authorization plugin (H07, ADR-M105)
+
+The socket proxy limits method and path, not the body of `containers/create` or `networks/create`. On the **runner's own Engine**, install the AuthZ plugin so a compromised runner still cannot create a privileged container, host namespace, device, capability, bind mount or non-internal network.
+
+**Install (rootless runner Engine):**
+
+1. Build once from the repo: `pnpm exec tsc -b platform/deploy/docker-authz` (or `pnpm build`).
+2. As the Engine's user: `platform/deploy/docker-authz/scripts/install-rootless.sh`
+3. Check: `docker info` shows an authorization plugin (`sdlc-authz` or the socket path). `pnpm doctor` check `runner.authz` is ok.
+4. CI enables the same plugin in `platform/deploy/scripts/test-rootless-docker.sh`.
+
+**Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then `systemctl --user restart docker.service`.
+
+**When the plugin refuses a legitimate run:** the create body hit the shared denylist (`platform/deploy/docker-authz/src/authz-rules.json`). Do not disable the plugin. Fix the runner/spec so the body has no privileged flag, host namespace, CapAdd, devices, binds or non-internal network. If a new safe option must be allowed, change the denylist and the guard together (ADR-M105 AC2) in one pull request. Developer machines without the plugin only get a doctor warning.
+
 ### First set-up
 
 1. OpenBao is initialised, unsealed and configured (sections 3 and 4). `configure` creates the AppRole `runner`.

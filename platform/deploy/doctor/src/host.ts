@@ -343,6 +343,19 @@ export async function gatherFacts(
           memoryBytes: await exec(commands.dockerMemory()).then((r) =>
             r.status === 0 ? Number(r.stdout.trim()) || null : null,
           ),
+          authorizationPlugins: await exec(commands.dockerAuthz()).then((r) => {
+            if (r.status !== 0) return null;
+            const raw = r.stdout.trim();
+            if (raw === '' || raw === 'null') return [];
+            try {
+              const parsed = JSON.parse(raw) as unknown;
+              return Array.isArray(parsed)
+                ? parsed.filter((x): x is string => typeof x === 'string')
+                : null;
+            } catch {
+              return null;
+            }
+          }),
         };
 
   const mode = await exec(commands.imagesMode(files.images));

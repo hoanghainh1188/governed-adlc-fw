@@ -4,7 +4,10 @@
 //
 // Allowlist, not blocklist: a key that is not listed here is refused, so a new Docker option
 // (privileged, host mounts, devices, host namespaces…) never slips through unnoticed.
+// The shared AuthZ denylist (H07, ADR-M105) is checked too, so the guard and the Engine plugin
+// cannot disagree on host-escape create bodies.
 import { TOOL_RUNTIME_DIR } from '@sdlc/contracts';
+import { evaluateAuthz } from '@sdlc/docker-authz';
 
 import { RunnerError } from '../errors.js';
 import { LABELS, MANAGED_BY } from '../names.js';
@@ -159,11 +162,17 @@ export function assertSafeScoringSpec(
   checkHardening(name, spec, phase);
 }
 
+function assertAuthzAllows(method: string, path: string, body: unknown): void {
+  const decision = evaluateAuthz(method, path, body);
+  if (!decision.allow) refuse(decision.reason ?? 'authz');
+}
+
 function checkHardening(
   name: string,
   spec: ContainerSpec,
   scoring: ScoringPhase | undefined,
 ): void {
+  assertAuthzAllows('POST', '/containers/create', spec);
   const raw = spec as unknown as Record<string, unknown>;
   const host = (raw.HostConfig ?? {}) as Record<string, unknown>;
   if (!SANDBOX_NAME.test(name)) refuse('name');
@@ -250,6 +259,7 @@ export function assertSafeNetworkSpec(spec: {
   readonly Labels: Readonly<Record<string, string>>;
   readonly Options: Readonly<Record<string, string>>;
 }): void {
+  assertAuthzAllows('POST', '/networks/create', spec);
   const allowed = new Set([
     'Name',
     'Driver',
@@ -409,6 +419,7 @@ function checkToolHardening(
   runId: string,
   user: string,
 ): void {
+  assertAuthzAllows('POST', '/containers/create', spec);
   const raw = spec as unknown as Record<string, unknown>;
   const host = (raw.HostConfig ?? {}) as Record<string, unknown>;
   if (Object.keys(raw).some((key) => !TOOL_TOP_KEYS.has(key))) refuse('unknown_option');

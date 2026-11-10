@@ -3,7 +3,7 @@
 Rules for `platform/apps/runner`, the agent and model adapters (`platform/packages/adapters/agent-openhands`, `agent-opencode`, `model-litellm`), their shared helpers (`platform/packages/agent-kit`), the sandbox images and their tests. The root `CLAUDE.md` still applies. Never break a rule here; the detail is in the linked ADR. Each rule ends with its IDs in `design/RULES.md` (ADR-M84).
 
 ## Rules
-- Never add a sandbox environment variable, mount, capability or network outside `docker/guard.ts`. Sandbox egress = LiteLLM and the package proxy only; GitHub is reached by the runner, never by the sandbox (ADR-M25). The socket proxy allowlist equals `ALLOWED_ENDPOINTS`. [R061]
+- Never add a sandbox environment variable, mount, capability or network outside `docker/guard.ts`. Sandbox egress = LiteLLM and the package proxy only; GitHub is reached by the runner, never by the sandbox (ADR-M25). The socket proxy allowlist equals `ALLOWED_ENDPOINTS`. Create-body denylist shared with the Engine AuthZ plugin (`@sdlc/docker-authz`, ADR-M105). [R061]
 - Trust `sdlc.*` labels only on objects with this runner's instance label; one runner process per instance label. [R062]
 - The runner talks to Docker only through its own client (endpoint allowlist); the GitHub App key comes only from OpenBao `kv/shared/github-app`, readable by the api and worker AppRoles, never the runner (ADR-M23, ADR-M25). [R063]
 - Sandbox output is untrusted: changed files, diffs and heads are recomputed outside the sandbox with hardened git. Never push what the sandbox committed, never write the change to a working tree, never force-push; push `agent/INT-…` with an explicit refspec (ADR-M29 §2.5, ADR-M38). [R064]

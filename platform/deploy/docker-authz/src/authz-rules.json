@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "containerCreate": {
+    "refusePrivileged": true,
+    "refuseHostNamespaces": ["PidMode", "IpcMode", "UTSMode", "NetworkMode"],
+    "refuseHostNetworkMode": true,
+    "refuseCapAdd": true,
+    "refuseDevices": true,
+    "refuseDeviceCgroupRules": true,
+    "refuseBinds": true,
+    "refuseBindMounts": true,
+    "refusePublishAllPorts": true,
+    "refusePortBindings": true,
+    "refuseSecurityOptSubstrings": ["seccomp:unconfined", "apparmor:unconfined"]
+  },
+  "networkCreate": {
+    "requireInternal": true,
+    "refuseDrivers": ["host"]
+  }
+}

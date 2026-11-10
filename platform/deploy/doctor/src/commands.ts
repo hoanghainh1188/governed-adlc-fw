@@ -108,6 +108,8 @@ function compose(target: ComposeTarget, ...rest: string[]): string[] {
 export const commands = {
   dockerVersion: () => ['docker', 'version', '--format', '{{.Server.Version}}'],
   dockerMemory: () => ['docker', 'info', '--format', '{{.MemTotal}}'],
+  /** JSON array of AuthZ plugin names, or `null` / empty when none (H07, ADR-M105). */
+  dockerAuthz: () => ['docker', 'info', '--format', '{{json .Plugins.Authorization}}'],
   composeVersion: () => ['docker', 'compose', 'version', '--short'],
   imageInspect: (ref: string) => ['docker', 'image', 'inspect', '--format', '{{.Id}}', ref],
   ps: (t: ComposeTarget) => compose(t, 'ps', '--all', '--format', 'json'),
@@ -156,7 +158,13 @@ export function isAllowed(
   if (cmd === scripts.bootstrap) return same(rest, ['status']);
   if (cmd === scripts.images) return same(rest, ['mode']);
   if (cmd !== 'docker') return false;
-  if (same(argv, commands.dockerVersion()) || same(argv, commands.dockerMemory())) return true;
+  if (
+    same(argv, commands.dockerVersion()) ||
+    same(argv, commands.dockerMemory()) ||
+    same(argv, commands.dockerAuthz())
+  ) {
+    return true;
+  }
   if (same(argv, commands.composeVersion())) return true;
   if (argv[1] === 'image') {
     return (

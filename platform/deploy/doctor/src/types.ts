@@ -48,6 +48,7 @@ export const CHECK_IDS = [
   'access.public_origin',
   'access.trusted_proxy',
   'runner.engine',
+  'runner.authz',
 ] as const;
 export type CheckId = (typeof CHECK_IDS)[number];
 
@@ -170,6 +171,11 @@ export interface OperatorFacts {
     readonly serverVersion: string | null;
     readonly composeVersion: string | null;
     readonly memoryBytes: number | null;
+    /**
+     * Authorization plugins reported by `docker info` (H07, ADR-M105). Empty: none; null: the
+     * field could not be read.
+     */
+    readonly authorizationPlugins: readonly string[] | null;
   } | null;
   readonly disk: readonly { readonly path: string; readonly freeBytes: number | null }[];
   /**

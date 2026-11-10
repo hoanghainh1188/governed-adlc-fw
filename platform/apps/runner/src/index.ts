@@ -24,6 +24,14 @@ export {
   type ScoringPhase,
   type ToolContainerSpec,
 } from './docker/guard.js';
+export {
+  AUTHZ_RULES,
+  AUTHZ_RULES_PATH,
+  evaluateAuthz,
+  evaluateAuthzRaw,
+  type AuthzDecision,
+  type AuthzRules,
+} from './docker/authz.js';
 export { buildScoringSpec, type ScoringSpecInput } from './sandbox/scoring-spec.js';
 export {
   scoreEvaluationRun,

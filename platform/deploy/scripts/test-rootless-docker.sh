@@ -87,6 +87,34 @@ case "$info" in
   *) echo "test-rootless-docker: not a rootless Engine with cgroup v2 and systemd" >&2; exit 1 ;;
 esac
 
+# 7. AuthZ plugin for create bodies (H07, ADR-M105). Starts the plugin, writes the .spec and
+#    daemon.json, restarts dockerd. Skip when SDLC_DOCKER_AUTHZ=0 (local debugging only).
+repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
+authz_main="$repo_root/platform/deploy/docker-authz/dist/main.js"
+if [ "${SDLC_DOCKER_AUTHZ:-1}" != "0" ]; then
+  if [ ! -f "$authz_main" ]; then
+    (cd "$repo_root" && pnpm exec tsc -b platform/deploy/docker-authz)
+  fi
+  [ -f "$authz_main" ] || {
+    echo "test-rootless-docker: AuthZ plugin dist missing at $authz_main" >&2
+    exit 1
+  }
+  export XDG_RUNTIME_DIR="/run/user/$uid"
+  export DOCKER_HOST="unix://$socket"
+  sh "$repo_root/platform/deploy/docker-authz/scripts/enable.sh" --dist "$authz_main"
+  waited=0
+  until DOCKER_HOST="unix://$socket" docker info >/dev/null 2>&1; do
+    [ "$waited" -lt 60 ] || {
+      echo "test-rootless-docker: dockerd did not come back after AuthZ enable" >&2
+      journalctl --user -u docker.service --no-pager -n 100 >&2 || true
+      exit 1
+    }
+    sleep 1
+    waited=$((waited + 1))
+  done
+  echo "test-rootless-docker: sdlc-authz enabled"
+fi
+
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "DOCKER_HOST=unix://$socket" >>"$GITHUB_ENV"
 fi

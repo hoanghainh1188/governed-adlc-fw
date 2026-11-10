@@ -29,6 +29,7 @@
     { "path": "platform/deploy/trial" },
     { "path": "platform/deploy/server-setup" },
     { "path": "platform/deploy/doctor" },
+    { "path": "platform/deploy/docker-authz" },
     { "path": "platform/deploy/alerts" },
     { "path": "platform/eval" },
     { "path": "platform/deploy/github-app" }
