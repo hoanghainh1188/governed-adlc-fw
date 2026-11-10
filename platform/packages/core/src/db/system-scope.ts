@@ -6,6 +6,7 @@ import { translatePgError } from './errors.js';
 import { assertTokenHash } from './repositories/api-tokens.js';
 import type { WebSessionEndReason } from './schema.js';
 import type { Database, Tenant } from './schema.js';
+import type { TenantStatus } from './vocabulary.js';
 import { isUuid, parseTenantId, type TenantId } from './tenant-id.js';
 import { TenantScope } from './tenant-scope.js';
 
@@ -119,6 +120,24 @@ export class SystemScope {
   /** Operator commands (`adlc audit verify`): every tenant, ordered by slug. */
   listTenants(): Promise<Tenant[]> {
     return run(this.db.selectFrom('tenants').selectAll().orderBy('slug').execute());
+  }
+
+  /**
+   * Client data deletion (H03b, ADR-M97): moves a tenant to `pending_deletion` or `purged`.
+   * Tenant scopes cannot UPDATE `tenants` (tenant guard); only the system scope may.
+   */
+  setTenantStatus(
+    tenantId: TenantId,
+    status: Extract<TenantStatus, 'pending_deletion' | 'purged'>,
+  ): Promise<Tenant | undefined> {
+    return run(
+      this.db
+        .updateTable('tenants')
+        .set({ status })
+        .where('id', '=', parseTenantId(tenantId))
+        .returningAll()
+        .executeTakeFirst(),
+    );
   }
 
   getTenant(tenantId: TenantId): Promise<Tenant | undefined> {

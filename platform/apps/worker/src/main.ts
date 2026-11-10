@@ -17,6 +17,7 @@ import {
   checkStoredConfigsAtStart,
   runAnchorPass,
   runHousekeepingPass,
+  runClientPurgePass,
   runRetentionPass,
   gitHostErrorMessage,
   loadEffectiveConfig,
@@ -318,6 +319,23 @@ async function main(): Promise<void> {
             : {}),
           ...(retentionSettings && retentionStore
             ? {
+                clientPurge: () =>
+                  runClientPurgePass({
+                    db,
+                    store: retentionStore,
+                    logger,
+                    now: () => new Date(),
+                    langfuse: langfuse.deps,
+                    ...(knowledge?.deps?.store
+                      ? { knowledge: { store: knowledge.deps.store } }
+                      : {}),
+                    settings: {
+                      mode: retentionSettings.mode,
+                      bucket: retentionSettings.bucket,
+                      batch: retentionSettings.batch,
+                      graceDays: retentionSettings.clientDeletionGraceDays,
+                    },
+                  }),
                 pass: (orphanCursor: string | null) =>
                   runRetentionPass(
                     {

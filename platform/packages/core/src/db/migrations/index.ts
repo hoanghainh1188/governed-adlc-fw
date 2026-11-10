@@ -47,6 +47,7 @@ import { migration0044DependencyChecks } from './0044-dependency-checks.js';
 import { migration0045WebDecisionSource } from './0045-web-decision-source.js';
 import { migration0046Housekeeping } from './0046-housekeeping.js';
 import { migration0047ClientDataDeletion } from './0047-client-data-deletion.js';
+import { migration0048ClientPurge } from './0048-client-purge.js';
 import type { SqlMigration } from './define.js';
 
 export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
@@ -97,4 +98,5 @@ export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
   '0045-web-decision-source': migration0045WebDecisionSource,
   '0046-housekeeping': migration0046Housekeeping,
   '0047-client-data-deletion': migration0047ClientDataDeletion,
+  '0048-client-purge': migration0048ClientPurge,
 };

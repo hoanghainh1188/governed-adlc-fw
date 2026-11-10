@@ -3,10 +3,11 @@
 ## [Unreleased]
 
 ### Upgrade notes
-- **On a running stack:** (1) `pnpm install`; (2) `pnpm db:migrate`: migration `0047-client-data-deletion` (tenant states `pending_deletion` and `purged`; unlinked identities may still have their login scrubbed for client deletion). No changed setting and no credentials command to run again.
+- **On a running stack:** (1) `pnpm install`; (2) `pnpm compose:env --add-missing`: it appends `SDLC_CLIENT_DELETION_GRACE_DAYS` (default 14) when missing; (3) `pnpm db:migrate`: migrations `0047-client-data-deletion` and `0048-client-purge` (tenant states; `web_sessions.end_reason` gains `client_purged`; `langfuse_purges.cause` gains `client_deletion`). No credentials command to run again.
 
 ### Added
 - **Client data deletion, part 1** (task H03a, ADR-M97 §2): tenant states `pending_deletion` and `purged`; `TenantScope.clientDataDeletion.anonymizeUser` / `scrubProjectConfigs` scrub people and project YAML in place so foreign keys and append-only tables stay intact.
+- **Client data deletion, part 2** (task H03b, ADR-M97 §2): `runClientPurgePass` in the retention loop. After `SDLC_CLIENT_DELETION_GRACE_DAYS` from `client_data.deletion_approved`, it revokes access, purges evidence (GOVERNANCE bypass), Langfuse and knowledge for finished not-held intents, anonymizes people, writes `client_data.deleted`, and sets the tenant to `purged`. An open intent or active hold records `client_data.purge_blocked_by_hold` and blocks completion.
 
 ### Changed
 - **A simpler release** (ADR-M104, `RELEASING.md` 3.0). The owner merges the version pull request; nothing else. The environment `npm` has no required reviewer any more: the merge is the release decision, and npm publishes after the same checks (ADR-M104 1.1). CI runs the upgrade test on a version pull request by itself. `release-tag.yml` tags the merge commit and starts `release.yml` on the tag; for that the tag ruleset blocks updates and deletions but no longer creation (the owner's setting; turn "Restrict creations" on again before giving anyone else write access). `pnpm release:prepare X.Y.Z` prepares the version pull request and refuses without Upgrade notes under `[Unreleased]`, which each pull request now writes (rule R146).

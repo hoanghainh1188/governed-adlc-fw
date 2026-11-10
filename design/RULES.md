@@ -168,8 +168,8 @@ This register lists every rule of the root `CLAUDE.md` and the check that enforc
 | R071b | Money/token sums as strings | test | tests/cost/report.test.ts:112 | full | merge with R067b | platform/packages/core/CLAUDE.md |
 | R071c | Never a per-person breakdown | text-only | – | none | add-test | platform/packages/core/CLAUDE.md |
 | R071d | `trial report` strict schema | test | tests/cli/trial-report.test.ts:114 | full | pointer-only | platform/packages/core/CLAUDE.md |
-| R072a | Lock bypass only for archive purge/orphan sweep | runtime+test | packages/core/src/retention/pass.ts:371 | partial | move:platform/packages/core/src/retention | platform/packages/core/CLAUDE.md |
-| R072b | Nothing < 180 days purged | runtime+test | tests/retention/rules.test.ts:34 | full | pointer-only | platform/packages/core/CLAUDE.md |
+| R072a | Lock bypass only for archive purge, orphan sweep, client-data purge | runtime+test | packages/core/src/retention/pass.ts; retention/client-purge-pass.ts | partial | move:platform/packages/core/src/retention | platform/packages/core/CLAUDE.md |
+| R072b | Nothing < 180 days purged for retention (client deletion may) | runtime+test | tests/retention/rules.test.ts; tests/retention/client-purge-rules.test.ts | full | pointer-only | platform/packages/core/CLAUDE.md |
 | R072c | Anchor bucket COMPLIANCE | test | tests/deploy/worker-static.test.ts:171 | full | pointer-only | platform/packages/core/CLAUDE.md |
 | R072d | Never log anchor hash | test | tests/audit/anchor.test.ts:218 | full | pointer-only | platform/packages/core/CLAUDE.md |
 | R073a–d | Langfuse purge rules | test | tests/llm-traces/langfuse-store.test.ts; tests/deploy/worker-static.test.ts:235 | full | pointer-only | platform/packages/core/CLAUDE.md |

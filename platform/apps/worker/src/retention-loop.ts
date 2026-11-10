@@ -15,8 +15,11 @@
 //   (`runHousekeepingPass`, core). It needs only the database, so the loop runs for it alone too,
 //   and a failing evidence pass (S3 down) never stops it; its own failure is logged and never stops
 //   the other parts.
+// - H03b (ADR-M97): `runClientPurgePass` runs first under the same lock so today's audit anchor
+//   (when written later in the tick) can cover `client_data.deleted`.
 import type {
   AnchorPassResult,
+  ClientPurgePassResult,
   HousekeepingPassResult,
   HousekeepingSettings,
   RetentionPassDeps,
@@ -33,6 +36,8 @@ export interface RetentionLoopDeps {
   readonly pass?: (orphanCursor: string | null) => Promise<RetentionPassResult>;
   /** `runHousekeepingPass` (core) bound to its dependencies; absent with `SDLC_WORKER_HOUSEKEEPING_MODE=off`. */
   readonly housekeeping?: () => Promise<HousekeepingPassResult>;
+  /** `runClientPurgePass` (core, H03b); absent without `worker-purge`. */
+  readonly clientPurge?: () => Promise<ClientPurgePassResult>;
   readonly housekeepingMode?: HousekeepingSettings['mode'];
   /** `SystemScope.withRetentionLock`. */
   withLock<T>(fn: () => Promise<T>): Promise<SpendSyncLockResult<T>>;
@@ -49,6 +54,8 @@ export type RetentionLoopPass =
       readonly result: RetentionPassResult | null;
       /** Null when housekeeping is off or failed (logged). */
       readonly housekeeping: HousekeepingPassResult | null;
+      /** Null when client purge did not run or failed (logged). */
+      readonly clientPurge: ClientPurgePassResult | null;
     }
   | { readonly outcome: 'busy' }
   | { readonly outcome: 'failed' };
@@ -75,6 +82,8 @@ export class RetentionLoop {
   async tick(): Promise<RetentionLoopPass> {
     try {
       const locked = await this.#deps.withLock(async () => ({
+        // H03b: before the daily anchor so today's file can cover `client_data.deleted`.
+        clientPurge: await this.#clientPurge(),
         anchors: await this.#anchors(),
         // Before the evidence pass: it needs only the database, so S3 being down never stops it.
         housekeeping: await this.#housekeeping(),
@@ -84,7 +93,7 @@ export class RetentionLoop {
         this.#deps.logger.log('info', 'worker.retention_busy', {});
         return { outcome: 'busy' };
       }
-      const { anchors, result, housekeeping } = locked.value;
+      const { anchors, result, housekeeping, clientPurge } = locked.value;
       if (result) {
         const { orphanCursor, ...counts } = result;
         this.#orphanCursor = orphanCursor;
@@ -93,7 +102,7 @@ export class RetentionLoop {
           ...counts,
         });
       }
-      return { outcome: 'done', anchors, result, housekeeping };
+      return { outcome: 'done', anchors, result, housekeeping, clientPurge };
     } catch (error) {
       this.#deps.logger.log('error', 'worker.retention_failed', { error: errorCode(error) });
       return { outcome: 'failed' };
@@ -110,6 +119,20 @@ export class RetentionLoop {
       return counts;
     } catch (error) {
       this.#deps.logger.log('error', 'worker.anchor_pass_failed', { error: errorCode(error) });
+      return null;
+    }
+  }
+
+  /** The client-data purge; a failure is logged and never stops the other parts. */
+  async #clientPurge(): Promise<ClientPurgePassResult | null> {
+    if (!this.#deps.clientPurge) return null;
+    try {
+      const counts = await this.#deps.clientPurge();
+      const bad = counts.failed > 0 || counts.tenantsBlocked > 0;
+      this.#deps.logger.log(bad ? 'warn' : 'info', 'worker.client_purge_pass', { ...counts });
+      return counts;
+    } catch (error) {
+      this.#deps.logger.log('error', 'worker.client_purge_failed', { error: errorCode(error) });
       return null;
     }
   }
