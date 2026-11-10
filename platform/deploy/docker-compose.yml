@@ -163,7 +163,7 @@ services:
   # with pgvector, pinned by digest (R038), on `sdlc` only and without a host port. The worker
   # connects as `knowledge` with the password from OpenBao (`kv/worker/knowledge-db`).
   knowledge-db:
-    image: pgvector/pgvector:0.8.1-pg17@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21
+    image: pgvector/pgvector:0.8.6-pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
     profiles: [knowledge]
     restart: unless-stopped
     networks: [sdlc]
@@ -254,7 +254,7 @@ services:
       test: [CMD-SHELL, 'wget -q --spider "http://$$(hostname -i | cut -d" " -f1):8080/" || exit 1']
 
   valkey:
-    image: valkey/valkey:8.1.10-alpine3.24
+    image: valkey/valkey:8.1.11-alpine3.24
     profiles: [core, observability]
     restart: unless-stopped
     networks: [sdlc]
@@ -281,7 +281,7 @@ services:
       test: [CMD-SHELL, 'REDISCLI_AUTH="$$VALKEY_PASSWORD" valkey-cli ping | grep -q PONG']
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.104.0
+    image: ghcr.io/berriai/litellm:v1.106.6
     profiles: [core, observability]
     restart: unless-stopped
     # L01 (ADR-M71 §2.1): `models` reaches the self-hosted vLLM; it has no route to the internet.
@@ -328,7 +328,7 @@ services:
   # OpenBao. Needs OpenBao unsealed and configured, and its AppRole credentials delivered
   # (`openbao/bootstrap.sh litellm-credentials`, runbook T11).
   litellm-agent:
-    image: openbao/openbao:2.7.1
+    image: openbao/openbao:2.7.2
     profiles: [models]
     restart: unless-stopped
     networks: [sdlc]
@@ -363,7 +363,7 @@ services:
   # virtual key and labels (R027). vLLM logs no prompts (--enable-log-requests stays off, R031).
   # LiteLLM lists the model once its entry kv/litellm/providers/vllm exists (runbook T11 §5d.1).
   vllm:
-    image: vllm/vllm-openai:v0.31.0@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+    image: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
     profiles: [models-local]
     restart: unless-stopped
     networks: [models]
@@ -423,7 +423,7 @@ services:
   # models only, so no Hugging Face token. Weights, configuration and tokenizer files only, never
   # model code (vllm never trusts remote code).
   vllm-pull:
-    image: vllm/vllm-openai:v0.31.0@sha256:c1c9f6fd5c109ba7f0546a59f5b2f15fb87f64c77782e90a27b648b42a8e67c3
+    image: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
     profiles: [models-local-pull]
     restart: 'no'
     networks: [sdlc]
@@ -450,7 +450,7 @@ services:
     security_opt: [no-new-privileges:true]
 
   seaweedfs:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.50
     profiles: [core, observability]
     restart: unless-stopped
     networks: [sdlc]
@@ -492,7 +492,7 @@ services:
         ]
 
   seaweedfs-init:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.50
     profiles: [core, observability]
     restart: 'no'
     # A12 (ADR-M52): the master and the filer listen on 127.0.0.1 inside the seaweedfs container,
@@ -523,7 +523,7 @@ services:
   # by every client), so no host file needs the container's user (A10, design/ADR-M63). Runs at
   # every start; `openbao/tls.sh reload` runs it again after a renewal. No network.
   openbao-tls-init:
-    image: openbao/openbao:2.7.1
+    image: openbao/openbao:2.7.2
     profiles: [core, observability]
     restart: 'no'
     network_mode: none
@@ -551,7 +551,7 @@ services:
       - openbao-ca:/ca
 
   openbao:
-    image: openbao/openbao:2.7.1
+    image: openbao/openbao:2.7.2
     profiles: [core, observability]
     restart: unless-stopped
     networks: [sdlc]
@@ -591,7 +591,7 @@ services:
   # stdout, where backup.sh encrypts it with age. Logs in with the AppRole "backup" (only
   # sys/storage/raft/snapshot), over TLS with the CA.
   backup-agent:
-    image: openbao/openbao:2.7.1
+    image: openbao/openbao:2.7.2
     profiles: [backup]
     restart: 'no'
     networks: [sdlc]
@@ -612,7 +612,7 @@ services:
   # ------------------------------------------------------- observability ----
 
   clickhouse:
-    image: clickhouse/clickhouse-server:26.3.39.7
+    image: clickhouse/clickhouse-server:26.3.62.3
     profiles: [observability]
     restart: unless-stopped
     networks: [sdlc]
@@ -634,7 +634,7 @@ services:
       test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:8123/ping || exit 1']
 
   langfuse-worker:
-    image: langfuse/langfuse-worker:4.50.0
+    image: langfuse/langfuse-worker:4.71.0
     profiles: [observability]
     restart: unless-stopped
     networks: [sdlc]
@@ -686,7 +686,7 @@ services:
         ]
 
   langfuse-web:
-    image: langfuse/langfuse:4.50.0
+    image: langfuse/langfuse:4.71.0
     profiles: [observability]
     restart: unless-stopped
     networks: [sdlc]
@@ -908,7 +908,7 @@ services:
   # method and path only, not the request body: docker/guard.ts inside the runner checks the
   # container definition (ADR-M25 §2.5, residual risk). Bind mounts are refused by the proxy too.
   docker-socket-proxy:
-    image: wollomatic/socket-proxy:1.13.1@sha256:3935b709275e4ec35d6ed5a5c4a1f0d01ed31eec5e7234efc3357ecd47689002
+    image: wollomatic/socket-proxy:1.13.2@sha256:ff95d6ff6c27853005ef85eb8f4ab5923dc3d2f1e055f98fb6aeeaceec3fe848
     profiles: [sandbox]
     restart: unless-stopped
     network_mode: none
@@ -940,7 +940,7 @@ services:
   # Its only uplink is registry.npmjs.org; publishing is refused; no web UI; no host port. The
   # runner attaches it to each run's internal network under the alias npm-proxy.
   npm-proxy:
-    image: verdaccio/verdaccio:6.10.4@sha256:43c4067288b050422265407ea2fe747e511fcd0c407a85ec90ab9a326d9400cd
+    image: verdaccio/verdaccio:6.11.1@sha256:82f4decaf1c9eff885bf7a1227335f78581ff715288d5f38898e67e28b3bfbdd
     profiles: [sandbox]
     restart: unless-stopped
     networks: [sdlc]
@@ -1054,7 +1054,7 @@ services:
   # volume access-tls (owner 101, the nginx user; key mode 600). Runs at every start, like
   # openbao-tls-init; `access/tls.sh reload` runs it again and makes nginx read the new files.
   access-tls-init:
-    image: nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c
+    image: nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
     profiles: [access]
     restart: 'no'
     network_mode: none
@@ -1092,7 +1092,7 @@ services:
   # fallback 127.0.0.1 never exposes it). Only on the network `access`: it reaches the api and
   # nothing else. Configuration: access/nginx.conf.template, filled from SDLC_ACCESS_* only.
   sdlc-access:
-    image: nginxinc/nginx-unprivileged:1.30.4-alpine@sha256:adf5042a17f4ecdd200c595fa9ffd1be37efb18f89a830bd1a00e4ab4d59d42c
+    image: nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
     profiles: [access]
     restart: unless-stopped
     networks:
