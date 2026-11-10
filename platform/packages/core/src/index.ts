@@ -25,3 +25,4 @@ export * from './kill/index.js';
 export * from './evaluation/index.js';
 export * from './metrics/index.js';
 export * from './retention/index.js';
+export * from './client-data/index.js';

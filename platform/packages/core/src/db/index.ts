@@ -10,6 +10,7 @@ export { PlatformDatabase } from './platform-database.js';
 export { TenantScope } from './tenant-scope.js';
 export {
   SystemScope,
+  type AuthTenantStatus,
   type NewTenant,
   type DueEscalation,
   type OpenIntent,

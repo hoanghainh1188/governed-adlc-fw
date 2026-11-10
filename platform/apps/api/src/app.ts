@@ -61,6 +61,7 @@ import { EscalationsService } from './escalations/escalations.service.js';
 import { HealthController } from './health/health.controller.js';
 import { IntentsController } from './intents/intents.controller.js';
 import { IntentsService } from './intents/intents.service.js';
+import { ClientDataDeletionController } from './client-data/deletion.controller.js';
 import { MeController } from './me/me.controller.js';
 import { MeTokensController } from './me/tokens.controller.js';
 import { PlansController } from './plans/plans.controller.js';
@@ -219,6 +220,7 @@ class ApiModule {
         AdminAgentsController,
         AdminToolsController,
         MeTokensController,
+        ClientDataDeletionController,
       ],
       providers: [
         { provide: DATABASE, useValue: deps.db },

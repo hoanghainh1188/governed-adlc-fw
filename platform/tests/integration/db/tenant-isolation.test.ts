@@ -448,6 +448,7 @@ describeDb('AC3 + AC4: tenant isolation on PostgreSQL', () => {
         tenantId: b.tenantId,
         userId: b.userId,
         tokenId: b.tokenId,
+        tenantStatus: 'active',
       });
       expect(await t.app.system.resolveApiToken(hashApiToken('unknown'))).toBeUndefined();
       await expect(t.app.system.resolveApiToken(b.token)).rejects.toMatchObject({

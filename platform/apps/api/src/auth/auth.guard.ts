@@ -20,6 +20,7 @@ import {
   hashCsrfToken,
   hashSessionSecret,
   isApiTokenFormat,
+  type AuthTenantStatus,
   type PlatformDatabase,
   type TenantId,
 } from '@sdlc/core';
@@ -57,6 +58,7 @@ interface GuardRequest extends AuthenticatedRequest {
   readonly headers: Readonly<Record<string, string | string[] | undefined>>;
   readonly ip: string;
   readonly method: string;
+  readonly url?: string;
 }
 
 export interface SessionGuardSettings {
@@ -86,6 +88,8 @@ interface Resolved {
   readonly credential: Credential;
   /** A session's CSRF token hash (U06); null before U06; undefined for a token. */
   readonly csrfSha256?: string | null;
+  /** H03c: `pending_deletion` may only call the client data-deletion routes (and `GET /v1/me`). */
+  readonly tenantStatus: AuthTenantStatus;
 }
 
 export class AuthGuard implements CanActivate {
@@ -133,6 +137,12 @@ export class AuthGuard implements CanActivate {
     if (resolved.credential.kind === 'session') {
       this.#checkSessionWrite(context, request, sessions!, resolved.csrfSha256 ?? null);
     }
+    if (
+      resolved.tenantStatus === 'pending_deletion' &&
+      !allowedDuringPendingDeletion(request.method, requestPath(request))
+    ) {
+      throw new ApiError(403, 'forbidden');
+    }
     if (!this.deps.requests.hit(`${resolved.credential.kind}:${resolved.credential.id}`)) {
       throw new ApiError(429, 'rate_limited');
     }
@@ -151,6 +161,7 @@ export class AuthGuard implements CanActivate {
           tenantId: found.tenantId,
           userId: found.userId,
           credential: { kind: 'token', id: found.tokenId },
+          tenantStatus: found.tenantStatus,
         }
       : undefined;
   }
@@ -174,6 +185,7 @@ export class AuthGuard implements CanActivate {
           userId: found.userId,
           credential: { kind: 'session', id: found.sessionId, signedInAt: found.createdAt },
           csrfSha256: found.csrfSha256,
+          tenantStatus: found.tenantStatus,
         }
       : undefined;
   }
@@ -251,6 +263,21 @@ function jsonOrEmpty(headers: Readonly<Record<string, string | string[] | undefi
     headers['transfer-encoding'] === undefined &&
     (length === undefined || length === '0')
   );
+}
+
+/**
+ * H03c: while the tenant is in the deletion grace period, only cancel/status (and `GET /v1/me`)
+ * stay reachable so the tenant admin can abort. Every other authenticated route is refused.
+ */
+function allowedDuringPendingDeletion(method: string, path: string): boolean {
+  if (path === '/v1/me' && method === 'GET') return true;
+  return path === '/v1/client/data-deletion' || path.startsWith('/v1/client/data-deletion/');
+}
+
+function requestPath(request: GuardRequest): string {
+  const raw = typeof request.url === 'string' ? request.url : '';
+  const path = raw.split('?')[0] ?? '';
+  return path.length === 0 ? '/' : path;
 }
 
 function bearerToken(header: string | string[] | undefined): string | undefined {
