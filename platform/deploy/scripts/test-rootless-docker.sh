@@ -112,7 +112,27 @@ if [ "${SDLC_DOCKER_AUTHZ:-1}" != "0" ]; then
     sleep 1
     waited=$((waited + 1))
   done
-  echo "test-rootless-docker: sdlc-authz enabled"
+  # Boot probe (H07 AC3): AuthZ must deny privileged create before image resolution (403), not
+  # fall through to "No such image" (404). Fail the Engine setup early with plugin diagnostics.
+  probe_name="sdlc-authz-boot-$$"
+  probe_code=$(
+    DOCKER_HOST="unix://$socket" docker info --format '{{json .Plugins.Authorization}}' 2>/dev/null || echo 'null'
+  )
+  echo "test-rootless-docker: Authorization plugins: $probe_code"
+  probe_status=$(
+    curl -sS -o /tmp/sdlc-authz-boot.out -w '%{http_code}' --unix-socket "$socket" \
+      -H 'Content-Type: application/json' \
+      -d '{"Image":"busybox:1.37.0","HostConfig":{"Privileged":true}}' \
+      "http://localhost/v1.44/containers/create?name=$probe_name" || echo '000'
+  )
+  if [ "$probe_status" != "403" ]; then
+    echo "test-rootless-docker: AuthZ boot probe expected HTTP 403, got $probe_status" >&2
+    echo "test-rootless-docker: body: $(cat /tmp/sdlc-authz-boot.out 2>/dev/null)" >&2
+    [ -f /tmp/sdlc-docker-authz.log ] && cat /tmp/sdlc-docker-authz.log >&2 || true
+    journalctl --user -u docker.service --no-pager -n 80 >&2 || true
+    exit 1
+  fi
+  echo "test-rootless-docker: sdlc-authz enabled (privileged create → 403)"
 fi
 
 if [ -n "${GITHUB_ENV:-}" ]; then

@@ -128,6 +128,25 @@ node -e '
   fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
 ' "$daemon_json"
 
+# Rootless: also pass --authorization-plugin on dockerd's ExecStart. daemon.json alone can list
+# the plugin in `docker info` while the live AuthZ middleware chain stays empty after some
+# rootless restarts; the CLI flag forces the chain to load sdlc-authz (H07 AC3).
+if [ "$uid" -ne 0 ] && command -v systemctl >/dev/null; then
+  drop_in="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/docker.service.d"
+  mkdir -p "$drop_in"
+  exec_line=$(systemctl --user cat docker.service 2>/dev/null | sed -n 's/^ExecStart=//p' | head -1)
+  if [ -n "$exec_line" ]; then
+    case "$exec_line" in
+      *--authorization-plugin=sdlc-authz*) ;;
+      *)
+        printf '%s\n' '[Service]' 'ExecStart=' "ExecStart=$exec_line --authorization-plugin=sdlc-authz" \
+          >"$drop_in/sdlc-authz.conf"
+        systemctl --user daemon-reload
+        ;;
+    esac
+  fi
+fi
+
 if [ "${SDLC_DOCKER_AUTHZ_NO_RESTART:-}" != "1" ]; then
   if [ "$uid" -eq 0 ]; then
     systemctl restart docker.service 2>/dev/null || service docker restart

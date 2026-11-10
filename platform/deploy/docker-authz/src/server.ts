@@ -40,8 +40,12 @@ function sendJson(res: ServerResponse, status: number, value: unknown): void {
 
 function decodeRequestBody(encoded: string | undefined): string | null {
   if (encoded === undefined || encoded === '') return null;
+  // Docker's plugin client JSON-encodes []byte as base64. Some callers may already send UTF-8 JSON.
+  if (encoded.startsWith('{') || encoded.startsWith('[')) return encoded;
   try {
-    return Buffer.from(encoded, 'base64').toString('utf8');
+    const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+    if (decoded.startsWith('{') || decoded.startsWith('[')) return decoded;
+    return decoded;
   } catch {
     return null;
   }
@@ -90,6 +94,12 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
       return;
     }
     const decision = decide(parsed);
+    // Codes only (R031): method, URI path shape, allow/deny reason — never body text.
+    const pathShape = (parsed.RequestURI ?? '').replace(/\?.*/, '');
+    process.stderr.write(
+      `authz: ${parsed.RequestMethod ?? '?'} ${pathShape} allow=${decision.allow}` +
+        `${decision.reason ? ` reason=${decision.reason}` : ''}\n`,
+    );
     if (decision.allow) {
       sendJson(res, 200, { Allow: true });
       return;
