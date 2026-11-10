@@ -13,6 +13,7 @@
 - **Client data deletion, part 3** (task H03c, ADR-M97 §2.4): tenant admins `adlc client request-data-deletion|cancel-data-deletion|status` through `/v1/client/data-deletion`; operators `adlc ops client-data-deletion approve|list|status` (two-person rule: `--operator` ≠ requester). Approve sets `pending_deletion`; cancel during the grace period restores `active`. Tokens of a `pending_deletion` tenant may call only the data-deletion routes and `GET /v1/me`.
 
 ### Changed
+- Sandbox image `node24`: one more CRITICAL finding in `linux-libc-dev` of the pinned OpenHands base (CVE-2026-98432; fix newer than the base's Debian snapshot) is accepted in `platform/sandbox-images/.trivyignore` until a new base carries the fix (PR #496).
 - **A simpler release** (ADR-M104, `RELEASING.md` 3.0). The owner merges the version pull request; nothing else. The environment `npm` has no required reviewer any more: the merge is the release decision, and npm publishes after the same checks (ADR-M104 1.1). CI runs the upgrade test on a version pull request by itself. `release-tag.yml` tags the merge commit and starts `release.yml` on the tag; for that the tag ruleset blocks updates and deletions but no longer creation (the owner's setting; turn "Restrict creations" on again before giving anyone else write access). `pnpm release:prepare X.Y.Z` prepares the version pull request and refuses without Upgrade notes under `[Unreleased]`, which each pull request now writes (rule R146).
 
 ## [0.11.0] - 2026-10-31
