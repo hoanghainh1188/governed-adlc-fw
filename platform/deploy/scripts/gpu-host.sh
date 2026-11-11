@@ -37,12 +37,13 @@ fi
 
 [ -f "$env_file" ] || fail "$env_file not found; run: pnpm gpu-host:env"
 value() { sed -n "s/^$1=//p" "$env_file" | tail -n 1; }
+if [ "$command" = up ]; then
+  [ -n "$(value SDLC_GPU_LINK_ADDR)" ] || fail "SDLC_GPU_LINK_ADDR is empty in $env_file"
+fi
 
 # The GPU host never runs a platform service: refuse an Engine that holds the platform's data
 # (ADR-M71 §4.1). On the platform server, use the profile models-local instead.
-project="$(value COMPOSE_PROJECT_NAME)"
-if [ -n "$(docker volume ls -q --filter "label=com.docker.compose.project=${project:-sdlc}" \
-  --filter label=com.docker.compose.volume=postgres-data 2>/dev/null || true)" ]; then
+if [ -n "$(docker volume ls -q --filter label=com.docker.compose.volume=postgres-data 2>/dev/null || true)" ]; then
   fail "this Docker Engine holds the platform's data (volume postgres-data): on the platform server use the profile models-local (ADR-M71)"
 fi
 
@@ -51,7 +52,6 @@ compose() { docker compose -f "$host_dir/docker-compose.yml" --env-file "$env_fi
 case "$command" in
   pull) compose --profile pull run --rm vllm-pull ;;
   up)
-    [ -n "$(value SDLC_GPU_LINK_ADDR)" ] || fail "SDLC_GPU_LINK_ADDR is empty in $env_file"
     tls_dir="$(value SDLC_GPU_LINK_TLS_DIR)"
     [ -n "$tls_dir" ] || fail "SDLC_GPU_LINK_TLS_DIR is empty in $env_file (gpu-link/tls.sh; runbook T11 section 5d.2)"
     # A certificate that ends within 30 days only warns.

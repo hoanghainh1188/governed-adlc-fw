@@ -72,16 +72,19 @@ describe('the GPU host Compose file (ADR-M71 §4.1, QUESTIONS #666, #667)', () =
     ]);
     expect(Object.keys(gpu.volumes).sort()).toEqual(['gateway-tls', 'vllm-models']);
     expect(Object.keys(gpu.networks).sort()).toEqual(['link', 'models', 'pull']);
-    expect(gpu.name).toBe('${COMPOSE_PROJECT_NAME:-sdlc}-gpu');
+    expect(gpu.name).toBe('${COMPOSE_PROJECT_NAME:-sdlc-gpu}');
+    expect(gpuEnvExample.get('COMPOSE_PROJECT_NAME')).toBe('sdlc-gpu');
     for (const n of Object.values(gpu.networks))
-      expect(n.name).toMatch(/^\$\{COMPOSE_PROJECT_NAME:-sdlc\}-gpu-/);
+      expect(n.name).toMatch(/^\$\{COMPOSE_PROJECT_NAME:-sdlc-gpu\}-/);
   });
 
   it('keeps vllm and vllm-pull equal to the platform file; only networks and profiles differ', () => {
     for (const name of ['vllm', 'vllm-pull']) {
-      const { networks: _a, profiles: _b, ...mine } = gpu.services[name]!;
-      const { networks: _c, profiles: _d, ...theirs } = platform.services[name]!;
-      expect(mine, name).toEqual(theirs);
+      const without = (svc: Service) =>
+        Object.fromEntries(
+          Object.entries(svc).filter(([key]) => key !== 'networks' && key !== 'profiles'),
+        );
+      expect(without(gpu.services[name]!), name).toEqual(without(platform.services[name]!));
     }
     expect(gpu.services.vllm!.profiles).toBeUndefined();
     expect(gpu.services['vllm-pull']!.profiles).toEqual(['pull']);
@@ -90,7 +93,7 @@ describe('the GPU host Compose file (ADR-M71 §4.1, QUESTIONS #666, #667)', () =
 
   it('keeps vllm on the internal network models with the gateway only, with no port (R137)', () => {
     expect(gpu.networks.models).toEqual({
-      name: '${COMPOSE_PROJECT_NAME:-sdlc}-gpu-models',
+      name: '${COMPOSE_PROJECT_NAME:-sdlc-gpu}-models',
       internal: true,
     });
     expect(gpu.services.vllm!.networks).toEqual(['models']);
@@ -202,7 +205,7 @@ describe('the link template (ADR-M71 §4.2, QUESTIONS #667)', () => {
       '8000',
       '127.0.0.1:8081',
     ]);
-    expect(link).toContain('server ${SDLC_GPU_HOST_NAME}:${SDLC_GPU_LINK_PORT};');
+    expect(link).toContain('server ${SDLC_GPU_HOST_NAME}:${SDLC_GPU_LINK_PORT} max_fails=0;');
     expect([...link.matchAll(/proxy_pass (\S+);/g)].map((m) => m[1])).toEqual(
       Array(4).fill('https://sdlc_gpu_gateway'),
     );
@@ -287,7 +290,7 @@ describe('the profile models-remote (ADR-M71 §4.2, QUESTIONS #667)', () => {
     for (const [, name, value] of defaults) {
       // The placeholders of an unset name or address are not defaults an operator keeps.
       if (name === 'SDLC_GPU_HOST_NAME' || name === 'SDLC_GPU_HOST_ADDR') {
-        expect(envExample.get(name!), name).toBe('');
+        expect(envExample.get(name), name).toBe('');
         continue;
       }
       expect(envExample.get(name!), name).toBe(value);

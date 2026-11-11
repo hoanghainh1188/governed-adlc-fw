@@ -17,7 +17,7 @@
 #   - No platform service, volume or network; no secret in this file or its env file. The TLS key
 #     comes from SDLC_GPU_LINK_TLS_DIR (outside the repository, made by gpu-link/tls.sh).
 
-name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu
+name: ${COMPOSE_PROJECT_NAME:-sdlc-gpu}
 
 x-healthcheck-defaults: &healthcheck-defaults
   interval: 10s
@@ -180,14 +180,14 @@ services:
 networks:
   # vllm's network: internal, no route to the internet (ADR-M71 §2.1).
   models:
-    name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu-models
+    name: ${COMPOSE_PROJECT_NAME:-sdlc-gpu}-models
     internal: true
   # The gateway's published port needs a network that is not internal; only the gateway joins it.
   link:
-    name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu-link
+    name: ${COMPOSE_PROJECT_NAME:-sdlc-gpu}-link
   # The weights download (vllm-pull) only.
   pull:
-    name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu-pull
+    name: ${COMPOSE_PROJECT_NAME:-sdlc-gpu}-pull
 
 volumes:
   vllm-models:

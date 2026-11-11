@@ -25,8 +25,9 @@ client_body_timeout 60s;
 
 upstream sdlc_gpu_gateway {
   # The name the GPU host's certificate holds; its address comes from extra_hosts
-  # (SDLC_GPU_HOST_ADDR), so no DNS is needed.
-  server ${SDLC_GPU_HOST_NAME}:${SDLC_GPU_LINK_PORT};
+  # (SDLC_GPU_HOST_ADDR), so no DNS is needed. One GPU host: never "temporarily disabled" after a
+  # failed call (max_fails=0), so the next call tries again at once.
+  server ${SDLC_GPU_HOST_NAME}:${SDLC_GPU_LINK_PORT} max_fails=0;
   keepalive 8;
 }
 
