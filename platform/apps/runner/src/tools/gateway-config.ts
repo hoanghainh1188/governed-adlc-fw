@@ -3,7 +3,7 @@
 // from a tenant: tool names and argument rules come from the permission catalogue of
 // `@sdlc/contracts` (QUESTIONS #530).
 //
-// agentgateway 1.6 (ADR-M87 §3):
+// agentgateway 1.7 (ADR-M87 §3; the same behaviour as the 1.6 of the spike, live tests pass):
 // - one target per tool grant, named by the tool key; with more than one target the agent sees each
 //   tool as `<tool_key>_<tool name>`, with one target by its own name; the gateway lists only the
 //   allowed ones;
@@ -30,7 +30,7 @@ export const GATEWAY_READY_MESSAGE = 'marking server ready';
 
 /**
  * The name the agent sees for a tool of a grant: agentgateway prefixes a tool with its target's
- * name (`<tool_key>_<tool>`) only when it serves more than one target (tested against 1.6.0).
+ * name (`<tool_key>_<tool>`) only when it serves more than one target (tested against 1.6.0 and 1.7.0).
  */
 export function exposedToolName(toolKey: string, tool: string, targets: number): string {
   return targets > 1 ? `${toolKey}_${tool}` : tool;
@@ -45,7 +45,7 @@ function argumentCel(name: string, rule: ToolArgumentRule): string {
     return `(type(${value}) == string && size(${value}) <= ${String(rule.max_length)})`;
   }
   // agentgateway reads a whole JSON number as `uint` (or `int` when negative) and any other number
-  // as `double`: only a whole number within the limits passes (tested against 1.6.0).
+  // as `double`: only a whole number within the limits passes (tested against 1.6.0 and 1.7.0).
   return (
     `((type(${value}) == uint || type(${value}) == int) && ` +
     `double(${value}) >= ${rule.min.toFixed(1)} && double(${value}) <= ${rule.max.toFixed(1)})`

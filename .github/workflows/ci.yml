@@ -43,6 +43,10 @@ env:
   TRIVY_SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
   ACTIONLINT_VERSION: 1.7.12
   ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+  # age for the backup tests (A10, O02): the release binary, never apt (the Ubuntu mirror can be
+  # unreachable from GitHub's runners). The SHA-256 is the release asset's digest on GitHub.
+  AGE_VERSION: 1.3.2
+  AGE_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
   # O01 (design/ADR-M91 §2.4): the static Docker Engine and its rootless extras for the job
   # runner-rootless (a second, rootless Engine next to the runner machine's own one).
   DOCKER_ROOTLESS_VERSION: 29.8.2
@@ -372,7 +376,13 @@ jobs:
       - run: pnpm test:workflow-compose
       # A10 PR 2: the backup and the restore drill (age, throw-away keys), own throw-away project.
       - name: Install age (backups, A10)
-        run: sudo apt-get install -y --no-install-recommends age
+        run: |
+          archive="age-v${AGE_VERSION}-linux-amd64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" --proto '=https' --retry 3 \
+            "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/$archive"
+          echo "$AGE_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" age/age age/age-keygen
+          echo "$RUNNER_TEMP/age" >> "$GITHUB_PATH"
       - run: pnpm test:backup
       - name: Show service state and logs
         if: failure()
@@ -572,7 +582,19 @@ jobs:
       # serves the build through the api's own static route; screenshots at 375, 768, 1440 px.
       - name: Install Chromium for Playwright
         if: needs.scan.outputs.run_dashboard == 'true'
-        run: pnpm exec playwright install --with-deps chromium
+        run: |
+          pnpm exec playwright install chromium
+          # The runner image already has Chromium's libraries, so apt (whose Ubuntu mirror can be
+          # unreachable from GitHub's runners) runs only when a library is missing, with retries.
+          missing="$(find "$HOME/.cache/ms-playwright" -type f -perm -u+x \
+            \( -name chrome -o -name headless_shell -o -name chrome-headless-shell \) \
+            -exec ldd {} + | grep 'not found' | sort -u || true)"
+          if [ -n "$missing" ]; then
+            echo "$missing"
+            printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' |
+              sudo tee /etc/apt/apt.conf.d/80-sdlc-retries > /dev/null
+            pnpm exec playwright install-deps chromium
+          fi
       - if: needs.scan.outputs.run_dashboard == 'true'
         run: pnpm test:dashboard
       # The screenshots (375, 768, 1440 px, light and dark) for the pull request's reviewer.
@@ -640,7 +662,13 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - name: Install age (the backup step)
-        run: sudo apt-get install -y --no-install-recommends age
+        run: |
+          archive="age-v${AGE_VERSION}-linux-amd64.tar.gz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" --proto '=https' --retry 3 \
+            "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/$archive"
+          echo "$AGE_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" age/age age/age-keygen
+          echo "$RUNNER_TEMP/age" >> "$GITHUB_PATH"
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:upgrade
       - name: Stop and remove every throw-away Compose project
