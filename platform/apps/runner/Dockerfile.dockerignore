@@ -10,6 +10,7 @@
 !platform/packages/**
 !platform/eval/**
 !platform/deploy/scripts/gitleaks.sh
+!platform/deploy/docker-authz/**
 **/node_modules
 **/dist
 **/*.tsbuildinfo

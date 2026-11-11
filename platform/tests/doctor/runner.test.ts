@@ -90,3 +90,40 @@ describe('pnpm doctor: runner.engine (O01)', () => {
     expect(skip(healthyFacts({ docker: null }))).toBe('doctor.skipped.no_docker');
   });
 });
+
+const authzLines = (f: OperatorFacts): CheckResult[] =>
+  evaluate(f).filter((r) => r.id === 'runner.authz');
+
+describe('pnpm doctor: runner.authz (H07)', () => {
+  it('ok when the Engine lists an authorization plugin', () => {
+    const [line] = authzLines(healthyFacts());
+    expect(line).toMatchObject({
+      status: 'ok',
+      text: { key: 'doctor.runner.authz_ok', params: { plugins: 'sdlc-authz' } },
+    });
+  });
+
+  it('warning when no authorization plugin is installed', () => {
+    const base = healthyFacts();
+    const f = {
+      ...base,
+      docker: { ...base.docker!, authorizationPlugins: [] },
+    };
+    expect(authzLines(f)[0]).toMatchObject({
+      status: 'warning',
+      text: { key: 'doctor.runner.authz_missing' },
+    });
+  });
+
+  it('skipped on a trial stack', () => {
+    const base = healthyFacts();
+    const f = {
+      ...base,
+      envFile: {
+        ...base.envFile,
+        trialKeyFile: { path: '/tmp/trial.key', mode: 0o600 },
+      },
+    };
+    expect(authzLines(f)[0]?.text.key).toBe('doctor.skipped.trial');
+  });
+});

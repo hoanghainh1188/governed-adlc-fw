@@ -58,7 +58,12 @@ export function healthyFacts(overrides: Partial<OperatorFacts> = {}): OperatorFa
         secrets: { PLATFORM_DB_PASSWORD: 'set', VALKEY_PASSWORD: 'set' },
       },
     },
-    docker: { serverVersion: '29.8.2', composeVersion: '2.30.1', memoryBytes: 16 * GIB },
+    docker: {
+      serverVersion: '29.8.2',
+      composeVersion: '2.30.1',
+      memoryBytes: 16 * GIB,
+      authorizationPlugins: ['sdlc-authz'],
+    },
     disk: [
       { path: '/srv/sdlc', freeBytes: 100 * GIB },
       { path: '/mnt/backup', freeBytes: 500 * GIB },
