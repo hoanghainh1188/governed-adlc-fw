@@ -32,7 +32,7 @@ The evaluator is a **denylist** of host-escape options on create:
 
 | Request | Refused when |
 |---|---|
-| `POST …/containers/create` | `Privileged`, host `PidMode` / `IpcMode` / `UTSMode` / `NetworkMode`, any `CapAdd`, any `Devices`, any `DeviceCgroupRules`, a `Binds` entry whose source is a **host path** (starts with `/`; named volumes that Compose puts in `Binds` as `<name>:/path` are allowed — QUESTIONS #661), any bind `Mounts`, `PublishAllPorts`, non-empty `PortBindings`, or `SecurityOpt` containing `seccomp:unconfined` / `apparmor:unconfined` |
+| `POST …/containers/create` | `Privileged`, host `PidMode` / `IpcMode` / `UTSMode` / `NetworkMode`, any `CapAdd`, any `Devices`, any `DeviceCgroupRules`, a `Binds` entry whose source is not a volume name (a host path; QUESTIONS #661), any bind `Mounts`, `PublishAllPorts`, non-empty `PortBindings`, or `SecurityOpt` containing `seccomp:unconfined` / `apparmor:unconfined` |
 | `POST …/networks/create` | `Internal` is not `true`, or `Driver` is `host` |
 
 Every other method and path is allowed (the runner still needs pull, start, logs, connect, remove). The socket proxy and the endpoint allowlist stay as they are.
@@ -85,5 +85,5 @@ It is **not** a container on the Engine it guards: dockerd would need the plugin
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
-| 1.1 | 2026-11-11 | Claude (H07 CI), Harry QUESTIONS #661 | §2.2: refuse host-path `Binds` only (named volumes pass); §2.3: plugin on the sandbox Engine, not the runner-host Compose Engine |
 | 1.0 | 2026-11-10 | Claude, approved by Harry | H07: shared denylist, Node legacy AuthZ plugin as a host process, doctor warn, T11 |
+| 1.1 | 2026-11-11 | Claude / Harry, QUESTIONS #661 | §2.2: a named volume in `Binds` passes (Compose sends named volumes there); a non-volume source is still refused; §2.3 / §2.5: plugin on the sandbox Engine only, runner-host Compose on a second Engine |

@@ -57,7 +57,6 @@ describe('evaluateAuthz denylist (H07 AC1)', () => {
         reason: 'devices',
       },
       { body: { HostConfig: { Binds: ['/:/host'] } }, reason: 'binds' },
-      { body: { HostConfig: { Binds: ['/var/run/docker.sock:/sock'] } }, reason: 'binds' },
       {
         body: { HostConfig: { Mounts: [{ Type: 'bind', Source: '/', Target: '/host' }] } },
         reason: 'bind_mount',
@@ -78,19 +77,30 @@ describe('evaluateAuthz denylist (H07 AC1)', () => {
     }
   });
 
-  it('allows named volumes that Compose puts in Binds (QUESTIONS #661)', () => {
-    expect(
-      evaluateAuthz('POST', '/v1.44/containers/create', {
-        HostConfig: { Binds: ['sdlcsplit_runner-approle:/run/sdlc/approle:rw'] },
-      }),
-    ).toEqual({ allow: true });
-    expect(
-      evaluateAuthz('POST', '/v1.44/containers/create', {
-        HostConfig: {
-          Binds: ['proj_data:/data', '/etc/passwd:/host:ro'],
-        },
-      }),
-    ).toEqual({ allow: false, reason: 'binds' });
+  it('allows named volumes in Binds, as Docker Compose sends them (QUESTIONS #661)', () => {
+    const body = {
+      HostConfig: { Binds: ['sdlc_runner-approle:/run/sdlc/approle:rw', 'work.1:/w'] },
+    };
+    expect(evaluateAuthz('POST', '/v1.51/containers/create', body)).toEqual({ allow: true });
+  });
+
+  it('refuses a Binds entry that is not a named volume, even next to one', () => {
+    const entries: unknown[] = [
+      '/var/run/docker.sock:/var/run/docker.sock:ro',
+      './config.yaml:/c',
+      '~/x:/x',
+      ':/x',
+      'noseparator',
+      '-v:/x',
+      42,
+    ];
+    for (const entry of entries) {
+      const body = { HostConfig: { Binds: ['ok:/ok', entry] } };
+      expect(evaluateAuthz('POST', '/containers/create', body), String(entry)).toEqual({
+        allow: false,
+        reason: 'binds',
+      });
+    }
   });
 
   it('refuses a non-internal network create and a host driver', () => {

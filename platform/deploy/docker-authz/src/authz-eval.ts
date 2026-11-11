@@ -57,6 +57,21 @@ function deny(reason: string): AuthzDecision {
   return { allow: false, reason };
 }
 
+/** A Docker volume name (the Engine's own rule): never a host path. */
+const VOLUME_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+
+/**
+ * True when a `Binds` entry mounts a host path (QUESTIONS #661). Docker Compose sends a named
+ * volume as `<volume>:<path>[:<options>]` in `Binds`, not in `Mounts`; that entry passes. Any
+ * other entry (a host path, a relative path, no source, not a string) counts as a host bind.
+ */
+function isHostBind(entry: unknown): boolean {
+  if (typeof entry !== 'string') return true;
+  const colon = entry.indexOf(':');
+  if (colon <= 0) return true;
+  return !VOLUME_NAME.test(entry.slice(0, colon));
+}
+
 function checkContainerCreate(body: unknown): AuthzDecision {
   const cfg = AUTHZ_RULES.containerCreate;
   const top = asRecord(body) ?? {};
@@ -91,15 +106,7 @@ function checkContainerCreate(body: unknown): AuthzDecision {
 
   if (cfg.refuseBinds) {
     const binds = host.Binds;
-    if (Array.isArray(binds)) {
-      // Compose puts named volumes in Binds as `<name>:/path[:opts]` (QUESTIONS #661). Only a
-      // host-path source (absolute, starts with `/`) is a bind mount / host escape.
-      for (const entry of binds) {
-        if (typeof entry !== 'string') continue;
-        const source = entry.split(':')[0] ?? '';
-        if (source.startsWith('/')) return deny('binds');
-      }
-    }
+    if (Array.isArray(binds) && binds.some(isHostBind)) return deny('binds');
   }
 
   if (cfg.refuseBindMounts) {

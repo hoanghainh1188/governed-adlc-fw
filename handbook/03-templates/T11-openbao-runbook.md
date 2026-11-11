@@ -481,7 +481,7 @@ The socket proxy limits method and path, not the body of `containers/create` or 
 
 **Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then restart the **sandbox** dockerd.
 
-**When the plugin refuses a legitimate run:** the create body hit the shared denylist (`platform/deploy/docker-authz/src/authz-rules.json`). Do not disable the plugin. Fix the runner/spec so the body has no privileged flag, host namespace, CapAdd, devices, host-path bind or non-internal network. Named volumes (Compose entries in `Binds` whose source is not a host path) are allowed. If a new safe option must be allowed, change the denylist and the guard together (ADR-M105 AC2) in one pull request. Developer machines without the plugin only get a doctor warning.
+**When the plugin refuses a legitimate run:** the create body hit the shared denylist (`platform/deploy/docker-authz/src/authz-rules.json`). Do not disable the plugin. Fix the runner/spec so the body has no privileged flag, host namespace, CapAdd, devices, host-path binds or non-internal network (a named volume is allowed, also in `Binds`). If a new safe option must be allowed, change the denylist and the guard together (ADR-M105 AC2) in one pull request. Developer machines without the plugin only get a doctor warning.
 
 ### First set-up
 
