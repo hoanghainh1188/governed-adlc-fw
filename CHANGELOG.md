@@ -4,6 +4,7 @@
 
 ### Upgrade notes
 - **On a running stack:** (1) `pnpm install`; (2) `pnpm compose:env --add-missing`: it appends `SDLC_CLIENT_DELETION_GRACE_DAYS` (default 14) when missing; (3) `pnpm db:migrate`: migrations `0047-client-data-deletion` and `0048-client-purge` (tenant states; `web_sessions.end_reason` gains `client_purged`; `langfuse_purges.cause` gains `client_deletion`). No credentials command to run again.
+- **MCP gateway:** a project configuration that names `cr.agentgateway.dev/agentgateway:v1.6.0@sha256:9d3e…` itself (not the default) should move to `v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b`.
 - **Sandbox image `node24`:** rebuild it (`pnpm sandbox-image:build node24`, then `node24-opencode` on top of it) and put the new digests in the project configuration: it now carries the fixed `linux-libc-dev` (CVE-2026-98432).
 
 ### Added
@@ -12,6 +13,7 @@
 - **Client data deletion, part 3** (task H03c, ADR-M97 §2.4): tenant admins `adlc client request-data-deletion|cancel-data-deletion|status` through `/v1/client/data-deletion`; operators `adlc ops client-data-deletion approve|list|status` (two-person rule: `--operator` ≠ requester). Approve sets `pending_deletion`; cancel during the grace period restores `active`. Tokens of a `pending_deletion` tenant may call only the data-deletion routes and `GET /v1/me`.
 
 ### Changed
+- The run's MCP gateway moves from agentgateway 1.6.0 to 1.7.0 (`tools.gateway.image` in the default project configuration, by digest): 1.6.0 carries CRITICAL CVE-2026-91403 in `ca-certificates-bundle`. The runner's generated configuration and its log reading are unchanged; the live tests of `pnpm test:runner` pass on 1.7.0.
 - The sandbox image `node24` upgrades `linux-libc-dev` to Debian's `6.12.113-1` (CVE-2026-98432, CRITICAL), from the same dated Debian security snapshot as `libbrotli1`.
 - **CI no longer depends on the Ubuntu apt mirror** for `age` and Chromium (GitHub's runners could not reach it on 2026-11-11). `age` is the pinned release binary (`AGE_VERSION` 1.3.2, `AGE_SHA256` in `ci.yml`); Playwright installs Chromium without `--with-deps` and calls apt, with retries, only when a library is missing. Nothing changes on a server (`platform/DEVELOPMENT.md` §2).
 - **A simpler release** (ADR-M104, `RELEASING.md` 3.0). The owner merges the version pull request; nothing else. The environment `npm` has no required reviewer any more: the merge is the release decision, and npm publishes after the same checks (ADR-M104 1.1). CI runs the upgrade test on a version pull request by itself. `release-tag.yml` tags the merge commit and starts `release.yml` on the tag; for that the tag ruleset blocks updates and deletions but no longer creation (the owner's setting; turn "Restrict creations" on again before giving anyone else write access). `pnpm release:prepare X.Y.Z` prepares the version pull request and refuses without Upgrade notes under `[Unreleased]`, which each pull request now writes (rule R146).
