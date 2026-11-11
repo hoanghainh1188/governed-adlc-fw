@@ -99,6 +99,7 @@ Before the day:
 - Each key holder makes a PGP key pair on their own computer (for example `gpg --full-generate-key`) and gives the operator the **public** key only: `gpg --export --armor <key ID> > holder-1.asc`. The settings file names the three files (`pgp_public_key_file`). This is the default and the better way: `init` encrypts each share with its holder's key (`-pgp-keys`), so neither the command nor the screen ever shows a share in clear.
 - Without PGP keys (all three files left out), the command shows each share in clear, to one holder at a time.
 - The settings file lives outside the repository, mode 600, next to the GitHub App key and the model key files (example: `platform/deploy/server-setup/server-settings.example.yaml`).
+- With the runner on its own Engine, put the runner host in the settings' `runner_link` section (D-08 V20) and set up the runner host before the day: the command writes its address before `configure`, so the key holders meet only once, and delivers the runner's credentials to the runner host's Engine. The `access` section does the team access settings and the proxy's certificate import of section 3d.
 
 Steps:
 1. The operator runs `pnpm server:setup --settings <file>` in a terminal on the server (the server's console, or SSH from the macOS Terminal app). It refuses to run when its output or input is redirected or piped. On a new `.env` it stops after step 2: replace OpenBao's certificate with the company CA's (section 3c), then run it again.
@@ -167,7 +168,7 @@ The team access proxy (`sdlc-access`, profile `access`, task V09, `design/ADR-M6
 
 **On the server.** Done by the infrastructure operator:
 
-1. Set the team access settings in `platform/deploy/.env` (`platform/deploy/README.md`, "Team access (operator)").
+1. Set the team access settings in `platform/deploy/.env` (`platform/deploy/README.md`, "Team access (operator)"). With `pnpm server:setup`, the settings' `access` section writes them and runs the `import` of step 2 (D-08 V20).
 2. Either take the certificate from the **company CA** (the usual case: company machines already trust it): put `ca.pem`, `server.pem` and `server-key.pem` in a folder and run `pnpm access:tls import <folder>`; it checks the chain, that the key belongs to the certificate and that the certificate names the host name and the IPs, then copies the files. Or issue it with the **internal CA of section 3c**: take the CA folder out of the safe, `pnpm access:tls server <ca-folder>` (1 year), put the folder back.
 3. `pnpm access:tls check` shows both end dates and the names; `pnpm doctor` shows them too (`access.tls_*`).
 4. Give people `ca.pem` when their machines do not trust the CA (the CLI: `NODE_EXTRA_CA_CERTS`). Record it in the operations log.
@@ -1141,6 +1142,7 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 | 0.48 | 2026-10-30 | Claude Code (task O05) | Section 8.1: `rotate-credentials` renews every AppRole secret ID with one admin token; the warning 14 days before. New section 8.4: the signing key rotates by itself every 90 days; revoking a version with `min_decryption_version`; how to check that nothing uses an old version |
 | 0.49 | 2026-11-11 | Claude Code (task L01, PR 2) | New section 5d.2: the certificates of the mutual TLS link to vLLM on a separate GPU host (profile `models-remote`, ADR-M71 §4): issue, company CA, renewal, an exposed key |
 | 0.50 | 2026-11-11 | Claude Code (task H07) | Section 5g-1 step 3: the operator key and the header `X-Sdlc-Operator` in the Docker configuration (ADR-M105 §2.6, QUESTIONS #661) |
+| 0.51 | 2026-11-11 | Claude Code (task V20) | Sections 3.2 and 3d: the settings' `runner_link` and `access` sections of `pnpm server:setup` (the runner host's address before `configure`, the proxy's certificate import) |
 | 0.44 | 2026-10-24 | Claude Code (task O01, PR 2) | Section 5g step 3: the runner on its own Docker Engine (`SDLC_RUNNER_DOCKER_HOST`, `SDLC_RUNNER_SOURCE_CIDR`, `runner-host.sh restart`; ADR-M91) |
 | 0.39 | 2026-10-12 | Claude Code (task V08) | New section 3.1b: the trial stack's key file (the two shares encrypted with a passphrase, `pnpm trial:start`, its limits; never on a server; QUESTIONS #356, #415–#419, ADR-M76) |
 | 0.38 | 2026-10-12 | Claude Code (task V09, PR 2) | New section 3d: the team access proxy's certificate (company CA `import`, internal CA `server`, throw-away `dev`, `check`, renewal with `reload` without a restart, the 30-day reminder). Tested with throw-away certificates (`pnpm test:access`, `access-static.test.ts`) |

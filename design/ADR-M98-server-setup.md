@@ -2,10 +2,10 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** (task V16) |
+| Status | **Accepted** (task V16). Version 1.1: §2.5, team access and the runner link in the settings (task V20) |
 | Date | 2026-10-29 |
-| Decided by | Harry (QUESTIONS #616–#618 accepted with changes, 2026-10-28, PR #453; V16 plan approved 2026-10-29) |
-| Related | D-08 task V16; QUESTIONS #616, #618; ADR-M19 (OpenBao bootstrap); ADR-M76 (the trial key file); ADR-M63 (TLS); runbook T11 §3.2, §5, §5.1; `platform/deploy/README.md` "Fresh deployment"; rules R035, R081 |
+| Decided by | Harry (QUESTIONS #616–#618 accepted with changes, 2026-10-28, PR #453; V16 plan approved 2026-10-29; V18–V20 plan approved 2026-11-11, QUESTIONS #673) |
+| Related | D-08 tasks V16, V20; QUESTIONS #616, #618, #673; ADR-M67 (team access); ADR-M91 (the runner on its own Engine); ADR-M19 (OpenBao bootstrap); ADR-M76 (the trial key file); ADR-M63 (TLS); runbook T11 §3.2, §5, §5.1; `platform/deploy/README.md` "Fresh deployment"; rules R035, R081 |
 
 ## 1. Context
 
@@ -41,6 +41,14 @@ The step code of README steps 3–7 moves from `platform/deploy/trial/src/up.ts`
 - Step 2 runs `compose:env`, which never overwrites. A new `.env` gets empty LiteLLM keys (server mode). An existing one with LiteLLM keys, or with a trial project, is refused. A new `.env` stops the command after step 2, so OpenBao's certificate comes from the company CA first (T11 §3c), unless `throwaway_tls` is set.
 - Each step checks the state before it acts: OpenBao uninitialised, sealed or unsealed; the migrations (running them when none is pending changes nothing); the credentials already delivered. A progress file next to `.env` (`server-setup-progress.json`, mode 600, ignored by Git) records the steps and commands done and where the last run stopped, with step names, codes and times only. A new start says where the last run stopped.
 - A failure names the step, the child that failed and the README section; it ends with `pnpm doctor`. Every message goes through the catalog (`serverSetup.*`).
+
+### 2.5 Team access and the runner link (V20, version 1.1)
+
+- Two optional sections of the settings (QUESTIONS #673). `access`: the host name (a DNS name, never an IP address), the bind address, the port (default 8443), the CLI's IPv4 addresses, `tls_dir` and, optionally, the company CA's folder. `runner_link`: the link address, the runner host's source block and its Docker host (`ssh://` or `unix:///`, the forms `bootstrap.sh runner-credentials` accepts). Neither holds a secret.
+- Step 2 writes their env keys (`SDLC_ACCESS_*`, `SDLC_API_TRUSTED_PROXY` = the proxy's address, `SDLC_RUNNER_LINK_ADDR`, `SDLC_RUNNER_SOURCE_CIDR`, `SDLC_RUNNER_DOCKER_HOST`), also on a new env file before the stop for the certificate. An empty key, or the template's default port, is set; a key that holds another value is refused before anything changes (`env_conflict`), never overwritten.
+- The runner host's address is in the env file before `configure`, so the AppRole `runner` accepts it at once and the key holders meet once (README "Before you start on a server"). When it is added after `configure` was done, the next start runs `configure` again (two shares) and delivers `runner-credentials` again, now into the runner host's volume. Step 5 needs the runner host's Engine (D-08 V18); the command does not set it up.
+- Step 7 with `runner_link`: it removes a runner of an earlier start from the platform's Engine (`compose rm --stop --force sdlc-runner docker-socket-proxy npm-proxy`, once), then starts the profile `runner-link` instead of `sandbox`; with `knowledge` it restarts only the worker. It ends by saying how to start the runner on the runner host.
+- Step 7 with `access`: `access:tls import <folder>` once, when the folder is given, then the profile `access`; `up.sh` checks the settings and the certificate as before. With the dashboard sign-in, the public origin is the proxy's (`https://<host>[:<port>]`, ADR-M67 §2.8); another `dashboard.public_origin` is a settings error.
 
 ## 3. Consequences
 
