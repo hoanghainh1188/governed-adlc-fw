@@ -1391,7 +1391,7 @@ flowchart LR
 
 | Size | Depends on | Requirements | Code area |
 |---|---|---|---|
-| M | L02 | D-07 §3, §4, NFR-01 | platform/deploy (profile models-local), platform/deploy/litellm/config.ctmpl, design/D-03 §10.1, design/D-07, design/ADR-M71, handbook T11 |
+| M | L02 | D-07 §3, §4, NFR-01 | platform/deploy (profiles models-local, models-remote; gpu-host, gpu-link), platform/deploy/litellm/config.ctmpl, design/D-03 §10.1, design/D-07, design/ADR-M71, handbook T11 |
 
 **Acceptance criteria**
 
@@ -1400,7 +1400,7 @@ flowchart LR
 - [ ] AC3: D-03 §10.1 and D-07 changed and ADR-M71 written first (today: "API models only, no GPU"); runbook T11 and the deploy README
 - [ ] AC4: A `client_restricted` project runs an agent end to end with the self-hosted model (stub or real)
 
-> Note: QUESTIONS #362 (Harry, 2026-10-10): milestone Models after EXT; earlier when the company has a GPU. QUESTIONS #546 (Harry, 2026-10-24): two PRs; PR 1 the GPU in the platform server (internal network `models`, no port; AC1 for the server, AC2–AC4); PR 2 a separate GPU host with mutual TLS through a pinned nginx link (vLLM's `--api-key` leaves `/invocations` open; LiteLLM cannot present a client certificate). QUESTIONS #547–#550: ADR-M71
+> Note: QUESTIONS #362 (Harry, 2026-10-10): milestone Models after EXT; earlier when the company has a GPU. QUESTIONS #546 (Harry, 2026-10-24): two PRs; PR 1 the GPU in the platform server (internal network `models`, no port; AC1 for the server, AC2–AC4); PR 2 a separate GPU host with mutual TLS through a pinned nginx link (vLLM's `--api-key` leaves `/invocations` open; LiteLLM cannot present a client certificate). QUESTIONS #547–#550: ADR-M71. QUESTIONS #666–#669 (Harry, 2026-11-11, PR 2 plan): mutual TLS ended by nginx on both sides (a gateway on the GPU host instead of vLLM's own TLS), the profile `models-remote`, `gpu-link/tls.sh`, the live test `pnpm test:vllm-link`; ADR-M71 1.1
 
 #### L03. GPU sizing note for leadership
 

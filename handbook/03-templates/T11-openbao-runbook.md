@@ -1,6 +1,6 @@
 # T11 Runbook: operating OpenBao (unseal, root token, the processes' credentials, backup, restore)
 
-> Status: **v0.48. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) gives the commands; the drill on the real server is task A10 PR 3.
+> Status: **v0.49. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) gives the commands; the drill on the real server is task A10 PR 3.
 > Readers: key holders, infrastructure operator, the OpenBao admin (the operator who holds the admin token, section 5.1).
 > The real initialisation on the internal server **has not been done**. It waits until leadership names the three key holders.
 
@@ -406,6 +406,41 @@ docker compose -f platform/deploy/docker-compose.yml --env-file platform/deploy/
 LiteLLM then serves the model as `self_hosted`, with an internal cost per token above 0 (a placeholder until task L03) and at most `SDLC_VLLM_MAX_NUM_SEQS` requests at a time. A `client_restricted` intent can use only this kind of model (`design/D-07-model-and-token-management.md` §4).
 
 To stop using the model, first suspend the agents whose model is the served name (handbook Ch.20 §20.9). Then delete the entry (`bao kv metadata delete -mount=kv litellm/providers/vllm`) and restart `litellm-agent` and `litellm`.
+
+### 5d.2. vLLM on a separate GPU host: the link's certificates (profile `models-remote`)
+
+When the GPU is in a separate machine (the GPU host), the platform server reaches vLLM through a link with **mutual TLS**: both machines show a certificate of the same CA (`design/ADR-M71-self-hosted-model-vllm.md` §4, task L01 PR 2). The set-up of both machines: `platform/deploy/README.md` "Self-hosted model on a separate GPU host". The provider entry `vllm` is the same as in section 5d.1 (`api_base=http://vllm:8000/v1`): on the platform server, the link answers under the name `vllm`. These certificates are not kept in OpenBao.
+
+There are two sets of files. Neither holds a CA key:
+
+| Folder | Files | Goes to | Setting |
+|---|---|---|---|
+| `gpu-host/` | `ca.pem`, `server.pem` (names the GPU host), `server-key.pem` | The GPU host | `SDLC_GPU_LINK_TLS_DIR` in `platform/deploy/gpu-host/.env` |
+| `platform/` | `ca.pem`, `client.pem` (`CN=sdlc-vllm-link`), `client-key.pem` | The platform server | `SDLC_VLLM_LINK_TLS_DIR` in `platform/deploy/.env` |
+
+**Issue** them with the internal CA of section 3c (`openbao/tls.sh ca`), on the machine that holds the CA folder, into a new folder outside the repository (1 year):
+```bash
+pnpm gpu-link:tls issue <ca-folder> <gpu-host-name> <new-folder>
+```
+Copy `<new-folder>/gpu-host/` to the GPU host and `<new-folder>/platform/` to the platform server, for example with `scp -p` (the keys keep mode 600). Then delete `<new-folder>` from the CA machine.
+
+**With the company CA** (when it exists, QUESTIONS #20): ask for one server certificate (the GPU host's name, `serverAuth`) and one client certificate (`CN=sdlc-vllm-link`, `clientAuth`). Put each in its folder with the CA certificate, under the names of the table, and check each folder:
+```bash
+pnpm gpu-link:tls check <gpu-host-folder> <gpu-host-name>
+pnpm gpu-link:tls check <platform-folder>
+```
+With a company CA, the gateway still refuses every other company certificate: it accepts only the name `SDLC_GPU_LINK_CLIENT_CN`.
+
+**Renew** 30 days before the end (`pnpm gpu-link:tls check`, `pnpm gpu-host:up` and `pnpm compose:models-remote` warn). Issue again into a new folder, copy the files over the old ones on each machine, then:
+```bash
+pnpm gpu-link:tls reload gpu-host   # on the GPU host
+pnpm gpu-link:tls reload platform   # on the platform server
+```
+No restart is needed. While only one side has the files of a **new CA**, the link refuses every call: renew both sides together.
+
+**A key is exposed** (a key file was copied to a wrong place): issue new certificates at once and reload both sides. The gateway has no revocation list. With the company CA, ask its owner to revoke the old certificate; until the old certificate ends, also change `SDLC_GPU_LINK_CLIENT_CN` on the GPU host and issue the new client certificate with that name (`SDLC_GPU_LINK_CLIENT_CN=<new name> pnpm gpu-link:tls issue …`). With the internal CA, make a new CA (section 3c) when the client key is exposed.
+
+**Test machines only:** `pnpm gpu-link:tls dev <gpu-host-name> <new-folder>` makes a throw-away CA and both sets, and deletes the CA key at once.
 
 ### Rotation
 
@@ -1104,7 +1139,8 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 | 0.46 | 2026-10-29 | Claude Code (docs, newcomer review) | Section 3.2: heading without "described, not yet done"; the procedure is ready, the company server waits for the key holders and the CA certificate (A10 PR 3) |
 | 0.47 | 2026-10-30 | Claude Code (task O03) | Section 6b: operational alerts with `pnpm alerts` (a webhook URL in a file of mode 600, e-mail through `sendmail`, the systemd timer, what to do when an alert comes and when the URL leaks) |
 | 0.48 | 2026-10-30 | Claude Code (task O05) | Section 8.1: `rotate-credentials` renews every AppRole secret ID with one admin token; the warning 14 days before. New section 8.4: the signing key rotates by itself every 90 days; revoking a version with `min_decryption_version`; how to check that nothing uses an old version |
-| 0.49 | 2026-11-11 | Claude Code (task H07) | Section 5g-1 step 3: the operator key and the header `X-Sdlc-Operator` in the Docker configuration (ADR-M105 §2.6, QUESTIONS #661) |
+| 0.49 | 2026-11-11 | Claude Code (task L01, PR 2) | New section 5d.2: the certificates of the mutual TLS link to vLLM on a separate GPU host (profile `models-remote`, ADR-M71 §4): issue, company CA, renewal, an exposed key |
+| 0.50 | 2026-11-11 | Claude Code (task H07) | Section 5g-1 step 3: the operator key and the header `X-Sdlc-Operator` in the Docker configuration (ADR-M105 §2.6, QUESTIONS #661) |
 | 0.44 | 2026-10-24 | Claude Code (task O01, PR 2) | Section 5g step 3: the runner on its own Docker Engine (`SDLC_RUNNER_DOCKER_HOST`, `SDLC_RUNNER_SOURCE_CIDR`, `runner-host.sh restart`; ADR-M91) |
 | 0.39 | 2026-10-12 | Claude Code (task V08) | New section 3.1b: the trial stack's key file (the two shares encrypted with a passphrase, `pnpm trial:start`, its limits; never on a server; QUESTIONS #356, #415–#419, ADR-M76) |
 | 0.38 | 2026-10-12 | Claude Code (task V09, PR 2) | New section 3d: the team access proxy's certificate (company CA `import`, internal CA `server`, throw-away `dev`, `check`, renewal with `reload` without a restart, the 30-day reminder). Tested with throw-away certificates (`pnpm test:access`, `access-static.test.ts`) |
