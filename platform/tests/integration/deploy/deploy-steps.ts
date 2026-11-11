@@ -461,19 +461,7 @@ export class Deployment {
       '--environments',
       'sandbox',
     ]);
-    for (const as of ['owner', 'person_b'] as const) {
-      this.sdlc(as === 'owner' ? 'a' : 'b', [
-        'admin',
-        'agent',
-        'approve',
-        '--key',
-        'coder',
-        '--purpose',
-        'activate',
-        '--as',
-        as,
-      ]);
-    }
+    this.approveAgent();
 
     const shown = this.sdlc('admin', ['admin', 'config', 'show', '--project', 'pilot']);
     const config = path.join(this.options.tmp, 'pilot.yaml');
@@ -517,6 +505,80 @@ export class Deployment {
       '--disclosure',
       'standard_note',
     ]);
+  }
+
+  /** The agent's two approvals (README step 11): its owner (Person A), then Person B. */
+  approveAgent(): void {
+    for (const as of ['owner', 'person_b'] as const) {
+      this.sdlc(as === 'owner' ? 'a' : 'b', [
+        'admin',
+        'agent',
+        'approve',
+        '--key',
+        'coder',
+        '--purpose',
+        'activate',
+        '--as',
+        as,
+      ]);
+    }
+  }
+
+  /** A token that another part showed once (`pnpm server:setup`'s step 8, V19). */
+  useToken(who: Who, token: string): void {
+    this.state.tokens[who] = this.keep(token);
+  }
+
+  /**
+   * The V17 project file of steps 9, 11 and 12 for `pnpm server:setup` (V19): the team of `team()`
+   * (GitHub logins `fresh-a` 7001, `fresh-b` 7002) and the agent and configuration of
+   * `agentConfigAndRecord()`. The command adds the sandbox image.
+   */
+  projectFile(): string {
+    fs.writeFileSync(
+      path.join(this.options.tmp, 'AGENTS.md'),
+      '# Agent instructions\n\n- Keep changes small.\n',
+    );
+    const file = path.join(this.options.tmp, 'project.yaml');
+    fs.writeFileSync(
+      file,
+      [
+        'format: 1',
+        'project: {slug: pilot, name: Pilot, repository: acme/fresh-deploy}',
+        'team:',
+        '  - {email: a@fresh.test, name: a, github_login: fresh-a, roles: [person_a]}',
+        '  - {email: b@fresh.test, name: b, github_login: fresh-b, roles: [person_b]}',
+        'agent:',
+        `  {key: coder, version: 1.0.0, owner: a@fresh.test, model: ${MODEL}, instructions: AGENTS.md@v1,`,
+        '   instructions_file: AGENTS.md, tools: [file_editor, terminal], max_autonomy: L2,',
+        '   environments: [sandbox]}',
+        'config:',
+        '  run: {agent_key: coder}',
+        '  verification: {required_checks: [ci-ok]}',
+        '',
+      ].join('\n'),
+    );
+    return file;
+  }
+
+  /** What `pnpm server:setup` leaves to people (V19): the team's first tokens, the approvals. */
+  peopleSteps(): void {
+    for (const p of [
+      { who: 'a' as const, email: 'a@fresh.test' },
+      { who: 'b' as const, email: 'b@fresh.test' },
+    ]) {
+      const issued = this.sdlc('admin', [
+        'admin',
+        'token',
+        'issue',
+        '--user',
+        p.email,
+        '--name',
+        `${p.who}-laptop`,
+      ]);
+      this.state.tokens[p.who] = this.keep(String(issued.token));
+    }
+    this.approveAgent();
   }
 
   /** README step 14: a new intent of Person A; its code. */

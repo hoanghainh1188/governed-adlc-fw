@@ -188,6 +188,65 @@ describe('adlc', () => {
     expect(err).toEqual([t('audit.verify.missing_url')]);
   });
 
+  describe('V19: --db-url-stdin', () => {
+    const withStdin = (stdin: string, tty = false) => {
+      const c = context();
+      const connected: string[] = [];
+      const ctx: CliContext = {
+        ...c.ctx,
+        connect: (config) => {
+          connected.push(config.connectionString);
+          throw new Error('no database in unit tests');
+        },
+        api: {
+          fetch: () => Promise.reject(new Error('no network')),
+          readHiddenLine: () => Promise.reject(new Error('no prompt')),
+          readStdin: () => Promise.resolve(stdin),
+          stdinIsTTY: tty,
+        },
+      };
+      return { ...c, ctx, connected };
+    };
+    const tokenList = ['ops', 'token', 'list', '--tenant', 'x', '--email', 'a@b.c'];
+
+    it.each([
+      [tokenList],
+      [['ops', 'ai-record', 'show', '--tenant', 'x', '--project', 'p']],
+      [
+        [
+          'ops',
+          'bootstrap',
+          '--tenant',
+          'x',
+          '--tenant-name',
+          'X',
+          '--email',
+          'a@b.c',
+          '--name',
+          'A',
+        ],
+      ],
+    ])('reads the URL from standard input, not SDLC_DB_URL, for %j', async (argv) => {
+      const { ctx, err, connected } = withStdin(
+        'postgres://platform_app:pw@127.0.0.1:5432/platform\n',
+      );
+      expect(await runCli([...argv, '--db-url-stdin'], ctx)).toBe(EXIT.error);
+      expect(connected).toEqual(['postgres://platform_app:pw@127.0.0.1:5432/platform']);
+      expect(err.join('\n')).not.toContain('pw@');
+    });
+
+    it.each([
+      ['not a url\n', false],
+      ['', false],
+      ['postgres://x\n', true],
+    ] as const)('refuses stdin %j (terminal: %s) with exit code 2', async (stdin, tty) => {
+      const { ctx, err, connected } = withStdin(stdin, tty);
+      expect(await runCli([...tokenList, '--db-url-stdin'], ctx)).toBe(EXIT.usage);
+      expect(err).toEqual([t('cli.ops.db_url_stdin')]);
+      expect(connected).toEqual([]);
+    });
+  });
+
   it('reports an unexpected error with exit code 3', async () => {
     const { ctx, err } = context({ SDLC_DB_URL: 'postgres://x' });
     expect(await runCli(['ops', 'audit', 'verify'], ctx)).toBe(EXIT.error);

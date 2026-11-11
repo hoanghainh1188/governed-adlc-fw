@@ -12,6 +12,8 @@
 // - `adlc ops retention report` (ops-retention.ts, E05): counts only;
 // - `adlc ops eval start` (ops-eval.ts, L04): queues an evaluation on the server.
 // A token is printed once, to stdout, and never logged. Run these in a terminal, not in a chat.
+// `--db-url-stdin` (any `ops` command, D-08 V19): the database URL from standard input instead of
+// SDLC_DB_URL, so `pnpm server:setup` passes it without an environment variable or an argument.
 import { parseArgs } from 'node:util';
 
 import {
@@ -72,7 +74,32 @@ const REQUIRED: Readonly<Record<keyof typeof SPECS, readonly string[]>> = {
 };
 
 /** `args` starts after `ops`. Returns the exit code. */
-export async function runOps(args: readonly string[], ctx: CliContext): Promise<number> {
+export async function runOps(given: readonly string[], ctx: CliContext): Promise<number> {
+  if (given.includes(DB_URL_STDIN)) {
+    const url = await readDbUrl(ctx);
+    if (url === undefined) {
+      ctx.stderr(t('cli.ops.db_url_stdin'));
+      return EXIT.usage;
+    }
+    // The URL stays in this process: a copy of the context, never the process environment.
+    ctx = { ...ctx, env: { ...ctx.env, SDLC_DB_URL: url } };
+  }
+  return runOpsCommand(
+    given.filter((a) => a !== DB_URL_STDIN),
+    ctx,
+  );
+}
+
+const DB_URL_STDIN = '--db-url-stdin';
+
+/** The first line of standard input, when it is a PostgreSQL URL. */
+async function readDbUrl(ctx: CliContext): Promise<string | undefined> {
+  if (!ctx.api || ctx.api.stdinIsTTY) return undefined;
+  const line = (await ctx.api.readStdin()).split(/\r?\n/, 1)[0]?.trim() ?? '';
+  return /^postgres(?:ql)?:\/\/\S+$/.test(line) ? line : undefined;
+}
+
+async function runOpsCommand(args: readonly string[], ctx: CliContext): Promise<number> {
   const [first, second, ...rest] = args;
   if (first === 'audit' && second === 'verify') {
     const options = parseAuditVerifyOptions(rest);

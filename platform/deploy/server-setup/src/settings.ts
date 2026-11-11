@@ -6,6 +6,8 @@ import path from 'node:path';
 
 import { parse } from 'yaml';
 
+import { teamSettings, type TeamSettings } from './team-settings.js';
+
 /** The optional parts of README step 7 (QUESTIONS #616 (5)). */
 export const OPTIONAL_PARTS = [
   'observability',
@@ -61,6 +63,8 @@ export interface ServerSettings {
   readonly dashboard?: { readonly publicOrigin: string; readonly clientSecretFile?: string };
   readonly access?: AccessSettings;
   readonly runnerLink?: RunnerLinkSettings;
+  /** Steps 8–13 (D-08 V19): the tenant, its first admin, the project file and the AI record. */
+  readonly team?: TeamSettings;
   /**
    * Go on to step 3 with the throw-away certificate of `compose:env` (a development machine, the
    * live test). Off by default: on a server, OpenBao's certificate comes from the company CA
@@ -92,21 +96,21 @@ export function accessOrigin(a: Pick<AccessSettings, 'hostname' | 'port'>): stri
   return a.port === 443 ? `https://${a.hostname}` : `https://${a.hostname}:${a.port}`;
 }
 
-type Mapping = Readonly<Record<string, unknown>>;
+export type Mapping = Readonly<Record<string, unknown>>;
 
-function mapping(value: unknown, field: string): Mapping {
+export function mapping(value: unknown, field: string): Mapping {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new SettingsError(field);
   }
   return value as Mapping;
 }
 
-function list(value: unknown, field: string): readonly unknown[] {
+export function list(value: unknown, field: string): readonly unknown[] {
   if (!Array.isArray(value)) throw new SettingsError(field);
   return value;
 }
 
-function text(map: Mapping, key: string, field: string, pattern?: RegExp): string {
+export function text(map: Mapping, key: string, field: string, pattern?: RegExp): string {
   const s = map[key];
   if (typeof s !== 'string' || s.trim() === '' || s.length > 500) throw new SettingsError(field);
   // Never read as a command-line option, never a control character (review V02).
@@ -116,7 +120,7 @@ function text(map: Mapping, key: string, field: string, pattern?: RegExp): strin
   return s;
 }
 
-function absolutePath(map: Mapping, key: string, field: string, home: string): string {
+export function absolutePath(map: Mapping, key: string, field: string, home: string): string {
   const raw = text(map, key, field);
   const expanded = raw === '~' ? home : raw.startsWith('~/') ? path.join(home, raw.slice(2)) : raw;
   if (!path.isAbsolute(expanded)) throw new SettingsError(field);
@@ -264,6 +268,8 @@ export function parseSettings(yamlText: string, home: string, shares: number): S
     throw new SettingsError('dashboard');
   }
 
+  const team = teamSettings(root, home);
+
   const throwawayTls = root.throwaway_tls === undefined ? false : root.throwaway_tls;
   if (typeof throwawayTls !== 'boolean') throw new SettingsError('throwaway_tls');
 
@@ -278,6 +284,7 @@ export function parseSettings(yamlText: string, home: string, shares: number): S
     ...(dashboard ? { dashboard } : {}),
     ...(access ? { access } : {}),
     ...(runnerLink ? { runnerLink } : {}),
+    ...(team ? { team } : {}),
     throwawayTls,
   };
 }
