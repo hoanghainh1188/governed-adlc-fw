@@ -21,6 +21,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig
 COPY platform/apps platform/apps
 COPY platform/packages platform/packages
 COPY platform/eval platform/eval
+# Shared AuthZ denylist package (H07, ADR-M105); required workspace member for frozen install.
+COPY platform/deploy/docker-authz platform/deploy/docker-authz
 RUN pnpm install --frozen-lockfile --ignore-scripts \
   && pnpm exec tsc -b platform/apps/runner \
   && pnpm --filter @sdlc/runner deploy --legacy --prod /out

@@ -1,0 +1,22 @@
+{
+  "name": "@sdlc/docker-authz",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Docker AuthZ plugin and shared create-body denylist (H07, ADR-M105).",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "sdlc-docker-authz": "dist/main.js"
+  }
+}

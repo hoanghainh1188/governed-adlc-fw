@@ -5,11 +5,14 @@
 // Set-up (test infrastructure only, through the docker CLI):
 // - a fixture sandbox image (live-helpers.ts: local build or a throw-away `registry:2`, QUESTIONS
 //   #54) that probes the network from inside and prints the results (fixture/probe.sh);
-// - a "platform" network with stub LiteLLM, stub npm proxy and a stub OpenBao, like `sdlc-net`.
+// - an internal "platform" network with stub LiteLLM, stub npm proxy and a stub OpenBao (H07 AuthZ
+//   requires Internal on every networks/create; the runner still attaches stubs to each run net);
+// - host listeners in this process (H07 refuses `--network host` / port bindings on the Engine).
 // The sandboxes themselves are created by the runner code under test (createSandbox), through the
 // guard, exactly as in production.
 import crypto from 'node:crypto';
 import net from 'node:net';
+import os from 'node:os';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -25,6 +28,7 @@ import {
 import {
   BUSYBOX,
   buildFixtureImage,
+  createInternalNetwork,
   docker,
   dockerSocket,
   liveEnabled,
@@ -45,10 +49,42 @@ const names = {
   litellm: `sdlc-c04-litellm-${suffix}`,
   npm: `sdlc-c04-npm-${suffix}`,
   openbao: `sdlc-c04-openbao-${suffix}`,
-  hostListener: `sdlc-c04-host-listener-${suffix}`,
 };
-/** Port of a service in the host's network namespace (a container with `--network host`). */
+/** Port of a second host listener (same process / host NS as rootless `--network host`). */
 const HOST_NS_PORT = 40_000 + crypto.randomInt(10_000);
+
+function hostIpv4Addresses(): string[] {
+  const out = new Set<string>(['127.0.0.1']);
+  for (const entries of Object.values(os.networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === 'IPv4' && !entry.internal) out.add(entry.address);
+    }
+  }
+  return [...out];
+}
+
+function listen(port: number): Promise<net.Server> {
+  const server = net.createServer((socket) => socket.end());
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '0.0.0.0', () => resolve(server));
+  });
+}
+
+function canConnect(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port, timeout: 3_000 });
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => resolve(false));
+  });
+}
 
 function targets(lines: string[]): Buffer {
   return packTar([
@@ -63,6 +99,7 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
   let image: string;
   let fixture: FixtureImage | undefined;
   let hostServer: net.Server;
+  let hostNsServer: net.Server;
   let hostPort: number;
   let hostAddresses: string[];
   const runA = crypto.randomUUID();
@@ -73,47 +110,17 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
     fixture = await buildFixtureImage(suffix);
     image = fixture.image;
 
-    docker('network', 'create', names.platformNet);
+    createInternalNetwork(names.platformNet);
     startStub(names.litellm, names.platformNet, 4000, [`PROVIDER_KEY=${CANARY}`]);
     startStub(names.npm, names.platformNet, 4873, [`PROVIDER_KEY=${CANARY}`]);
     startStub(names.openbao, names.platformNet, 8200, [`PROVIDER_KEY=${CANARY}`]);
 
-    // A service on the host, to prove the sandbox cannot reach the host either.
-    hostServer = net.createServer((socket) => socket.end());
-    await new Promise<void>((resolve) => hostServer.listen(0, '0.0.0.0', resolve));
+    // Host listeners in this process. AuthZ (H07) refuses `--network host` and port bindings on
+    // the runner Engine; on rootless CI this process shares the same host NS as that mode.
+    hostServer = await listen(0);
     hostPort = (hostServer.address() as net.AddressInfo).port;
-    // And a service in the host network namespace of the Docker Engine: on Linux that is the
-    // host itself; on Docker Desktop it is the Linux VM. The sandbox must not reach it on any of
-    // the host's addresses (loopback, LAN, every Docker bridge).
-    docker(
-      'run',
-      '-d',
-      '--name',
-      names.hostListener,
-      '--network',
-      'host',
-      '--read-only',
-      '--tmpfs',
-      '/tmp',
-      '--cap-drop',
-      'ALL',
-      BUSYBOX,
-      'sh',
-      '-c',
-      `mkdir -p /tmp/www && exec httpd -f -p ${String(HOST_NS_PORT)} -h /tmp/www`,
-    );
-    hostAddresses = docker(
-      'run',
-      '--rm',
-      '--network',
-      'host',
-      BUSYBOX,
-      'sh',
-      '-c',
-      "ip -4 -o addr | awk '{print $4}' | cut -d/ -f1",
-    )
-      .split('\n')
-      .filter((ip) => /^[0-9.]+$/.test(ip));
+    hostNsServer = await listen(HOST_NS_PORT);
+    hostAddresses = hostIpv4Addresses();
 
     // The canary is in the runner's own environment: it must never reach a sandbox (AC4).
     process.env.ANTHROPIC_API_KEY = CANARY;
@@ -135,7 +142,8 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
       }
     }
     hostServer?.close();
-    for (const name of [names.litellm, names.npm, names.openbao, names.hostListener]) {
+    hostNsServer?.close();
+    for (const name of [names.litellm, names.npm, names.openbao]) {
       quietly('rm', '-f', '-v', name);
     }
     quietly('network', 'rm', names.platformNet);
@@ -143,33 +151,13 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
   }, 120_000);
 
   it('confines each sandbox to LiteLLM and the package proxy (AC1, AC4), then removes it (AC5)', async () => {
-    // Positive control: from an ordinary (non-internal) network, the host listener IS reachable,
-    // so "blocked" below means the sandbox network stops it, not that the listener is missing.
-    // A rootful Engine reaches it through the bridge gateway. A rootless Engine (O01, ADR-M91)
-    // keeps its bridges in RootlessKit's own namespace, and `--network host` is the real host:
-    // there it is reachable on a host address, through RootlessKit's outbound network.
+    // Positive control: the host listener is up on this process (same host NS as rootless
+    // `--network host`). AuthZ forbids non-internal networks/create and host-network containers,
+    // so we cannot probe it from a Docker "ordinary" network anymore; a local connect proves the
+    // listener exists, and "blocked" below still means the sandbox network stops it.
     expect(hostAddresses).toContain('127.0.0.1');
-    const platformGateway = docker(
-      'network',
-      'inspect',
-      names.platformNet,
-      '--format',
-      '{{(index .IPAM.Config 0).Gateway}}',
-    );
-    const reachable = docker(
-      'run',
-      '--rm',
-      '--network',
-      names.platformNet,
-      BUSYBOX,
-      'sh',
-      '-c',
-      [platformGateway, ...hostAddresses]
-        .map((ip) => `nc -z -w 3 ${ip} ${String(HOST_NS_PORT)} && echo open:${ip}`)
-        .concat('true')
-        .join('; '),
-    );
-    expect(reachable).toContain('open:');
+    expect(await canConnect('127.0.0.1', HOST_NS_PORT)).toBe(true);
+    expect(await canConnect('127.0.0.1', hostPort)).toBe(true);
 
     // Run B first: run A tries to reach it.
     const b = await createSandbox(client, settings, {

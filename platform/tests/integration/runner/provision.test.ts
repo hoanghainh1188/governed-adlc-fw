@@ -51,6 +51,7 @@ import { createTestDatabase, type TestDatabase } from '../db/helpers.js';
 import {
   BUSYBOX,
   buildFixtureImage,
+  createInternalNetwork,
   docker,
   dockerSocket,
   liveEnabled,
@@ -96,7 +97,7 @@ describe.skipIf(!liveEnabled || !process.env.SDLC_TEST_DATABASE_URL)(
       git = await StubGitHost.start(TOKEN);
       docker('pull', '-q', BUSYBOX);
       fixture = await buildFixtureImage(suffix);
-      docker('network', 'create', platformNet);
+      createInternalNetwork(platformNet);
       startStub(litellm, platformNet, 4000);
       startStub(self, platformNet, 8080);
       workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-runner-live-'));

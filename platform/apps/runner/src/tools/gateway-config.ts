@@ -108,6 +108,10 @@ export function buildGatewayConfig(input: GatewayConfigInput): string {
       statsAddr: 'off',
       readinessAddr: `0.0.0.0:${String(GATEWAY_READINESS_PORT)}`,
       logging: { format: 'json' },
+      // agentgateway 1.7 encrypts MCP session IDs by default and, without a key, writes one it
+      // makes into this file (the run's config volume is writable). A key is never written there:
+      // sessions stay unencrypted, as in 1.6. They live only on the run's internal tool network.
+      session: { key: 'disabled' },
     },
     binds: [
       {

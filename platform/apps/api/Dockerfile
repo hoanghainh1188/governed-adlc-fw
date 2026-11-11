@@ -12,6 +12,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig
 COPY platform/apps platform/apps
 COPY platform/packages platform/packages
 COPY platform/eval platform/eval
+# Workspace member required by @sdlc/runner (H07, ADR-M105); copied so frozen install resolves.
+COPY platform/deploy/docker-authz platform/deploy/docker-authz
 RUN pnpm install --frozen-lockfile --ignore-scripts \
   && pnpm exec tsc -b platform/apps/api \
   && pnpm --filter @sdlc/dashboard build \

@@ -280,6 +280,9 @@ importers:
       '@sdlc/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@sdlc/docker-authz':
+        specifier: workspace:*
+        version: link:../../deploy/docker-authz
       '@sdlc/eval':
         specifier: workspace:*
         version: link:../../eval
@@ -370,6 +373,8 @@ importers:
       zod:
         specifier: 4.6.5
         version: 4.6.5
+
+  platform/deploy/docker-authz: {}
 
   platform/eval:
     dependencies:

@@ -36,6 +36,10 @@ export default defineConfig({
         find: '@sdlc/eval',
         replacement: path.resolve(import.meta.dirname, 'platform/eval/src/index.ts'),
       },
+      {
+        find: '@sdlc/docker-authz',
+        replacement: path.resolve(import.meta.dirname, 'platform/deploy/docker-authz/src/index.ts'),
+      },
       ...SOURCE_ADAPTERS.map((name) => ({
         find: `@sdlc/adapter-${name}`,
         replacement: path.resolve(

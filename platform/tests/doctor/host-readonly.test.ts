@@ -35,6 +35,7 @@ describe('pnpm doctor is read only', () => {
     const all = [
       commands.dockerVersion(),
       commands.dockerMemory(),
+      commands.dockerAuthz(),
       commands.composeVersion(),
       commands.imageInspect(IMAGE),
       commands.ps(target),

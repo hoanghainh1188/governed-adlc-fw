@@ -82,14 +82,24 @@ describe('pnpm doctor: the checks', () => {
 
   it('an old docker compose fails', () => {
     const facts = healthyFacts({
-      docker: { serverVersion: '27', composeVersion: '2.20.0', memoryBytes: 16 * GIB },
+      docker: {
+        serverVersion: '27',
+        composeVersion: '2.20.0',
+        memoryBytes: 16 * GIB,
+        authorizationPlugins: [],
+      },
     });
     expect(one(evaluate(facts), 'host.docker').status).toBe('failed');
   });
 
   it('little memory and disk: warning; very little disk: failed', () => {
     const facts = healthyFacts({
-      docker: { serverVersion: '29', composeVersion: '2.30.0', memoryBytes: 4 * GIB },
+      docker: {
+        serverVersion: '29',
+        composeVersion: '2.30.0',
+        memoryBytes: 4 * GIB,
+        authorizationPlugins: [],
+      },
       disk: [
         { path: '/a', freeBytes: 10 * GIB },
         { path: '/b', freeBytes: 1 * GIB },

@@ -5,3 +5,5 @@ packages:
   - 'platform/packages/adapters/*'
   # platform/packages/adapters itself is only a folder, not a package.
   - '!platform/packages/adapters'
+  # Host AuthZ plugin for the runner Engine (H07, ADR-M105): shared denylist + plugin process.
+  - 'platform/deploy/docker-authz'

@@ -18,6 +18,7 @@
     "@sdlc/adapter-policy-simple": "workspace:*",
     "@sdlc/contracts": "workspace:*",
     "@sdlc/core": "workspace:*",
+    "@sdlc/docker-authz": "workspace:*",
     "@sdlc/eval": "workspace:*",
     "@sdlc/messages": "workspace:*",
     "@sdlc/secrets": "workspace:*",

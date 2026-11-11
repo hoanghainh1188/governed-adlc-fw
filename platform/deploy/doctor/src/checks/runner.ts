@@ -63,3 +63,24 @@ export function runnerChecks(f: OperatorFacts): CheckResult[] {
   if (out.length === 0) out.push(ok('runner.engine', text('doctor.runner.own_engine', { link })));
   return out;
 }
+
+const AUTHZ_SECTION = 'The runner on its own Docker Engine';
+const authzFix = () => text('doctor.fix.readme', { section: AUTHZ_SECTION });
+
+/**
+ * H07 (ADR-M105): warn when the Engine has no authorization plugin. Non-blocking on developer
+ * machines; required on the company server's runner Engine (install via T11).
+ */
+export function runnerAuthzChecks(f: OperatorFacts): CheckResult[] {
+  if (!f.docker) return [skipped('runner.authz', 'doctor.skipped.no_docker')];
+  if (!f.envFile.exists) return [skipped('runner.authz', 'doctor.skipped.no_env')];
+  if (f.envFile.trialKeyFile) return [skipped('runner.authz', 'doctor.skipped.trial')];
+  const plugins = f.docker.authorizationPlugins;
+  if (plugins === null) {
+    return [problem('runner.authz', 'warning', text('doctor.runner.authz_unknown'), authzFix())];
+  }
+  if (plugins.length === 0) {
+    return [problem('runner.authz', 'warning', text('doctor.runner.authz_missing'), authzFix())];
+  }
+  return [ok('runner.authz', text('doctor.runner.authz_ok', { plugins: plugins.join(', ') }))];
+}
