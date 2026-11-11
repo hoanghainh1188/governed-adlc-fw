@@ -49,9 +49,9 @@
 | EVAL | Evaluation for managers: they plan evaluations, get reports and recommendations to improve agents, prompts and models; on the server and on developer machines. After v0.3.0, before EXT (QUESTIONS #450) | 7 | S×2 · M×4 · L×1 |
 | EXT | Other Git hosts first, then other agents, tools for agents, document knowledge: v0.6.0, X12 in v0.7.0 (QUESTIONS #361, #420, #424; v0.5.0 has the X09 spike) | 9 | S×5 · M×2 · L×2 |
 | Models | Self-hosted models: L01 PR 1 and L03 in v0.6.0; then L01 PR 2 and the L03b measurement (QUESTIONS #362, #424) | 3 | S×2 · M×1 |
-| Server | A team on a server: v0.7.0 with O01, O02, H04, H05, V15; v0.8.0 with H02, H03, V16; O03 in v0.10.0; O04, O05 in v0.11.0; toward v1.0 (QUESTIONS #363) | 16 | S×5 · M×11 |
+| Server | A team on a server: v0.7.0 with O01, O02, H04, H05, V15; v0.8.0 with H02, H03, V16; O03 in v0.10.0; O04, O05 in v0.11.0; toward v1.0 (QUESTIONS #363) | 19 | S×5 · M×14 |
 | Later | Not scheduled yet (was "MVP+1"; U01–U03 were started early there and are done; U07 and U08 are done in v0.8.0) | 16 | S×4 · M×6 · L×6 |
-| **Total** | | **122** | |
+| **Total** | | **125** | |
 
 ### Order and dependencies between milestones
 
@@ -1482,6 +1482,53 @@ flowchart LR
 
 > Note: QUESTIONS #616 and #618 (Harry, 2026-10-28). Must be done before A10 PR 3 (the company server's first real run). Still by hand: the company CA certificate (T11 §3c), the GitHub App, the key holders' presence. Bugs from trial reports come first (R123). Done: `pnpm server:setup` (ADR-M98; the shared steps in `platform/deploy/steps`; runbook T11 §3.2)
 
+#### V18. One command to set up the runner host
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| M | O01, H07 | NFR-01, NFR-03 | platform/deploy/scripts (runner-host-setup.sh, a shared rootless-engine.sh, test-rootless-docker.sh), platform/tools/claude-hooks/guard-bash.mjs, platform/deploy/README.md ("The runner on its own Docker Engine"), handbook T11, design/ADR-M107, design/RULES.md, platform/tests/deploy/*, .github/workflows/ci.yml |
+
+**Acceptance criteria**
+
+- [ ] AC1: `sudo platform/deploy/scripts/runner-host-setup.sh --user <user> --mode same-server|vm` runs deploy README "The runner on its own Docker Engine" step 1 (subordinate IDs, the AppArmor profile for `rootlesskit` only, cgroup v2 delegation, linger, `dockerd-rootless-setuptool.sh install`, the check of `docker info`), the AuthZ plugin install of H07, on the same server the dummy interface of step 2, and the runner host's `.env` of step 5
+- [ ] AC2: Safe to run again: each step checks the state first and says what is already done; `--dry-run` changes nothing; it fills only empty `.env` keys and refuses a key that already holds another value; it never sets `kernel.apparmor_restrict_unprivileged_userns=0`, never touches the machine's rootful Engine and refuses an Engine that holds the platform's data
+- [ ] AC3: It checks Docker's packages and names the missing ones; it installs no package; WireGuard on a VM stays the infrastructure operator's job (QUESTIONS #672)
+- [ ] AC4: The CI script `test-rootless-docker.sh` uses the same step code, so the jobs `runner-rootless` and `runner-split` test it; the Claude Code hook refuses the command
+- [ ] AC5: Tests: the steps with a simulated host (first run, second run, a conflicting `.env` value, `--dry-run`, the AppArmor case), the README in step with the script; the deploy README, runbook T11 and ADR-M107 updated in the same task
+
+> Note: QUESTIONS #671–#673 (Harry, 2026-11-11). After H07 (#496) is merged: it adds the AuthZ plugin install. PR 3 of the three (V20, V19, V18)
+
+#### V19. `pnpm server:setup` runs steps 8–13
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| M | V16, V17 | NFR-01, NFR-03 | platform/deploy/server-setup/*, platform/deploy/steps/*, platform/apps/cli (`adlc ops … --db-url-stdin`), platform/packages/messages, platform/deploy/README.md (steps 8–14), handbook T11 §3.2, handbook Ch.19 §19.8d, design/ADR-M98, platform/tests/deploy/*, platform/tests/integration/deploy/* (`test:fresh-deploy`) |
+
+**Acceptance criteria**
+
+- [ ] AC1: With `tenant`, `admin`, `project_file` (the V17 file) and `sandbox_image` in the settings, the command goes on after step 7: the tenant and its first admin (`adlc ops bootstrap`), the project, team, agent and configuration (`adlc admin project apply`), the sandbox image by digest in the configuration, and the project AI record from the settings' `ai_record`, written with `adlc ops ai-record set` on behalf of Person A (QUESTIONS #671)
+- [ ] AC2: The bootstrap token is shown once in the owner's terminal, with the screen and scroll-back cleared after the copy, then given to `adlc login --token-stdin`; the database URL reaches `adlc ops` on standard input (`--db-url-stdin`, new); no token or URL in a file, an argument, an environment variable or a log (R035, R143)
+- [ ] AC3: It never approves the agent, never issues a team member's token and never creates or approves an intent: at the end it prints, per person, the commands that stay theirs (the agent owner's and Person B's approvals, step 14 for Person A)
+- [ ] AC4: Each step checks the state and skips what is done (a second run changes nothing); the progress file records the step names
+- [ ] AC5: Tests: the steps with a simulated platform (first run, second run, a stop in the middle), the README in step; `pnpm test:fresh-deploy` runs steps 2–13 through the command; the deploy README, runbook T11, handbook Ch.19 §19.8d and ADR-M98 updated in the same task
+
+> Note: QUESTIONS #671, #673 (Harry, 2026-11-11). PR 2 of the three (V20, V19, V18)
+
+#### V20. Team access and the runner link in the `server:setup` settings
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| M | V16, V09, O01 | NFR-01, NFR-03 | platform/deploy/server-setup/*, platform/deploy/steps/*, platform/packages/messages, platform/deploy/README.md ("Fresh deployment", "Team access", "The runner on its own Docker Engine"), handbook T11 §3.2, §3d, design/ADR-M98, platform/tests/deploy/* |
+
+**Acceptance criteria**
+
+- [ ] AC1: An `access` section (host name, bind address, port, the CLI's addresses, the TLS folder, the company CA's folder) writes the `SDLC_ACCESS_*` keys and `SDLC_API_TRUSTED_PROXY`, imports the certificate with `access:tls import`, starts the profile `access` in step 7, and derives the public origin of the dashboard sign-in; a different `dashboard.public_origin` is refused
+- [ ] AC2: A `runner_link` section writes `SDLC_RUNNER_SOURCE_CIDR` before step 3, so the first `configure` accepts the runner host and the key holders meet once; after step 7 it writes `SDLC_RUNNER_LINK_ADDR` and `SDLC_RUNNER_DOCKER_HOST`, starts the profile `runner-link` instead of `sandbox`, and delivers `runner-credentials` to the runner host's Engine
+- [ ] AC3: No secret in the settings or the `.env` keys it writes; a value already in `.env` that differs from the settings is refused, never overwritten; each step checks the state and skips what is done
+- [ ] AC4: Tests: the settings (valid, refused), the `.env` keys, the order (the CIDR before `configure`, the profiles of step 7), a second run; the deploy README, runbook T11 and ADR-M98 updated in the same task
+
+> Note: QUESTIONS #673 (Harry, 2026-11-11). PR 1 of the three (V20, V19, V18); the runner host itself comes with V18
+
 #### H02. Dependencies an agent adds: licence, known vulnerabilities, name checks
 
 | Size | Depends on | Requirements | Code area |
@@ -2012,6 +2059,7 @@ If a doc is missing or contradictory: add the question to design/QUESTIONS.md an
 | 1.67 | 2026-10-29 | Claude, approved by Harry | Release v0.8.0 with H02, H03, U07, U08, V16 and V17 |
 | 1.68 | 2026-10-30 | Claude, approved by Harry | Release v0.10.0 with O03 |
 | 1.69 | 2026-10-31 | Claude, approved by Harry | Release v0.11.0 with O04 and O05 |
+| 1.70 | 2026-11-11 | Claude, approved by Harry | New tasks V18 (the runner host set-up), V19 (`server:setup` steps 8–13) and V20 (team access and the runner link in the settings), milestone Server; order V20, V19, V18 (QUESTIONS #671–#673) |
 | 1.48 | 2026-10-13 | Claude (task L02, PR 4), approved by Harry | L02 note: the first result table is in D-07 §9; the evaluation was stopped at 53 of 80 runs (QUESTIONS #447) |
 | 1.28 | 2026-10-09 | Claude (task A10), approved by Harry | A10 note: ClickHouse access management done (`sdlc_admin`, ADR-M63 §6, QUESTIONS #330) |
 | 1.27 | 2026-10-09 | Claude (task A10, PR 1), approved by Harry | A10 note: three PRs (TLS everywhere, backups and the drill, the server with the operator; ADR-M63, QUESTIONS #325–#327); code area `openbao/tls.sh` |
