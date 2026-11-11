@@ -469,17 +469,19 @@ The runner (service `sdlc-runner`, task C04) creates one hardened sandbox per ag
 
 ### 5g-1. Docker authorization plugin (H07, ADR-M105)
 
-The socket proxy limits method and path, not the body of `containers/create` or `networks/create`. On the runner host, install the AuthZ plugin on the **sandbox Engine** only (the Engine that creates sandboxes, tools and the gateway), so a compromised runner still cannot create a privileged container, host namespace, device, capability, host-path bind mount or non-internal network (ADR-M91 §2.2, QUESTIONS #661). The runner-host Compose project (`sdlc-runner`, socket proxy, relays, registry, credential jobs) runs on a **second Engine without AuthZ**; the socket proxy mounts the sandbox Engine's socket (`SDLC_DOCKER_SOCKET`).
+The socket proxy limits method and path, not the body of `containers/create` or `networks/create`. On the **runner's own Engine**, install the AuthZ plugin so a compromised runner still cannot create a privileged container, host namespace, device, capability, bind mount or non-internal network.
 
-**Install (rootless sandbox Engine):**
+**Install (rootless runner Engine):**
 
 1. Build once from the repo: `pnpm exec tsc -b platform/deploy/docker-authz` (or `pnpm build`).
-2. As the sandbox Engine's user: `platform/deploy/docker-authz/scripts/install-rootless.sh` (against that Engine's `DOCKER_HOST`).
-3. Check: `docker info` on the sandbox Engine shows an authorization plugin named `sdlc-authz`. `pnpm doctor` check `runner.authz` is ok. On rootless Engines the plugin listens under `$HOME/.local/share/sdlc-docker-authz/` (not under `$XDG_RUNTIME_DIR`); the install script writes `/etc/docker/plugins/sdlc-authz.spec` (may need `sudo` once).
-4. Point the runner host's `SDLC_DOCKER_SOCKET` at the sandbox Engine's socket. Do **not** enable AuthZ on the Engine that runs `runner-host/docker-compose.yml` (Compose needs host binds and the registry port).
-5. CI starts both Engines in `platform/deploy/scripts/test-rootless-docker.sh` (`DOCKER_HOST` = sandbox + AuthZ; `SDLC_RUNNER_HOST_DOCKER_HOST` = Compose Engine).
+2. As the Engine's user: `platform/deploy/docker-authz/scripts/install-rootless.sh`
+3. The install script also makes the **operator key** (once; mode 600; it never prints it) and adds the header `X-Sdlc-Operator` to the Docker configuration of the user who runs it (`~/.docker/config.json`, mode 600). Only requests from that user's Docker CLI and Docker Compose skip the denylist: `pnpm runner-host:up` and the runner host's own services need bind mounts and a published port. The runner never has the key. Never copy the key through a chat or the desktop app's terminal pane (R035).
+   - When `openbao:bootstrap runner-credentials` runs on the platform host with `SDLC_RUNNER_DOCKER_HOST=ssh://…`, the platform host's Docker CLI sends the requests. Add the same header to the Docker configuration of the user who runs it there (`HttpHeaders`, file mode 600), from the key file over `ssh`, in your own terminal.
+   - New key: delete the key file, run the install script again, then update the platform host's copy.
+4. Check: `docker info` shows an authorization plugin named `sdlc-authz`. `pnpm doctor` check `runner.authz` is ok. On rootless Engines the plugin listens under `$HOME/.local/share/sdlc-docker-authz/` (not under `$XDG_RUNTIME_DIR`); the install script writes `/etc/docker/plugins/sdlc-authz.spec` (may need `sudo` once).
+5. CI enables the same plugin in `platform/deploy/scripts/test-rootless-docker.sh`.
 
-**Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then restart the **sandbox** dockerd.
+**Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then `systemctl --user restart docker.service`.
 
 **When the plugin refuses a legitimate run:** the create body hit the shared denylist (`platform/deploy/docker-authz/src/authz-rules.json`). Do not disable the plugin. Fix the runner/spec so the body has no privileged flag, host namespace, CapAdd, devices, host-path binds or non-internal network (a named volume is allowed, also in `Binds`). If a new safe option must be allowed, change the denylist and the guard together (ADR-M105 AC2) in one pull request. Developer machines without the plugin only get a doctor warning.
 
@@ -1102,6 +1104,7 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 | 0.46 | 2026-10-29 | Claude Code (docs, newcomer review) | Section 3.2: heading without "described, not yet done"; the procedure is ready, the company server waits for the key holders and the CA certificate (A10 PR 3) |
 | 0.47 | 2026-10-30 | Claude Code (task O03) | Section 6b: operational alerts with `pnpm alerts` (a webhook URL in a file of mode 600, e-mail through `sendmail`, the systemd timer, what to do when an alert comes and when the URL leaks) |
 | 0.48 | 2026-10-30 | Claude Code (task O05) | Section 8.1: `rotate-credentials` renews every AppRole secret ID with one admin token; the warning 14 days before. New section 8.4: the signing key rotates by itself every 90 days; revoking a version with `min_decryption_version`; how to check that nothing uses an old version |
+| 0.49 | 2026-11-11 | Claude Code (task H07) | Section 5g-1 step 3: the operator key and the header `X-Sdlc-Operator` in the Docker configuration (ADR-M105 §2.6, QUESTIONS #661) |
 | 0.44 | 2026-10-24 | Claude Code (task O01, PR 2) | Section 5g step 3: the runner on its own Docker Engine (`SDLC_RUNNER_DOCKER_HOST`, `SDLC_RUNNER_SOURCE_CIDR`, `runner-host.sh restart`; ADR-M91) |
 | 0.39 | 2026-10-12 | Claude Code (task V08) | New section 3.1b: the trial stack's key file (the two shares encrypted with a passphrase, `pnpm trial:start`, its limits; never on a server; QUESTIONS #356, #415–#419, ADR-M76) |
 | 0.38 | 2026-10-12 | Claude Code (task V09, PR 2) | New section 3d: the team access proxy's certificate (company CA `import`, internal CA `server`, throw-away `dev`, `check`, renewal with `reload` without a restart, the 30-day reminder). Tested with throw-away certificates (`pnpm test:access`, `access-static.test.ts`) |

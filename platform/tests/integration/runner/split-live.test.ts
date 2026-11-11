@@ -1,16 +1,13 @@
-// D-08 O01 AC1, AC2 (design/ADR-M91): live test of the runner on its own Docker Engine. On one
-// machine, as on a server without a second VM: the machine's own Engine runs the platform (core
-// and knowledge, with the link overlay); a rootless Engine without AuthZ runs the runner-host
-// Compose project; a second rootless Engine with AuthZ creates sandboxes (H07 QUESTIONS #661).
-// Skipped unless SDLC_RUNNER_SPLIT_TEST=1. Run with: pnpm test:runner-split
-// (CI job `runner-rootless`, after the rootless Engines and the link address are set up).
+// D-08 O01 AC1, AC2 (design/ADR-M91): live test of the runner on its own Docker Engine. Two Engines
+// on one machine, as on a server without a second VM: the machine's own Engine runs the platform
+// (core and knowledge, with the link overlay), and a rootless Engine runs the runner host's Compose
+// project. Skipped unless SDLC_RUNNER_SPLIT_TEST=1. Run with: pnpm test:runner-split
+// (CI job `runner-rootless`, after the rootless Engine and the link address are set up).
 //
 // Environment:
 //   SDLC_RUNNER_SPLIT_LINK_ADDR      the link address, a host address of this machine (CI: a dummy
 //                                    interface)
-//   SDLC_RUNNER_SPLIT_DOCKER_HOST    the runner-host Compose Engine (no AuthZ)
-//   SDLC_RUNNER_SPLIT_SANDBOX_SOCKET absolute path of the AuthZ sandbox Engine socket (proxy mount);
-//                                    defaults to the Compose Engine's socket for single-Engine debug
+//   SDLC_RUNNER_SPLIT_DOCKER_HOST    the runner's rootless Engine (unix:///run/user/<uid>/docker.sock)
 //   SDLC_RUNNER_SPLIT_PLATFORM_HOST  the platform's Engine (default unix:///var/run/docker.sock)
 //
 // It runs like the server: OpenBao initialised, unsealed and configured with the bootstrap script,
@@ -34,9 +31,6 @@ const enabled = process.env.SDLC_RUNNER_SPLIT_TEST === '1';
 const LINK = process.env.SDLC_RUNNER_SPLIT_LINK_ADDR ?? '';
 const RUNNER_HOST = process.env.SDLC_RUNNER_SPLIT_DOCKER_HOST ?? '';
 const PLATFORM_HOST = process.env.SDLC_RUNNER_SPLIT_PLATFORM_HOST ?? 'unix:///var/run/docker.sock';
-const SANDBOX_SOCKET =
-  process.env.SDLC_RUNNER_SPLIT_SANDBOX_SOCKET ||
-  (RUNNER_HOST.startsWith('unix:///') ? RUNNER_HOST.slice('unix://'.length) : '');
 const PORT_OFFSET = 37000;
 const SETUP_TIMEOUT_MS = 20 * 60 * 1000;
 /** Volumes of the platform that must never be on the runner's Engine (ADR-M91 §1). */
@@ -150,10 +144,7 @@ describe.skipIf(!enabled)(
       }
 
       // The runner host's env file: no secret (runner-host/.env.example).
-      // Proxy mounts the sandbox AuthZ socket (QUESTIONS #661); Compose runs on RUNNER_HOST.
-      if (!SANDBOX_SOCKET.startsWith('/')) {
-        throw new Error('set SDLC_RUNNER_SPLIT_SANDBOX_SOCKET to the AuthZ sandbox socket path');
-      }
+      const socket = RUNNER_HOST.slice('unix://'.length);
       const caFile = path.join(env.get('SDLC_OPENBAO_TLS_DIR')!, 'ca.pem');
       fs.writeFileSync(
         hostEnvFile,
@@ -161,7 +152,7 @@ describe.skipIf(!enabled)(
           .readFileSync(path.join(deployDir, 'runner-host/.env.example'), 'utf8')
           .replace(/^COMPOSE_PROJECT_NAME=.*$/m, `COMPOSE_PROJECT_NAME=${project}`)
           .replace(/^SDLC_RUNNER_LINK_ADDR=.*$/m, `SDLC_RUNNER_LINK_ADDR=${LINK}`)
-          .replace(/^SDLC_DOCKER_SOCKET=.*$/m, `SDLC_DOCKER_SOCKET=${SANDBOX_SOCKET}`)
+          .replace(/^SDLC_DOCKER_SOCKET=.*$/m, `SDLC_DOCKER_SOCKET=${socket}`)
           .replace(/^SDLC_OPENBAO_CA_FILE=.*$/m, `SDLC_OPENBAO_CA_FILE=${caFile}`),
         { mode: 0o600 },
       );

@@ -45,7 +45,7 @@ The plugin runs as a **host process** (systemd user service on a rootless Engine
 
 It is **not** a container on the Engine it guards: dockerd would need the plugin to authorize creating that container (chicken-egg). It is therefore **not** one of the six platform Compose images in `images.lock` (R089). A Dockerfile under `platform/deploy/docker-authz/` pins its Node base by digest for optional offline extract; CI and the company server run the compiled JS from the deploy tree (`node …/dist/main.js`).
 
-**Required** on the **sandbox Engine** only (QUESTIONS #661): the Engine that creates run containers (sandbox, tools, gateway). On the runner host that Engine is separate from the Engine that runs the runner-host Compose project (socket proxy, relays, registry, `sdlc-runner`, credential jobs); the socket proxy mounts the sandbox Engine's socket (ADR-M91). On a developer machine or trial that shares one Engine: document + `pnpm doctor` **warning** when the plugin is missing; do not reconfigure Docker Desktop.
+**Required** on the runner's own Engine (runner-host / company server). On a developer machine or trial that shares one Engine: document + `pnpm doctor` **warning** when the plugin is missing; do not reconfigure Docker Desktop.
 
 ### 2.4. AuthZRes always allows (QUESTIONS #660)
 
@@ -53,17 +53,30 @@ It is **not** a container on the Engine it guards: dockerd would need the plugin
 
 ### 2.5. Install and tests
 
-- Install helpers under `platform/deploy/docker-authz/scripts/` and T11: start the plugin, write the `.spec` (or pass the socket path), add `--authorization-plugin=sdlc-authz` to the **sandbox** Engine, restart that dockerd.
-- CI rootless job (`test-rootless-docker.sh`) starts the plugin on the sandbox Engine before `pnpm test:runner`, and a second rootless Engine without AuthZ for `pnpm test:runner-split` (QUESTIONS #661).
-- AC3: a privileged `containers/create` sent through the socket proxy (guard bypassed) is refused by the sandbox Engine (HTTP 403 from dockerd).
+- Install helpers under `platform/deploy/docker-authz/scripts/` and T11: start the plugin, write the `.spec` (or pass the socket path), add `--authorization-plugin=sdlc-authz` to the runner Engine, restart dockerd.
+- CI rootless job (`test-rootless-docker.sh`) starts the plugin and enables it before `pnpm test:runner`.
+- AC3: a privileged `containers/create` sent through the socket proxy (guard bypassed) is refused by the Engine (HTTP 403 from dockerd).
+
+### 2.6. The operator header (QUESTIONS #661)
+
+The runner host's own Compose project runs on the same Engine (ADR-M91): the socket proxy bind-mounts the Docker socket, the relays and `npm-proxy` bind-mount their configuration files, `openbao-ca-init` the CA file, the registry relay publishes a port, and `openbao:bootstrap runner-credentials` adds capabilities. The denylist refuses all of them. A second Engine for those services cannot work: the runner connects the egress services and itself to each run's network, and Docker connects a container only to a network of its own Engine.
+
+So the plugin skips the denylist for one kind of request: one that carries the header `X-Sdlc-Operator` with the **operator key**.
+
+- `enable.sh` makes the key once: 32 random bytes in hex, in a file of the Engine's user (rootless: `~/.local/share/sdlc-docker-authz/operator-key`; rootful: `/etc/sdlc-docker-authz/operator-key`), mode 600 in a directory of mode 700. It is never printed, never an argument, never an environment value.
+- `enable.sh` adds the header to `HttpHeaders` in that user's Docker configuration (`${DOCKER_CONFIG:-~/.docker}/config.json`, mode 600). The Docker CLI and Docker Compose send it on every request.
+- The plugin reads the key file at start (`--operator-key-file`, default `operator-key` next to the socket). A missing, empty or short key, or a file others can read: no request skips the denylist. It compares SHA-256 hashes in constant time and logs `operator=1`, never the header.
+- The runner never has the key: it talks to Docker through the socket proxy with its own client, in a container that mounts neither file. A compromised runner therefore still meets the denylist.
+- When `openbao:bootstrap runner-credentials` runs on the platform host with `SDLC_RUNNER_DOCKER_HOST=ssh://…`, the platform host's Docker CLI sends the requests: the user who runs it needs the same header in its own Docker configuration (T11 §5g-1).
 
 ## 3. Rules and where they live
 
 | Rule | Where |
 |---|---|
 | Create-body denylist | `authz-rules.json` + `authz-eval.ts`; guard calls `evaluateAuthz`; plugin calls the same |
-| Plugin on the sandbox Engine only | T11 §5g-1, deploy README, `test-rootless-docker.sh`, doctor `runner.authz`; runner-host Compose on a second Engine (QUESTIONS #661) |
+| Plugin on the runner Engine | T11, deploy README, `test-rootless-docker.sh`, doctor `runner.authz` |
 | Never a container on the guarded Engine | This ADR §2.3; install scripts |
+| Operator header and key file | This ADR §2.6; `server.ts`; `enable.sh`; T11 §5g-1 |
 
 ## 4. Alternatives not chosen
 
@@ -86,4 +99,5 @@ It is **not** a container on the Engine it guards: dockerd would need the plugin
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 1.0 | 2026-11-10 | Claude, approved by Harry | H07: shared denylist, Node legacy AuthZ plugin as a host process, doctor warn, T11 |
-| 1.1 | 2026-11-11 | Claude / Harry, QUESTIONS #661 | §2.2: a named volume in `Binds` passes (Compose sends named volumes there); a non-volume source is still refused; §2.3 / §2.5: plugin on the sandbox Engine only, runner-host Compose on a second Engine |
+| 1.1 | 2026-11-11 | Claude, approved by Harry | §2.2: a named volume in `Binds` passes (Docker Compose sends named volumes there, not in `Mounts`); a host path is still refused (QUESTIONS #661) |
+| 1.2 | 2026-11-11 | Claude, approved by Harry | §2.6: the operator header `X-Sdlc-Operator` skips the denylist, so the runner host's own Compose project runs on the guarded Engine (QUESTIONS #661, option C) |

@@ -12,6 +12,13 @@
 #   platform/deploy/docker-authz/scripts/enable.sh [--dist <main.js>] [--socket <path>]
 #
 # Does not restart dockerd when SDLC_DOCKER_AUTHZ_NO_RESTART=1 (caller restarts).
+#
+# Operator key (QUESTIONS #661): the runner host's own Compose project and `openbao:bootstrap
+# runner-credentials` need binds and capabilities the denylist refuses. The operator's Docker CLI
+# sends the header X-Sdlc-Operator with a key; the plugin skips the denylist only for that key.
+# This script makes the key once (mode 600, never printed) and adds the header to the Docker
+# configuration of the user who runs it (${DOCKER_CONFIG:-$HOME/.docker}/config.json, mode 600).
+# The runner never sees either file.
 set -eu
 
 root="$(cd "$(dirname "$0")/../../../.." && pwd)"
@@ -41,6 +48,7 @@ if [ "$uid" -eq 0 ]; then
   daemon_json="/etc/docker/daemon.json"
   [ -n "$socket" ] || socket="$runtime_plugins/sdlc-authz.sock"
   discovery_spec="/etc/docker/plugins/sdlc-authz.spec"
+  key_file="/etc/sdlc-docker-authz/operator-key"
 else
   home="${HOME:?HOME is required for rootless AuthZ}"
   config="${XDG_CONFIG_HOME:-$home/.config}"
@@ -51,8 +59,30 @@ else
   [ -n "$socket" ] || socket="$share/sdlc-docker-authz/sdlc-authz.sock"
   # Host /etc path is copy-up'd into the rootless namespace on dockerd start (needs sudo once).
   discovery_spec="/etc/docker/plugins/sdlc-authz.spec"
+  key_file="$share/sdlc-docker-authz/operator-key"
 fi
 mkdir -p "$(dirname "$socket")" "$config_plugins" "$(dirname "$daemon_json")"
+
+# The operator key: made once, kept on a re-run (the Docker configuration keeps matching it).
+mkdir -p "$(dirname "$key_file")"
+chmod 700 "$(dirname "$key_file")"
+if [ ! -s "$key_file" ]; then
+  (umask 077 && od -An -N32 -tx1 /dev/urandom | tr -d ' \n' >"$key_file")
+fi
+chmod 600 "$key_file"
+# The header in this user's Docker configuration; the key is read from its file, never an argument.
+docker_config_dir="${DOCKER_CONFIG:-$HOME/.docker}"
+mkdir -p "$docker_config_dir"
+(umask 077 && node -e '
+  const fs = require("fs");
+  const [keyFile, configFile] = process.argv.slice(1);
+  const key = fs.readFileSync(keyFile, "utf8").trim();
+  const j = fs.existsSync(configFile) ? JSON.parse(fs.readFileSync(configFile, "utf8")) : {};
+  const headers = j.HttpHeaders && typeof j.HttpHeaders === "object" ? j.HttpHeaders : {};
+  j.HttpHeaders = { ...headers, "X-Sdlc-Operator": key };
+  fs.writeFileSync(configFile, JSON.stringify(j, null, 2) + "\n", { mode: 0o600 });
+  fs.chmodSync(configFile, 0o600);
+' "$key_file" "$docker_config_dir/config.json")
 
 # Stop a previous plugin on the same socket.
 if [ -S "$socket" ]; then
@@ -73,7 +103,7 @@ Before=docker.service
 [Service]
 Type=simple
 Environment=SDLC_DOCKER_AUTHZ_SOCKET=$socket
-ExecStart=$(command -v node) $dist --socket $socket
+ExecStart=$(command -v node) $dist --socket $socket --operator-key-file $key_file
 Restart=on-failure
 
 [Install]
@@ -82,7 +112,8 @@ EOF
   systemctl --user daemon-reload
   systemctl --user enable --now sdlc-docker-authz.service
 else
-  nohup node "$dist" --socket "$socket" >/tmp/sdlc-docker-authz.log 2>&1 &
+  nohup node "$dist" --socket "$socket" --operator-key-file "$key_file" \
+    >/tmp/sdlc-docker-authz.log 2>&1 &
   echo $! >/tmp/sdlc-docker-authz.pid
 fi
 

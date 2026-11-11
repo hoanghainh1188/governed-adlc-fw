@@ -1,11 +1,12 @@
 // H07: the AuthZ plugin HTTP server activates and denies a privileged create (unit, no dockerd).
+import { randomBytes } from 'node:crypto';
 import { createConnection } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { startAuthzPlugin } from '../../deploy/docker-authz/src/server.js';
+import { OPERATOR_HEADER, startAuthzPlugin } from '../../deploy/docker-authz/src/server.js';
 
 function post(
   socketPath: string,
@@ -102,6 +103,75 @@ describe('AuthZ plugin server (H07)', () => {
       expect(res.json).toEqual({ Allow: true });
     } finally {
       await plugin.close();
+    }
+  });
+
+  const privileged = Buffer.from(
+    JSON.stringify({ HostConfig: { Privileged: true, Binds: ['/var/run/docker.sock:/s'] } }),
+    'utf8',
+  ).toString('base64');
+
+  async function withKeyFile(
+    content: string | null,
+    mode: number,
+    check: (socketPath: string) => Promise<void>,
+  ): Promise<void> {
+    const dir = mkdtempSync(join(tmpdir(), 'sdlc-authz-'));
+    dirs.push(dir);
+    const socketPath = join(dir, 'sdlc-authz.sock');
+    const operatorKeyFile = join(dir, 'operator-key');
+    if (content !== null) {
+      writeFileSync(operatorKeyFile, content, { mode });
+      chmodSync(operatorKeyFile, mode);
+    }
+    const plugin = await startAuthzPlugin({ socketPath, operatorKeyFile });
+    try {
+      await check(socketPath);
+    } finally {
+      await plugin.close();
+    }
+  }
+
+  const create = (socketPath: string, headers?: Record<string, string>) =>
+    post(socketPath, '/AuthZPlugin.AuthZReq', {
+      RequestMethod: 'POST',
+      RequestUri: '/v1.51/containers/create',
+      RequestBody: privileged,
+      ...(headers === undefined ? {} : { RequestHeaders: headers }),
+    });
+
+  it('lets the operator key skip the denylist, in any header case (QUESTIONS #661)', async () => {
+    const key = randomBytes(32).toString('hex');
+    await withKeyFile(`${key}\n`, 0o600, async (socketPath) => {
+      expect((await create(socketPath, { [OPERATOR_HEADER]: key })).json).toEqual({ Allow: true });
+      expect((await create(socketPath, { 'x-sdlc-operator': key })).json).toEqual({ Allow: true });
+      // No header, another header or a wrong key: the denylist applies.
+      expect((await create(socketPath)).json).toMatchObject({ Allow: false });
+      expect((await create(socketPath, { 'User-Agent': key })).json).toMatchObject({
+        Allow: false,
+      });
+      const wrong = randomBytes(32).toString('hex');
+      expect((await create(socketPath, { [OPERATOR_HEADER]: wrong })).json).toMatchObject({
+        Allow: false,
+        Msg: 'authz.denied:privileged',
+      });
+    });
+  });
+
+  it('trusts no key when the file is missing, readable by others or too short', async () => {
+    const key = randomBytes(32).toString('hex');
+    const cases: { content: string | null; mode: number; sent: string }[] = [
+      { content: null, mode: 0o600, sent: key },
+      { content: key, mode: 0o644, sent: key },
+      { content: 'short', mode: 0o600, sent: 'short' },
+      { content: '', mode: 0o600, sent: '' },
+    ];
+    for (const { content, mode, sent } of cases) {
+      await withKeyFile(content, mode, async (socketPath) => {
+        expect((await create(socketPath, { [OPERATOR_HEADER]: sent })).json).toMatchObject({
+          Allow: false,
+        });
+      });
     }
   });
 });

@@ -456,11 +456,11 @@ ensure_service_image() {
 }
 # deliver_approle <AppRole> <Compose service> <directory in the service> <profile> [owner]
 # The owner is node:node (the platform services) unless given (backup-agent: openbao:openbao).
-# Platform services keep cap_drop ALL, so CapAdd is required to chown. runner-approle-init on the
-# AuthZ Engine (H07) has no cap_drop and must not CapAdd (AuthZ refuses it).
 deliver_approle() {
   ensure_service_image "$2" "$4"
-  deliver_script='
+  accessor="$(issue_secret_id "$1" |
+    service_compose --profile core --profile "$4" run --rm -T --no-deps --user root \
+      --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --entrypoint sh "$2" -c '
       set -e
       umask 077
       IFS= read -r role_id || role_id=""
@@ -472,19 +472,8 @@ deliver_approle() {
       printf "%s\n" "$secret_id" >"$0/secret_id"
       chown -R "$1" "$0"
       chmod 700 "$0"
-      printf "%s\n" "$accessor"'
-  if [ "$2" = 'runner-approle-init' ]; then
-    accessor="$(issue_secret_id "$1" |
-      service_compose --profile core --profile "$4" run --rm -T --no-deps --user root \
-        --entrypoint sh "$2" -c "$deliver_script" "$3" "${5:-node:node}")" ||
-      fail "could not deliver the $1 credentials (token valid? OpenBao configured with the $1 AppRole?)"
-  else
-    accessor="$(issue_secret_id "$1" |
-      service_compose --profile core --profile "$4" run --rm -T --no-deps --user root \
-        --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --entrypoint sh "$2" -c "$deliver_script" \
-        "$3" "${5:-node:node}")" ||
-      fail "could not deliver the $1 credentials (token valid? OpenBao configured with the $1 AppRole?)"
-  fi
+      printf "%s\n" "$accessor"' "$3" "${5:-node:node}")" ||
+    fail "could not deliver the $1 credentials (token valid? OpenBao configured with the $1 AppRole?)"
   # The accessor is the container's last line: anything Compose printed before it is not.
   accessor="$(printf '%s\n' "$accessor" | tail -n 1)"
   revoke_other_secret_ids "$1" "$accessor"

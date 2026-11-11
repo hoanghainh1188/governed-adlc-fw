@@ -7,4 +7,4 @@ export {
   type AuthzDecision,
   type AuthzRules,
 } from './authz-eval.js';
-export { startAuthzPlugin, type AuthzPluginOptions } from './server.js';
+export { OPERATOR_HEADER, startAuthzPlugin, type AuthzPluginOptions } from './server.js';
