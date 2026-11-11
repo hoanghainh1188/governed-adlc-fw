@@ -402,7 +402,13 @@ describe('A06: database integration job', () => {
     expect(script).toContain('SDLC_REQUIRE_DB=1');
     expect(script).toContain('-p 127.0.0.1::5432');
     expect(script).toContain('postgres/init:/docker-entrypoint-initdb.d:ro');
+    expect(script).toContain('SDLC_TEST_DB_DOCKER_HOST');
     expect(script).toMatch(/trap cleanup EXIT/);
+    const rootless = fs.readFileSync(
+      path.join(root, 'platform/deploy/scripts/test-rootless-docker.sh'),
+      'utf8',
+    );
+    expect(rootless).toContain('SDLC_TEST_DB_DOCKER_HOST');
   });
 });
 

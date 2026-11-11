@@ -7,6 +7,9 @@
 #   roles come from platform/deploy/postgres/init (for example the Compose core profile).
 # - Otherwise: starts a throw-away PostgreSQL container (same image as Compose, same init script,
 #   random passwords, port bound to 127.0.0.1) and removes it afterwards.
+# - SDLC_TEST_DB_DOCKER_HOST: Engine for that throw-away container (H07). When the default
+#   DOCKER_HOST is a runner Engine with the AuthZ denylist (refuseBinds / refusePortBindings),
+#   point this at another Engine (the machine's Docker) so postgres can still use -v and -p.
 # Each test file creates and drops its own database, so the server is never modified otherwise.
 set -eu
 
@@ -14,6 +17,15 @@ repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 deploy_dir="$repo_root/platform/deploy"
 # SDLC_TEST_DB_DIR: another test folder that needs the database (for example the runner live tests).
 tests="${SDLC_TEST_DB_DIR:-platform/tests/integration/db}"
+
+# Docker client for the throw-away DB only (sandboxes keep using DOCKER_HOST).
+db_docker() {
+  if [ -n "${SDLC_TEST_DB_DOCKER_HOST:-}" ]; then
+    DOCKER_HOST="$SDLC_TEST_DB_DOCKER_HOST" docker "$@"
+  else
+    docker "$@"
+  fi
+}
 
 run_tests() {
   cd "$repo_root"
@@ -35,10 +47,10 @@ image="$(sed -n 's/^    image: \(postgres:[^ ]*\)$/\1/p' "$deploy_dir/docker-com
 
 name="sdlc-test-db-$$"
 superuser_password="$(openssl rand -hex 24)"
-cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
+cleanup() { db_docker rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT INT TERM
 
-docker run -d --name "$name" \
+db_docker run -d --name "$name" \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD="$superuser_password" \
   -e PLATFORM_DB_PASSWORD="$(openssl rand -hex 24)" \
@@ -53,16 +65,16 @@ docker run -d --name "$name" \
 # The init scripts run on a temporary server without TCP; wait for the final server on TCP.
 timeout="${SDLC_TEST_DB_TIMEOUT:-120}"
 waited=0
-until docker exec "$name" pg_isready -q -h 127.0.0.1 -U postgres -d postgres; do
-  if [ "$(docker inspect -f '{{.State.Running}}' "$name")" != true ] || [ "$waited" -ge "$timeout" ]; then
+until db_docker exec "$name" pg_isready -q -h 127.0.0.1 -U postgres -d postgres; do
+  if [ "$(db_docker inspect -f '{{.State.Running}}' "$name")" != true ] || [ "$waited" -ge "$timeout" ]; then
     echo "test-db: PostgreSQL did not become ready" >&2
-    docker logs "$name" >&2 || true
+    db_docker logs "$name" >&2 || true
     exit 1
   fi
   sleep 1
   waited=$((waited + 1))
 done
 
-port="$(docker port "$name" 5432/tcp | head -n 1 | sed 's/.*://')"
+port="$(db_docker port "$name" 5432/tcp | head -n 1 | sed 's/.*://')"
 SDLC_TEST_DATABASE_URL="postgres://postgres:$superuser_password@127.0.0.1:$port/postgres" \
   run_tests "$@"

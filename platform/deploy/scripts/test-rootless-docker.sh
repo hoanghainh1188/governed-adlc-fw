@@ -15,6 +15,13 @@ bin="$(cd "${1:?usage: test-rootless-docker.sh <folder with dockerd and rootless
 user="$(id -un)"
 uid="$(id -u)"
 
+# Keep the pre-rootless Engine for throw-away test DBs. AuthZ on the rootless Engine refuses
+# binds and port bindings (H07 denylist); test-db.sh needs both for postgres init + host port.
+if [ -z "${SDLC_TEST_DB_DOCKER_HOST:-}" ]; then
+  SDLC_TEST_DB_DOCKER_HOST="${DOCKER_HOST:-unix:///var/run/docker.sock}"
+fi
+export SDLC_TEST_DB_DOCKER_HOST
+
 # 1. Subordinate user and group IDs for the user namespace.
 if ! grep -q "^$user:" /etc/subuid || ! grep -q "^$user:" /etc/subgid; then
   sudo usermod --add-subuids 200000-265535 --add-subgids 200000-265535 "$user"
@@ -138,5 +145,7 @@ fi
 
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "DOCKER_HOST=unix://$socket" >>"$GITHUB_ENV"
+  echo "SDLC_TEST_DB_DOCKER_HOST=$SDLC_TEST_DB_DOCKER_HOST" >>"$GITHUB_ENV"
 fi
 echo "DOCKER_HOST=unix://$socket"
+echo "SDLC_TEST_DB_DOCKER_HOST=$SDLC_TEST_DB_DOCKER_HOST"
