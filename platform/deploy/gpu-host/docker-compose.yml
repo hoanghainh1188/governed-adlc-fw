@@ -1,0 +1,194 @@
+# vLLM on a separate GPU host (task L01 PR 2, design/ADR-M71 §4.1): the GPU host's Compose file.
+# It runs on a machine with an NVIDIA GPU that holds no platform service and no platform data
+# (deploy README "Self-hosted model on a separate GPU host"). The platform server reaches it only
+# through its profile `models-remote` (service vllm-link), with mutual TLS.
+#
+#   pnpm gpu-host:env     once: gpu-host/.env (no secret in it)
+#   pnpm gpu-host:pull    once: the weights into the volume vllm-models (profile pull)
+#   pnpm gpu-host:up      vllm and the gateway
+#   pnpm gpu-host:down
+#
+# Rules (static test platform/tests/deploy/models-remote-static.test.ts, R137, R148):
+#   - vllm and vllm-pull have the same definitions as in ../docker-compose.yml; only `networks`
+#     and `profiles` differ.
+#   - vllm only on the internal network `models`, with no port. Only vllm-gateway reaches it.
+#   - vllm-gateway publishes one port, only on SDLC_GPU_LINK_ADDR (required), and requires a client
+#     certificate of the link's CA that names the link. Only four routes (gateway.conf.template).
+#   - No platform service, volume or network; no secret in this file or its env file. The TLS key
+#     comes from SDLC_GPU_LINK_TLS_DIR (outside the repository, made by gpu-link/tls.sh).
+
+name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 20s
+
+services:
+  # The same definition as vllm in ../docker-compose.yml (ADR-M71 §2.1, §2.2); here on the GPU
+  # host's own internal network.
+  vllm:
+    image: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
+    restart: unless-stopped
+    networks: [models]
+    # The image's `vllm` user (UID 2000, GID 0), never root. Its caches live in /cache (tmpfs).
+    user: '2000:0'
+    environment:
+      HOME: /cache
+      XDG_CACHE_HOME: /cache
+      VLLM_CACHE_ROOT: /cache/vllm
+      HF_HOME: /models
+      # Never download at run time: the weights come from vllm-pull (ADR-M71 §2.2).
+      HF_HUB_OFFLINE: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      VLLM_NO_USAGE_STATS: '1'
+      DO_NOT_TRACK: '1'
+    # The image's entrypoint is `vllm serve`. Each setting has a default (gpu-host/.env.example).
+    command:
+      - ${SDLC_VLLM_MODEL:-Qwen/Qwen3-Coder-30B-A3B-Instruct}
+      - --revision=${SDLC_VLLM_MODEL_REVISION:-main}
+      - --served-model-name=${SDLC_VLLM_SERVED_NAME:-qwen3-coder-30b-a3b-instruct}
+      - --host=0.0.0.0
+      - --port=8000
+      - --max-num-seqs=${SDLC_VLLM_MAX_NUM_SEQS:-4}
+      - --max-model-len=${SDLC_VLLM_MAX_MODEL_LEN:-32768}
+      - --gpu-memory-utilization=${SDLC_VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+      - --tensor-parallel-size=${SDLC_VLLM_GPU_COUNT:-1}
+      # Tool calls: the coding agents need them.
+      - --enable-auto-tool-choice
+      - --tool-call-parser=${SDLC_VLLM_TOOL_PARSER:-qwen3_coder}
+    volumes:
+      - vllm-models:/models:ro
+    tmpfs:
+      - /cache:uid=2000,gid=0,mode=0700
+    # PyTorch shares tensors between processes through /dev/shm.
+    shm_size: ${SDLC_VLLM_SHM_SIZE:-8gb}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${SDLC_VLLM_GPU_COUNT:-1}
+              capabilities: [gpu]
+    healthcheck:
+      <<: *healthcheck-defaults
+      # Loading the weights onto the GPU takes minutes.
+      start_period: 900s
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)
+
+  # The same definition as vllm-pull in ../docker-compose.yml (ADR-M71 §2.2): run by an operator
+  # only, `pnpm gpu-host:pull`. On the network `pull`, which has internet access; vllm never is.
+  vllm-pull:
+    image: vllm/vllm-openai:v0.32.0@sha256:befccf0e7e4089aa23926bb6f887a85c0d46c2a99e6de5c5ffdf5cb7957c5b34
+    profiles: [pull]
+    restart: 'no'
+    networks: [pull]
+    environment:
+      HF_HOME: /models
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      SDLC_VLLM_MODEL: ${SDLC_VLLM_MODEL:-Qwen/Qwen3-Coder-30B-A3B-Instruct}
+      SDLC_VLLM_MODEL_REVISION: ${SDLC_VLLM_MODEL_REVISION:-main}
+    entrypoint:
+      - python3
+      - -c
+      - |
+        import os
+        from huggingface_hub import snapshot_download
+        path = snapshot_download(
+            repo_id=os.environ['SDLC_VLLM_MODEL'],
+            revision=os.environ['SDLC_VLLM_MODEL_REVISION'],
+            allow_patterns=['*.json', '*.safetensors', '*.txt', '*.model', '*.tiktoken', '*.jinja'],
+        )
+        print('vllm-pull: weights in', path)
+    volumes:
+      - vllm-models:/models
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  # Copies the gateway's certificate files from SDLC_GPU_LINK_TLS_DIR (outside the repository, made
+  # by gpu-link/tls.sh) into the volume gateway-tls (owner 101, the nginx user; key mode 600). Runs
+  # at every start; `gpu-link/tls.sh reload gpu-host` runs it again and makes nginx read the files.
+  vllm-gateway-tls-init:
+    image: nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
+    restart: 'no'
+    network_mode: none
+    user: root
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        for f in ca.pem server.pem server-key.pem; do
+          test -s "/src/$$f" || { echo "vllm-gateway-tls-init: $$f missing in SDLC_GPU_LINK_TLS_DIR (gpu-link/tls.sh; runbook T11 section 5d.2)" >&2; exit 1; }
+        done
+        test ! -e /src/ca-key.pem || { echo "vllm-gateway-tls-init: SDLC_GPU_LINK_TLS_DIR holds a CA key; remove it" >&2; exit 1; }
+        cp /src/server.pem /tls/server.pem.new
+        cp /src/server-key.pem /tls/server-key.pem.new
+        cp /src/ca.pem /tls/ca.pem.new
+        chown 101:101 /tls/server.pem.new /tls/server-key.pem.new /tls/ca.pem.new
+        chmod 0644 /tls/server.pem.new /tls/ca.pem.new
+        chmod 0600 /tls/server-key.pem.new
+        chmod 0755 /tls
+        mv /tls/server.pem.new /tls/server.pem
+        mv /tls/server-key.pem.new /tls/server-key.pem
+        mv /tls/ca.pem.new /tls/ca.pem
+        echo 'vllm-gateway-tls-init: certificates in place'
+    volumes:
+      # Long syntax with create_host_path: false, so an unset folder is an error, never an empty
+      # folder Docker creates on the host.
+      - type: bind
+        source: ${SDLC_GPU_LINK_TLS_DIR:-./gpu-link-tls-dir-not-set}
+        target: /src
+        read_only: true
+        bind:
+          create_host_path: false
+      - gateway-tls:/tls
+
+  # The gateway (ADR-M71 §4.1): mutual TLS on one port, only on SDLC_GPU_LINK_ADDR, four routes to
+  # vllm. Configuration: gateway.conf.template, filled from SDLC_GPU_LINK_* only.
+  vllm-gateway:
+    image: nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
+    restart: unless-stopped
+    networks: [models, link]
+    depends_on:
+      vllm-gateway-tls-init:
+        condition: service_completed_successfully
+    environment:
+      NGINX_ENVSUBST_FILTER: ^SDLC_GPU_LINK_
+      SDLC_GPU_LINK_CLIENT_CN: ${SDLC_GPU_LINK_CLIENT_CN:-sdlc-vllm-link}
+      SDLC_GPU_LINK_READ_TIMEOUT: ${SDLC_GPU_LINK_READ_TIMEOUT:-600}
+    volumes:
+      - ./gateway.conf.template:/etc/nginx/templates/sdlc-gpu-link.conf.template:ro
+      - gateway-tls:/etc/nginx/tls:ro
+    read_only: true
+    tmpfs:
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
+      - /tmp:uid=101,gid=101,mode=0755
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - ${SDLC_GPU_LINK_ADDR:?set SDLC_GPU_LINK_ADDR in gpu-host/.env}:${SDLC_GPU_LINK_PORT:-8443}:8443
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8081/healthz']
+
+networks:
+  # vllm's network: internal, no route to the internet (ADR-M71 §2.1).
+  models:
+    name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu-models
+    internal: true
+  # The gateway's published port needs a network that is not internal; only the gateway joins it.
+  link:
+    name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu-link
+  # The weights download (vllm-pull) only.
+  pull:
+    name: ${COMPOSE_PROJECT_NAME:-sdlc}-gpu-pull
+
+volumes:
+  vllm-models:
+  gateway-tls:

@@ -77,7 +77,7 @@ describe('AC1: the profile models-local (ADR-M71 §2.1)', () => {
     expect(pull.image).toBe(vllm.image);
   });
 
-  it('runs only on the internal network models, with LiteLLM and nothing else, and no port', () => {
+  it('runs only on the internal network models, with LiteLLM (and, in L01 PR 2, the link), no port', () => {
     expect(compose.networks.models).toEqual({
       name: '${COMPOSE_PROJECT_NAME:-sdlc}-models',
       internal: true,
@@ -91,7 +91,9 @@ describe('AC1: the profile models-local (ADR-M71 §2.1)', () => {
       })
       .map(([n]) => n)
       .sort();
-    expect(members).toEqual(['litellm', 'vllm']);
+    // vllm-link (profile models-remote, ADR-M71 §4.2) takes vllm's place when vLLM runs on a
+    // separate GPU host; up.sh never starts both (models-remote-static.test.ts).
+    expect(members).toEqual(['litellm', 'vllm', 'vllm-link']);
   });
 
   it('reserves the GPU; the GPU count is also the tensor parallel size', () => {
@@ -153,7 +155,11 @@ describe('AC1: the profile models-local (ADR-M71 §2.1)', () => {
     const code = readDeployFile('docker-compose.yml');
     const defaults = [...code.matchAll(/\$\{(SDLC_VLLM_[A-Z_]+):-([^}]*)\}/g)];
     expect(defaults.length).toBeGreaterThan(0);
-    for (const [, name, value] of defaults) expect(envExample.get(name!), name).toBe(value);
+    for (const [, name, value] of defaults) {
+      // L01 PR 2: the placeholder of the unset link folder (profile models-remote) is no default.
+      if (name === 'SDLC_VLLM_LINK_TLS_DIR') expect(envExample.get(name), name).toBe('');
+      else expect(envExample.get(name!), name).toBe(value);
+    }
   });
 
   it('the pull job writes the volume from the internet once, weights and tokenizer only', () => {
