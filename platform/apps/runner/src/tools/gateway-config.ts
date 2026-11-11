@@ -3,7 +3,7 @@
 // from a tenant: tool names and argument rules come from the permission catalogue of
 // `@sdlc/contracts` (QUESTIONS #530).
 //
-// agentgateway 1.6, still so in 1.7 (ADR-M87 §3):
+// agentgateway 1.7 (ADR-M87 §3; the same behaviour as the 1.6 of the spike, live tests pass):
 // - one target per tool grant, named by the tool key; with more than one target the agent sees each
 //   tool as `<tool_key>_<tool name>`, with one target by its own name; the gateway lists only the
 //   allowed ones;

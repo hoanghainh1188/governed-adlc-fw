@@ -180,12 +180,23 @@ describe('workflow hardening (all workflows)', () => {
   });
 
   it('downloaded tools are checked against a pinned SHA-256', () => {
-    for (const tool of ['GITLEAKS', 'TRIVY', 'ACTIONLINT']) {
+    for (const tool of ['GITLEAKS', 'TRIVY', 'ACTIONLINT', 'AGE']) {
       expect(ciEnv[`${tool}_SHA256`]).toMatch(/^[0-9a-f]{64}$/);
     }
     const all = Object.keys(ci.jobs).map(runText).join('\n');
     expect(all.match(/curl -fsSLo/g)?.length).toBe(all.match(/sha256sum -c -/g)?.length);
     expect(ciEnv.SEMGREP_IMAGE).toMatch(/@sha256:[0-9a-f]{64}$/);
+  });
+
+  it('age comes from its pinned release binary, never from apt (the Ubuntu mirror)', () => {
+    expect(ciEnv.AGE_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    for (const name of ['compose', 'upgrade']) {
+      const text = runText(name);
+      expect(text, name).not.toMatch(/apt-get install[^\n]*\bage\b/);
+      expect(text, name).toContain('releases/download/v${AGE_VERSION}/$archive');
+      expect(text, name).toContain('$AGE_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -');
+      expect(text, name).toContain('echo "$RUNNER_TEMP/age" >> "$GITHUB_PATH"');
+    }
   });
 
   it.each(workflows)('$file sets timeout-minutes on every job', ({ wf }) => {
@@ -273,9 +284,15 @@ describe('AC2: integration job runs the Compose core profile', () => {
     expect(dashboard).toBeGreaterThan(0);
     expect(steps[dashboard]).toMatchObject({ if: "needs.scan.outputs.run_dashboard == 'true'" });
     expect(steps[dashboard - 1]).toMatchObject({
+      name: 'Install Chromium for Playwright',
       if: "needs.scan.outputs.run_dashboard == 'true'",
-      run: 'pnpm exec playwright install --with-deps chromium',
     });
+    // The browser without apt; apt (with retries) only when the runner image lacks a library.
+    const install = steps[dashboard - 1]!.run!;
+    expect(install).toMatch(/^pnpm exec playwright install chromium\n/);
+    expect(install).not.toContain('--with-deps');
+    expect(install).toContain('Acquire::Retries');
+    expect(install).toMatch(/if \[ -n "\$missing" \]; then[^]*playwright install-deps chromium/);
     // Every sandbox step needs its own flag, so a dashboard-only pull request skips them.
     for (const step of steps) {
       if (/sandbox-image|test:agent|test:pilot|trivy|build\.sh/.test(step.run ?? '')) {

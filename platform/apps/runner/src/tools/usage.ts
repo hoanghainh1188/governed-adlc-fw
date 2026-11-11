@@ -4,7 +4,7 @@
 // these counts are better evidence than the agent's own events. Only codes and counts leave this
 // module: never a query, an argument, an answer or a key (the gateway logs none of them).
 //
-// agentgateway 1.6 and 1.7 write one line per request (scope `request`):
+// agentgateway 1.7 (as 1.6) writes one line per request (scope `request`):
 // - an allowed call: `mcp.method.name` `tools/call`, `mcp.target` (the tool key), a status < 400;
 // - a call refused by tool name: the same with status 400 and an `error`;
 // - a refused argument (`reason` `Authorization`), a call over the cap (`RateLimit`) and a missing
