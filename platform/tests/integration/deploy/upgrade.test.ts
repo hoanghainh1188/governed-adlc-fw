@@ -45,6 +45,7 @@ const DOWN_PROFILES = [
   'access',
   'knowledge',
   'models-local',
+  'models-remote',
 ] as const;
 /** The platform's own images of a release (`images.lock`). */
 const PLATFORM_IMAGES = ['API', 'WORKER', 'RUNNER', 'OTEL_COLLECTOR'] as const;

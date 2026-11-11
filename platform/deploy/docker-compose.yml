@@ -22,6 +22,9 @@
 #   models-local   A self-hosted model service (L01, design/ADR-M71): vLLM on the server's GPU,
 #                  reached by LiteLLM only. Optional, off by default. Weights first
 #                  (pnpm models-local:pull, profile models-local-pull): pnpm compose:models-local
+#   models-remote  vLLM on a separate GPU host (L01 PR 2, design/ADR-M71 §4): an nginx link on
+#                  `models` named vllm, mutual TLS to the GPU host (gpu-host/docker-compose.yml).
+#                  Never with models-local: pnpm compose:models-remote
 #
 # Usage (from the repo root; see platform/deploy/README.md):
 #   platform/deploy/scripts/init-env.sh           # once: creates platform/deploy/.env (mode 600)
@@ -71,6 +74,10 @@ networks:
   models:
     name: ${COMPOSE_PROJECT_NAME:-sdlc}-models
     internal: true
+  # vLLM on a separate GPU host (L01 PR 2, design/ADR-M71 §4.2): only vllm-link joins it, to reach
+  # the GPU host's gateway; `models` stays internal.
+  models-link:
+    name: ${COMPOSE_PROJECT_NAME:-sdlc}-models-link
 
 volumes:
   postgres-data:
@@ -133,6 +140,8 @@ volumes:
   # The self-hosted model's weights (L01, design/ADR-M71 §2.2): written once by vllm-pull, mounted
   # read-only by vllm.
   vllm-models:
+  # The link's client certificate (L01 PR 2, design/ADR-M71 §4.3): written by vllm-link-tls-init.
+  vllm-link-tls:
 
 services:
   # ---------------------------------------------------------------- core ----
@@ -448,6 +457,83 @@ services:
       - vllm-models:/models
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+
+  # ---------------------------------------------------------- models-remote ----
+  # vLLM on a separate GPU host (L01 PR 2, design/ADR-M71 §4.2). Optional, off by default. Copies
+  # the link's client certificate files from SDLC_VLLM_LINK_TLS_DIR (outside the repository, made
+  # by gpu-link/tls.sh) into the volume vllm-link-tls (owner 101, the nginx user; key mode 600).
+  # Runs at every start; `gpu-link/tls.sh reload platform` runs it again.
+  vllm-link-tls-init:
+    image: nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
+    profiles: [models-remote]
+    restart: 'no'
+    network_mode: none
+    user: root
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        for f in ca.pem client.pem client-key.pem; do
+          test -s "/src/$$f" || { echo "vllm-link-tls-init: $$f missing in SDLC_VLLM_LINK_TLS_DIR (gpu-link/tls.sh; runbook T11 section 5d.2)" >&2; exit 1; }
+        done
+        test ! -e /src/ca-key.pem || { echo "vllm-link-tls-init: SDLC_VLLM_LINK_TLS_DIR holds a CA key; remove it" >&2; exit 1; }
+        cp /src/client.pem /tls/client.pem.new
+        cp /src/client-key.pem /tls/client-key.pem.new
+        cp /src/ca.pem /tls/ca.pem.new
+        chown 101:101 /tls/client.pem.new /tls/client-key.pem.new /tls/ca.pem.new
+        chmod 0644 /tls/client.pem.new /tls/ca.pem.new
+        chmod 0600 /tls/client-key.pem.new
+        chmod 0755 /tls
+        mv /tls/client.pem.new /tls/client.pem
+        mv /tls/client-key.pem.new /tls/client-key.pem
+        mv /tls/ca.pem.new /tls/ca.pem
+        echo 'vllm-link-tls-init: certificates in place'
+    volumes:
+      # Long syntax with create_host_path: false, so an unset folder is an error, never an empty
+      # folder Docker creates on the host. up.sh checks the setting before it starts the profile.
+      - type: bind
+        source: ${SDLC_VLLM_LINK_TLS_DIR:-./gpu-link/tls-dir-not-set}
+        target: /src
+        read_only: true
+        bind:
+          create_host_path: false
+      - vllm-link-tls:/tls
+
+  # The link (ADR-M71 §4.2): on `models` under the name `vllm`, so LiteLLM's entry
+  # (http://vllm:8000/v1) does not change; on its own network `models-link` to reach the GPU host.
+  # No host port. Mutual TLS to the GPU host's gateway, four routes (gpu-link/link.conf.template).
+  # Never together with models-local (up.sh refuses it: two services named vllm).
+  vllm-link:
+    image: nginxinc/nginx-unprivileged:1.31.7-alpine@sha256:b5047b9b76845eac124358373c6852377c52e4b05834a47647e955dd91cb8f1e
+    profiles: [models-remote]
+    restart: unless-stopped
+    networks:
+      models:
+        aliases: [vllm]
+      models-link: {}
+    depends_on:
+      vllm-link-tls-init:
+        condition: service_completed_successfully
+    # The GPU host's name, as its certificate holds it, at its address: no DNS needed.
+    extra_hosts:
+      - ${SDLC_GPU_HOST_NAME:-gpu-host-name-not-set}:${SDLC_GPU_HOST_ADDR:-127.0.0.1}
+    environment:
+      NGINX_ENVSUBST_FILTER: ^SDLC_GPU_
+      SDLC_GPU_HOST_NAME: ${SDLC_GPU_HOST_NAME:-gpu-host-name-not-set}
+      SDLC_GPU_LINK_PORT: ${SDLC_GPU_LINK_PORT:-8443}
+      SDLC_GPU_LINK_READ_TIMEOUT: ${SDLC_GPU_LINK_READ_TIMEOUT:-600}
+    volumes:
+      - ./gpu-link/link.conf.template:/etc/nginx/templates/sdlc-vllm-link.conf.template:ro
+      - vllm-link-tls:/etc/nginx/tls:ro
+    read_only: true
+    tmpfs:
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
+      - /tmp:uid=101,gid=101,mode=0755
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      <<: *healthcheck-defaults
+      # nginx's own status page on 127.0.0.1:8081 inside the container; never published.
+      test: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8081/healthz']
 
   seaweedfs:
     image: chrislusf/seaweedfs:4.50

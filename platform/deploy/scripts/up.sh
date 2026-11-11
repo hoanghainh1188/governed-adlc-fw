@@ -6,6 +6,8 @@
 #        up.sh core observability
 #        up.sh core models platform access   (team access, V09: README "Team access")
 #        up.sh core models models-local      (self-hosted model, L01: README "Self-hosted model")
+#        up.sh core models models-remote     (vLLM on a separate GPU host, L01 PR 2: README
+#                                            "Self-hosted model on a separate GPU host")
 #        up.sh core models platform runner-link (the runner on its own Engine, O01: README "The
 #                                            runner on its own Docker Engine")
 #
@@ -20,13 +22,38 @@
 set -eu
 
 # One-shot jobs (restart: "no"). A static test keeps this list in sync with docker-compose.yml.
-JOBS="backup-agent openbao-tls-init temporal-schema temporal-namespace seaweedfs-init access-tls-init vllm-pull"
+JOBS="backup-agent openbao-tls-init temporal-schema temporal-namespace seaweedfs-init access-tls-init vllm-pull vllm-link-tls-init"
 
 [ "$#" -gt 0 ] || { echo "usage: $0 <profile>..." >&2; exit 2; }
 
 deploy_dir="$(cd "$(dirname "$0")/.." && pwd)"
 env_file="${SDLC_ENV_FILE:-$deploy_dir/.env}"
 [ -f "$env_file" ] || { echo "up: $env_file not found; run scripts/init-env.sh first" >&2; exit 1; }
+
+# vLLM on a separate GPU host (L01 PR 2, design/ADR-M71 §4.2): models-remote and models-local both
+# put a service named vllm on `models`, so never together; models-remote needs its settings. A
+# link certificate that ends within 30 days only warns.
+case " $* " in
+  *" models-remote "*)
+    case " $* " in
+      *" models-local "*)
+        echo "up: the profiles models-local and models-remote cannot run together: vLLM is either on this server or on the GPU host (README \"Self-hosted model on a separate GPU host\")" >&2
+        exit 1
+        ;;
+    esac
+    for key in SDLC_GPU_HOST_NAME SDLC_GPU_HOST_ADDR SDLC_VLLM_LINK_TLS_DIR; do
+      if [ -z "$(sed -n "s/^$key=//p" "$env_file" | tail -n 1)" ]; then
+        echo "up: $key is not set in $env_file; the profile models-remote needs it (README \"Self-hosted model on a separate GPU host\")" >&2
+        exit 1
+      fi
+    done
+    link_tls="$(sed -n 's/^SDLC_VLLM_LINK_TLS_DIR=//p' "$env_file" | tail -n 1)"
+    if ! "$deploy_dir/gpu-link/tls.sh" check "$link_tls" >/dev/null 2>&1; then
+      "$deploy_dir/gpu-link/tls.sh" check "$link_tls" >&2 || true
+      echo "up: warning: the link's client certificate is missing, invalid or ends soon (runbook T11 section 5d.2)" >&2
+    fi
+    ;;
+esac
 
 # Tracing (A08, design/ADR-M35 §2.4): with the profile observability, the platform processes and
 # LiteLLM send traces to the collector, unless SDLC_OTEL_ENDPOINT is set in the environment or the

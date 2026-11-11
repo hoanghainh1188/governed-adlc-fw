@@ -12,6 +12,7 @@ This folder runs the infrastructure that the platform reuses, on one server, wit
 | `platform` | `sdlc-api`: the REST API and the dashboard ([ADR-M26](../../design/ADR-M26-api-app.md)); `sdlc-worker`: the GitHub poller, the intent workflow, the escalation clocks and the retention loop ([ADR-M27](../../design/ADR-M27-github-poller.md), [ADR-M30](../../design/ADR-M30-intent-workflow.md)). Both built from this repository | With `core` (`pnpm compose:platform`). Needs OpenBao unsealed and configured, `pnpm openbao:bootstrap api-credentials` and `worker-credentials` first, and the GitHub App key stored (runbook T11 §5b, §5e, §5f) |
 | `knowledge` | `knowledge-db`: a PostgreSQL with pgvector of its own for the index of project documents, the first register tool ([ADR-M89](../../design/ADR-M89-project-docs-index.md)). Never the platform's database; no host port | Optional (`pnpm compose:knowledge`). Needed only by plans with a `read_documents` tool. Then `pnpm openbao:bootstrap worker-knowledge-credentials` (runbook T11 §5o) and restart `sdlc-worker` |
 | `models-local` | `vllm`: a self-hosted model service (vLLM) on the server's GPU, reached only by LiteLLM ([ADR-M71](../../design/ADR-M71-self-hosted-model-vllm.md)). One-shot `vllm-pull` (profile `models-local-pull`) downloads the weights once | Optional, **only on a server with an NVIDIA GPU** (`pnpm compose:models-local`). Needs the profile `models`, the weights (`pnpm models-local:pull`) and the provider entry `vllm` (runbook T11 §5d.1). See [Self-hosted model](#self-hosted-model-operator) |
+| `models-remote` | `vllm-link`: an nginx link that LiteLLM calls as `vllm`, to vLLM on a **separate GPU host** with mutual TLS ([ADR-M71 §4](../../design/ADR-M71-self-hosted-model-vllm.md)). One-shot `vllm-link-tls-init` copies its certificate | Optional, only when vLLM runs on another machine (`pnpm compose:models-remote`). Never with `models-local`. Needs the GPU host (`gpu-host/docker-compose.yml`), the certificates (`pnpm gpu-link:tls`) and the provider entry `vllm`. See [Self-hosted model on a separate GPU host](#self-hosted-model-on-a-separate-gpu-host-operator) |
 | `sandbox` | `sdlc-runner` (built from this repository; runs the agent sandboxes), `docker-socket-proxy` (the runner's only way to Docker), `npm-proxy` (Verdaccio: npm packages for the sandboxes), `registry` (sandbox images, 127.0.0.1 only) ([ADR-M25](../../design/ADR-M25-runner-sandbox.md)) | With `core` (`pnpm compose:sandbox`). Needs OpenBao unsealed and configured, `SDLC_DOCKER_GID` right and `pnpm openbao:bootstrap runner-credentials` first (runbook T11 §5g) |
 | `runner-link` | `registry` only, with the overlay `docker-compose.runner-link.yml` that publishes the runner's link ports on `SDLC_RUNNER_LINK_ADDR` (O01, [ADR-M91](../../design/ADR-M91-runner-own-engine.md)) | On the server, instead of `sandbox`, when the runner runs on its own Engine (`pnpm compose:runner-link`). See [The runner on its own Docker Engine](#the-runner-on-its-own-docker-engine-operator) |
 
@@ -368,6 +369,7 @@ pnpm compose:platform # core + platform: the API (sdlc-api) and the worker (sdlc
 pnpm compose:sandbox # core + sandbox: the runner, socket proxy, npm proxy, image registry (runbook T11 §5g)
 pnpm compose:knowledge # core + knowledge: knowledge-db, the index of project documents (runbook T11 §5o)
 pnpm compose:models-local # core + models + models-local: vLLM on the server's GPU (Self-hosted model below)
+pnpm compose:models-remote # core + models + models-remote: vLLM on a separate GPU host (below)
 pnpm compose:down    # stops everything; data volumes are kept
 ```
 
@@ -523,8 +525,9 @@ All published ports bind to `127.0.0.1` by default (`SDLC_BIND_ADDR`), except th
 | Team access proxy (`sdlc-access`) | 8443 | `access` profile only. **The only port on another address**: `SDLC_ACCESS_BIND_ADDR`, the server's LAN address ([Team access](#team-access-operator)); without it the profile does not start |
 | Sandbox image registry | 5050 | `sandbox` profile only. **Always 127.0.0.1** (not `SDLC_BIND_ADDR`): it has no authentication. Not 5000: macOS uses it |
 | The runner's link | 5432, 8200, 7233, 8333, 4000, 5433, 5050 | Only with `SDLC_RUNNER_LINK_ADDR` (profile `runner-link`, overlay `docker-compose.runner-link.yml`): PostgreSQL, OpenBao (TLS), Temporal, SeaweedFS S3, LiteLLM, knowledge-db and the registry, **on the link address only**, for a runner on its own Engine ([The runner on its own Docker Engine](#the-runner-on-its-own-docker-engine-operator)) |
+| The GPU host's gateway | 8443 | **On the GPU host**, not the platform server (`gpu-host/docker-compose.yml`): `SDLC_GPU_LINK_PORT`, **only on `SDLC_GPU_LINK_ADDR`**, mutual TLS. The platform's `vllm-link` publishes no port ([Self-hosted model on a separate GPU host](#self-hosted-model-on-a-separate-gpu-host-operator)) |
 
-Valkey, ClickHouse, the Langfuse worker, the OpenTelemetry Collector, **OpenBao**, the runner, the socket proxy, the npm proxy and `vllm` publish no port.
+Valkey, ClickHouse, the Langfuse worker, the OpenTelemetry Collector, **OpenBao**, the runner, the socket proxy, the npm proxy, `vllm` and `vllm-link` publish no port.
 
 OpenBao is reachable only on the Compose network (`design/QUESTIONS.md` #27, task A11), except on the link address of a runner on its own Engine (ADR-M91 §2.3). The platform processes run in Compose and use `https://openbao:8200`, verified with the CA of the volume `openbao-ca` (TLS since A10, [T11 §3c](../../handbook/03-templates/T11-openbao-runbook.md#3c-tls-on-port-8200-the-ca-the-certificate-renewal)). Key holders and admins work inside the container with `pnpm openbao:bootstrap …` or `docker compose … exec openbao …` (runbook T11). There is no host port for `curl`.
 
@@ -551,6 +554,8 @@ What leaves the server, and what stays on it. The data classes and which models 
 Comes in: with the profile `access` only, HTTPS from the company LAN to the proxy's port (the API and the dashboard; [Team access](#team-access-operator)). Nothing else accepts a connection from another machine.
 
 With the profile `models-local`, prompts to the self-hosted model never leave the server: `vllm` is on the internal network `models` with LiteLLM only, with no route to the internet. Only `vllm-pull` goes out (to Hugging Face), once, when an operator runs it, and sends nothing but the download request.
+
+With the profile `models-remote`, prompts go to the GPU host and back, and nowhere else: `vllm-link` calls only the GPU host's gateway, with mutual TLS (both machines show a certificate of the link's CA). On the GPU host, `vllm` is on an internal network with the gateway only. Keep the GPU host inside the company network, and allow its port only from the platform server.
 
 Sandboxes reach only LiteLLM and the package proxy; never GitHub, OpenBao or the internet. The platform keeps no working copy of the code: clones are removed when a run ends.
 
@@ -711,7 +716,7 @@ Design: [ADR-M85](../../design/ADR-M85-project-task-sets.md); usage: handbook Ch
 
 ## Self-hosted model (operator)
 
-The profile `models-local` runs a self-hosted model with vLLM on the server's own GPU ([ADR-M71](../../design/ADR-M71-self-hosted-model-vllm.md), task L01). A `client_restricted` intent may use only a self-hosted model ([D-07 §4](../../design/D-07-model-and-token-management.md)). The profile is off by default; a server without a GPU never starts it. A GPU on another machine comes later (L01 PR 2).
+The profile `models-local` runs a self-hosted model with vLLM on the server's own GPU ([ADR-M71](../../design/ADR-M71-self-hosted-model-vllm.md), task L01). A `client_restricted` intent may use only a self-hosted model ([D-07 §4](../../design/D-07-model-and-token-management.md)). The profile is off by default; a server without a GPU never starts it. When the GPU is in another machine, see [Self-hosted model on a separate GPU host](#self-hosted-model-on-a-separate-gpu-host-operator).
 
 ### What it does
 
@@ -740,6 +745,52 @@ The profile `models-local` runs a self-hosted model with vLLM on the server's ow
 
 Change `SDLC_VLLM_MODEL`, `SDLC_VLLM_MODEL_REVISION` and `SDLC_VLLM_SERVED_NAME`, run `pnpm models-local:pull` again, update the field `model` of the provider entry (T11 §5d.1), and restart `vllm`, `litellm-agent` and `litellm`. A new served name is a new `model_ref`: agents need a new version in the register. Old weights stay in the volume until you remove it (`docker volume rm <project>_vllm-models`, then pull again).
 
+## Self-hosted model on a separate GPU host (operator)
+
+The GPU can be in a separate machine, the **GPU host** ([ADR-M71 §4](../../design/ADR-M71-self-hosted-model-vllm.md), task L01 PR 2). The platform server then needs no GPU. The model, its settings and the LiteLLM entry are the same as in [Self-hosted model](#self-hosted-model-operator); only where vLLM runs changes.
+
+### What it does
+
+- **On the GPU host** (`platform/deploy/gpu-host/docker-compose.yml`, its own Compose project `sdlc-gpu`): `vllm` and `vllm-pull`, the same as on the platform server, and `vllm-gateway` (nginx). `vllm` is on an internal network with the gateway only, with no port and no route to the internet.
+- The gateway publishes one port (`SDLC_GPU_LINK_PORT`, 8443) only on `SDLC_GPU_LINK_ADDR`. It accepts a connection only with a client certificate of the link's CA whose name is `SDLC_GPU_LINK_CLIENT_CN` (`sdlc-vllm-link`), and forwards only `/v1/chat/completions`, `/v1/completions`, `/v1/models` and `/health`.
+- **On the platform server** (profile `models-remote`): `vllm-link` (nginx) is on the network `models` under the name `vllm`, so LiteLLM calls `http://vllm:8000/v1` as before. It calls the gateway with its client certificate and checks the GPU host's certificate and name. It has no host port.
+- Neither side logs a header, a body or a query string. The concurrency limit is the same value on both machines.
+
+### Set it up
+
+1. **The GPU host:** Linux with Docker, an NVIDIA GPU, its driver and the NVIDIA Container Toolkit (as in [Self-hosted model](#self-hosted-model-operator) step 1), a clone of this repository at the same release, and a DNS name (for example `gpu1.example.internal`). The platform server must reach it on one TCP port; in the firewall, allow that port **only from the platform server**.
+2. **Certificates** (on the machine that holds the internal CA, see runbook T11 §5d.2):
+   ```bash
+   pnpm gpu-link:tls issue <ca-folder> gpu1.example.internal /secure/gpu-link
+   ```
+   This writes `/secure/gpu-link/gpu-host/` (for the GPU host) and `/secure/gpu-link/platform/` (for the platform server). Copy each folder to its machine, outside the repository; the keys keep mode 600. With certificates of the company CA, put the same three files in each folder and check them with `pnpm gpu-link:tls check <folder> [gpu-host-name]`.
+3. **On the GPU host:**
+   ```bash
+   pnpm gpu-host:env      # once: platform/deploy/gpu-host/.env
+   ```
+   Set `SDLC_GPU_LINK_ADDR` (the GPU host's address the platform server reaches), `SDLC_GPU_LINK_TLS_DIR` (the `gpu-host/` folder of step 2) and the model settings (`SDLC_VLLM_*`; `SDLC_VLLM_SERVED_NAME` and `SDLC_VLLM_MAX_NUM_SEQS` must equal the platform's). Then:
+   ```bash
+   pnpm gpu-host:pull     # once: the weights (from the internet; it can take an hour)
+   pnpm gpu-host:up       # vllm and the gateway; vllm is healthy when the model is on the GPU
+   ```
+4. **On the platform server**, in `platform/deploy/.env`: `SDLC_GPU_HOST_NAME` (the name of step 2), `SDLC_GPU_HOST_ADDR` (its address), `SDLC_GPU_LINK_PORT` (as on the GPU host) and `SDLC_VLLM_LINK_TLS_DIR` (the `platform/` folder of step 2). Store the provider entry `vllm` in OpenBao as in [Self-hosted model](#self-hosted-model-operator) step 4 (`api_base=http://vllm:8000/v1`). Then:
+   ```bash
+   pnpm compose:models-remote
+   ```
+   `up.sh` refuses `models-local` and `models-remote` together, and refuses `models-remote` without these settings. Restart `litellm-agent` and `litellm` if they were already running.
+5. **Check:** `docker compose -f platform/deploy/docker-compose.yml --env-file platform/deploy/.env --profile core --profile models --profile models-remote ps vllm-link litellm` shows both healthy, and `docker compose … logs vllm-link` shows `"status":200` for `/v1/models` after LiteLLM starts. Then register an agent as in step 6 of [Self-hosted model](#self-hosted-model-operator).
+
+### Renew the certificates
+
+`pnpm gpu-link:tls check <folder>` and `pnpm gpu-host:up` / `pnpm compose:models-remote` warn 30 days before a certificate ends. Issue new ones into a new folder (step 2), copy them over the old files on each machine, then on each machine:
+
+```bash
+pnpm gpu-link:tls reload gpu-host   # on the GPU host
+pnpm gpu-link:tls reload platform   # on the platform server
+```
+
+No restart is needed. When the CA itself changes, do both sides at the same time: until both have the new CA, the link refuses the calls (the agents' calls fail, nothing is sent in clear).
+
 ## Shared Valkey: memory limit
 
 Langfuse and LiteLLM share one Valkey with `maxmemory-policy noeviction`, which Langfuse requires. The limit is `VALKEY_MAXMEMORY` in `.env` (default `256mb`). **When Valkey is full, writes fail for both Langfuse and LiteLLM.** Watch memory use:
@@ -759,6 +810,7 @@ Measured with `docker stats` on a development machine (Docker Desktop, 8 GiB VM)
 
 - Disk for images: about 4.5 GB for `core` and about 4.7 GB more for `observability`. Data volumes start small and grow with use.
 - Add room for the platform processes (api, worker, runner) and 1–2 agent sandboxes (D-03 section 10.1).
+- Profile `models-remote`: `vllm-link` is one nginx container (under 20 MiB). The GPU host needs what the profile `models-local` needs below.
 - Profile `models-local`: the GPU memory comes from the model (a 30B-class model in 16-bit needs about 60 GB of GPU memory plus room for the context; task L03 gives the sizing). On the host: RAM about the size of the weights while loading, `SDLC_VLLM_SHM_SIZE` (8 GB) of shared memory, and disk for the weights in the volume `vllm-models` (about 60 GB for the default model) plus about 10 GB for the image.
 - Profile `sandbox` (estimates, A10 measures): socket proxy about 10 MiB, runner about 100–150 MiB, Verdaccio about 100–200 MiB, registry about 20 MiB, so about 0.3–0.4 GiB in total, plus **up to 2 GiB per sandbox** (`SDLC_RUNNER_SANDBOX_MEMORY_MB`, 1 sandbox by default). Disk: the `node24` image is about 0.85 GB compressed and about 3 GB unpacked; the npm cache grows with use (1–5 GB typical); clones up to `SDLC_RUNNER_WORKSPACE_MAX_MB` per running sandbox.
 

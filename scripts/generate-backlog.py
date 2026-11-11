@@ -766,12 +766,12 @@ t("W01","DEV","Rules as checks: a rules register, hooks, lint and tests, a short
   "PR 4: rules that apply to one folder move to a nested CLAUDE.md in that folder; the root CLAUDE.md keeps the hard rules and a pointer to the register; a test checks that every rule ID of the register is found in exactly one CLAUDE.md or marked as enforced by a check"],
  "QUESTIONS #479 (2026-10-20): the root CLAUDE.md has about 190 rules in 131 bullets and is read by every session; about half have a mechanical check. ADR-M84 records the approach. Four PRs, each in its own session")
 t("L01","Models","A self-hosted model service (vLLM) on an optional GPU host","M",["L02"],"D-07 §3, §4, NFR-01",
- "platform/deploy (profile models-local), platform/deploy/litellm/config.ctmpl, design/D-03 §10.1, design/D-07, design/ADR-M71, handbook T11",
+ "platform/deploy (profiles models-local, models-remote; gpu-host, gpu-link), platform/deploy/litellm/config.ctmpl, design/D-03 §10.1, design/D-07, design/ADR-M71, handbook T11",
  ["A Compose profile `models-local` with vLLM pinned (Apache-2.0), a health check and a limit of concurrent requests, on the server or a separate GPU host",
   "A LiteLLM entry `provider_type: self_hosted` with an internal cost per token above 0 (budgets keep working)",
   "D-03 §10.1 and D-07 changed and ADR-M71 written first (today: \"API models only, no GPU\"); runbook T11 and the deploy README",
   "A `client_restricted` project runs an agent end to end with the self-hosted model (stub or real)"],
- "QUESTIONS #362 (Harry, 2026-10-10): milestone Models after EXT; earlier when the company has a GPU. QUESTIONS #546 (Harry, 2026-10-24): two PRs; PR 1 the GPU in the platform server (internal network `models`, no port; AC1 for the server, AC2–AC4); PR 2 a separate GPU host with mutual TLS through a pinned nginx link (vLLM's `--api-key` leaves `/invocations` open; LiteLLM cannot present a client certificate). QUESTIONS #547–#550: ADR-M71")
+ "QUESTIONS #362 (Harry, 2026-10-10): milestone Models after EXT; earlier when the company has a GPU. QUESTIONS #546 (Harry, 2026-10-24): two PRs; PR 1 the GPU in the platform server (internal network `models`, no port; AC1 for the server, AC2–AC4); PR 2 a separate GPU host with mutual TLS through a pinned nginx link (vLLM's `--api-key` leaves `/invocations` open; LiteLLM cannot present a client certificate). QUESTIONS #547–#550: ADR-M71. QUESTIONS #666–#669 (Harry, 2026-11-11, PR 2 plan): mutual TLS ended by nginx on both sides (a gateway on the GPU host instead of vLLM's own TLS), the profile `models-remote`, `gpu-link/tls.sh`, the live test `pnpm test:vllm-link`; ADR-M71 1.1")
 t("L03","Models","GPU sizing note for leadership","S",["L02"],"D-07",
  "design/ (a short note)",
  ["From the L02 numbers: which model size meets the quality bar, the GPU memory and count it needs, buy or rent (with the legal question of rented hardware for `client_restricted` data), the cost per month"],
