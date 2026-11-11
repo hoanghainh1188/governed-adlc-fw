@@ -359,11 +359,11 @@ tools:
     memory_mb: 512
     cpu_millis: 1000
     pids: 256
-  # ADR-M87: the run's MCP gateway, agentgateway 1.6.0 (Apache-2.0), pinned by the digest of its
+  # ADR-M87: the run's MCP gateway, agentgateway 1.7.0 (Apache-2.0), pinned by the digest of its
   # multi-platform index (R038). CI scans it with the sandbox images (CRITICAL blocks). Null: no
   # register tool runs (`tool_unavailable`).
   gateway:
-    image: cr.agentgateway.dev/agentgateway:v1.6.0@sha256:9d3e6044ddcdc0878b1787f77bd401252b95e22684203fb5e874c4c42d2ed90c
+    image: cr.agentgateway.dev/agentgateway:v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b
   # X04 PR 3b, ADR-M69 §2.4, QUESTIONS #541: a tool that calls a model (`model_ref`, for example
   # the embedding model of `read_documents`) gets its own virtual key per run, capped at this
   # amount and never above what the run's own budget leaves. Its spend counts for the run (R027).

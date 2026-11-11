@@ -25,7 +25,7 @@ import { callRulesSha256 } from '../../packages/core/src/tools/check.js';
 import { RUN_ID, TENANT_ID } from './helpers';
 
 const IMAGE = `ghcr.io/example/project-docs@sha256:${'d'.repeat(64)}`;
-const GATEWAY = `cr.agentgateway.dev/agentgateway:v1.6.0@sha256:${'e'.repeat(64)}`;
+const GATEWAY = `cr.agentgateway.dev/agentgateway:v1.7.0@sha256:${'e'.repeat(64)}`;
 const KEY = 'per-run-key-value';
 const KEY_SHA = crypto.createHash('sha256').update(KEY).digest('hex');
 const names = toolObjectNames(RUN_ID);
@@ -81,6 +81,8 @@ describe('the gateway configuration, generated from the contract (ADR-M87 §5)',
       keys: [{ keyHash: `sha256:${KEY_SHA}` }],
     });
     expect(parsed.config).toMatchObject({ adminAddr: 'off', statsAddr: 'off' });
+    // agentgateway 1.7 writes a session key it makes into the config file unless this is set.
+    expect(parsed.config.session).toEqual({ key: 'disabled' });
     expect(parsed.binds[0]!.port).toBe(3000);
   });
 

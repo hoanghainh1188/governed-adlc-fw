@@ -28,7 +28,7 @@ import { callRulesSha256 } from '../../packages/core/src/tools/check.js';
 import { RUN_ID, TENANT_ID } from './helpers';
 
 const IMAGE = `ghcr.io/example/project-docs@sha256:${'d'.repeat(64)}`;
-const GATEWAY = `cr.agentgateway.dev/agentgateway:v1.6.0@sha256:${'e'.repeat(64)}`;
+const GATEWAY = `cr.agentgateway.dev/agentgateway:v1.7.0@sha256:${'e'.repeat(64)}`;
 const names = toolObjectNames(RUN_ID);
 const labels = runLabels('sdlc', RUN_ID, TENANT_ID);
 const limits = { memoryBytes: 256 * 1024 * 1024, nanoCpus: 1_000_000_000, pids: 128 };
