@@ -469,18 +469,19 @@ The runner (service `sdlc-runner`, task C04) creates one hardened sandbox per ag
 
 ### 5g-1. Docker authorization plugin (H07, ADR-M105)
 
-The socket proxy limits method and path, not the body of `containers/create` or `networks/create`. On the **runner's own Engine**, install the AuthZ plugin so a compromised runner still cannot create a privileged container, host namespace, device, capability, bind mount or non-internal network.
+The socket proxy limits method and path, not the body of `containers/create` or `networks/create`. On the runner host, install the AuthZ plugin on the **sandbox Engine** only (the Engine that creates sandboxes, tools and the gateway), so a compromised runner still cannot create a privileged container, host namespace, device, capability, host-path bind mount or non-internal network (ADR-M91 §2.2, QUESTIONS #661). The runner-host Compose project (`sdlc-runner`, socket proxy, relays, registry, credential jobs) runs on a **second Engine without AuthZ**; the socket proxy mounts the sandbox Engine's socket (`SDLC_DOCKER_SOCKET`).
 
-**Install (rootless runner Engine):**
+**Install (rootless sandbox Engine):**
 
 1. Build once from the repo: `pnpm exec tsc -b platform/deploy/docker-authz` (or `pnpm build`).
-2. As the Engine's user: `platform/deploy/docker-authz/scripts/install-rootless.sh`
-3. Check: `docker info` shows an authorization plugin named `sdlc-authz`. `pnpm doctor` check `runner.authz` is ok. On rootless Engines the plugin listens under `$HOME/.local/share/sdlc-docker-authz/` (not under `$XDG_RUNTIME_DIR`); the install script writes `/etc/docker/plugins/sdlc-authz.spec` (may need `sudo` once).
-4. CI enables the same plugin in `platform/deploy/scripts/test-rootless-docker.sh`.
+2. As the sandbox Engine's user: `platform/deploy/docker-authz/scripts/install-rootless.sh` (against that Engine's `DOCKER_HOST`).
+3. Check: `docker info` on the sandbox Engine shows an authorization plugin named `sdlc-authz`. `pnpm doctor` check `runner.authz` is ok. On rootless Engines the plugin listens under `$HOME/.local/share/sdlc-docker-authz/` (not under `$XDG_RUNTIME_DIR`); the install script writes `/etc/docker/plugins/sdlc-authz.spec` (may need `sudo` once).
+4. Point the runner host's `SDLC_DOCKER_SOCKET` at the sandbox Engine's socket. Do **not** enable AuthZ on the Engine that runs `runner-host/docker-compose.yml` (Compose needs host binds and the registry port).
+5. CI starts both Engines in `platform/deploy/scripts/test-rootless-docker.sh` (`DOCKER_HOST` = sandbox + AuthZ; `SDLC_RUNNER_HOST_DOCKER_HOST` = Compose Engine).
 
-**Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then `systemctl --user restart docker.service`.
+**Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then restart the **sandbox** dockerd.
 
-**When the plugin refuses a legitimate run:** the create body hit the shared denylist (`platform/deploy/docker-authz/src/authz-rules.json`). Do not disable the plugin. Fix the runner/spec so the body has no privileged flag, host namespace, CapAdd, devices, binds or non-internal network. If a new safe option must be allowed, change the denylist and the guard together (ADR-M105 AC2) in one pull request. Developer machines without the plugin only get a doctor warning.
+**When the plugin refuses a legitimate run:** the create body hit the shared denylist (`platform/deploy/docker-authz/src/authz-rules.json`). Do not disable the plugin. Fix the runner/spec so the body has no privileged flag, host namespace, CapAdd, devices, host-path bind or non-internal network. Named volumes (Compose entries in `Binds` whose source is not a host path) are allowed. If a new safe option must be allowed, change the denylist and the guard together (ADR-M105 AC2) in one pull request. Developer machines without the plugin only get a doctor warning.
 
 ### First set-up
 

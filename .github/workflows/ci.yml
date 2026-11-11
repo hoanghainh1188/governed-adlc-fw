@@ -426,9 +426,9 @@ jobs:
       - name: Start the rootless Engine (sets DOCKER_HOST for the next steps)
         run: sh platform/deploy/scripts/test-rootless-docker.sh "$RUNNER_TEMP/rootless"
       - run: pnpm test:runner
-      # O01 PR 2 (ADR-M91 §2.3, §2.7): the split set-up on one machine, as on a server without a
-      # second VM. The link address is a dummy interface that only the two Engines use; the
-      # platform runs on the machine's own Engine, the runner host's project on the rootless one.
+      # O01 PR 2 / H07 #661 (ADR-M91 §2.2–§2.7): split on one machine. Platform = machine Engine;
+      # runner-host Compose = rootless Engine without AuthZ (SDLC_RUNNER_HOST_DOCKER_HOST);
+      # sandboxes = AuthZ Engine (DOCKER_HOST); proxy mounts SDLC_SANDBOX_DOCKER_SOCKET.
       - name: The link address (a dummy interface)
         run: |
           sudo ip link add sdlc-link type dummy
@@ -437,11 +437,15 @@ jobs:
       - run: pnpm test:runner-split
         env:
           SDLC_RUNNER_SPLIT_LINK_ADDR: ${{ env.RUNNER_LINK_ADDR }}
-          SDLC_RUNNER_SPLIT_DOCKER_HOST: ${{ env.DOCKER_HOST }}
+          SDLC_RUNNER_SPLIT_DOCKER_HOST: ${{ env.SDLC_RUNNER_HOST_DOCKER_HOST }}
+          SDLC_RUNNER_SPLIT_SANDBOX_SOCKET: ${{ env.SDLC_SANDBOX_DOCKER_SOCKET }}
           SDLC_RUNNER_SPLIT_PLATFORM_HOST: unix:///var/run/docker.sock
       - name: Show the rootless Engine's log
         if: failure()
-        run: XDG_RUNTIME_DIR="/run/user/$(id -u)" journalctl --user -u docker.service --no-pager -n 300 || true
+        run: |
+          XDG_RUNTIME_DIR="/run/user/$(id -u)" journalctl --user -u docker.service --no-pager -n 300 || true
+          host_exec="/run/user/$(id -u)/docker-runner-host"
+          [ -f "$host_exec/dockerd.log" ] && tail -n 200 "$host_exec/dockerd.log" || true
 
   sandbox-image:
     # C04 (design/ADR-M25 §2.9, QUESTIONS #54): build the sandbox image node24, scan it with Trivy

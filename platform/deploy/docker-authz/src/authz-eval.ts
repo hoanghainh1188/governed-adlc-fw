@@ -91,7 +91,15 @@ function checkContainerCreate(body: unknown): AuthzDecision {
 
   if (cfg.refuseBinds) {
     const binds = host.Binds;
-    if (Array.isArray(binds) && binds.length > 0) return deny('binds');
+    if (Array.isArray(binds)) {
+      // Compose puts named volumes in Binds as `<name>:/path[:opts]` (QUESTIONS #661). Only a
+      // host-path source (absolute, starts with `/`) is a bind mount / host escape.
+      for (const entry of binds) {
+        if (typeof entry !== 'string') continue;
+        const source = entry.split(':')[0] ?? '';
+        if (source.startsWith('/')) return deny('binds');
+      }
+    }
   }
 
   if (cfg.refuseBindMounts) {

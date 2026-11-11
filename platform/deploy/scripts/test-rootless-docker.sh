@@ -1,14 +1,17 @@
 #!/bin/sh
-# Starts a rootless Docker Engine for the current user, next to the machine's own Engine
-# (task O01, design/ADR-M91 §2.4). CI only: the job `runner-rootless` runs `pnpm test:runner` on it.
-# The steps are the ones of the server set-up (deploy README "The runner on its own Docker
-# Engine"): subordinate IDs, an AppArmor profile for RootlessKit, cgroup delegation, then
-# `dockerd-rootless-setuptool.sh install` as a systemd user service.
+# Starts rootless Docker Engines for the current user, next to the machine's own Engine
+# (task O01, design/ADR-M91 §2.4; H07 QUESTIONS #661). CI only: the job `runner-rootless`
+# runs `pnpm test:runner` on the AuthZ sandbox Engine, then `pnpm test:runner-split` on a
+# second Engine without AuthZ (runner-host Compose). The steps are the ones of the server
+# set-up (deploy README "The runner on its own Docker Engine"): subordinate IDs, an AppArmor
+# profile for RootlessKit, cgroup delegation, then `dockerd-rootless-setuptool.sh install`
+# as a systemd user service, plus a second dockerd-rootless for Compose.
 #
 # Usage: platform/deploy/scripts/test-rootless-docker.sh <folder>
 #   <folder>: the static Docker archives unpacked flat (dockerd, rootlesskit,
 #   dockerd-rootless-setuptool.sh, …), pinned by SHA-256 in .github/workflows/ci.yml.
-# Needs sudo, uidmap, slirp4netns and dbus-user-session. Writes DOCKER_HOST to $GITHUB_ENV when set.
+# Needs sudo, uidmap, slirp4netns and dbus-user-session. Writes DOCKER_HOST,
+# SDLC_RUNNER_HOST_DOCKER_HOST and SDLC_SANDBOX_DOCKER_SOCKET to $GITHUB_ENV when set.
 set -eu
 
 bin="$(cd "${1:?usage: test-rootless-docker.sh <folder with dockerd and rootlesskit>}" && pwd)"
@@ -153,9 +156,52 @@ if [ "${SDLC_DOCKER_AUTHZ:-1}" != "0" ]; then
   echo "test-rootless-docker: sdlc-authz enabled (privileged create → 403)"
 fi
 
+# 9. Runner-host Engine without AuthZ (QUESTIONS #661 / ADR-M91 §2.2): Compose may bind-mount
+#    host files and publish the registry port. The socket proxy mounts the sandbox socket from
+#    step 8. Skip when SDLC_DOCKER_AUTHZ=0 (single-Engine local debugging).
+host_socket=""
+if [ "${SDLC_DOCKER_AUTHZ:-1}" != "0" ]; then
+  host_root="${XDG_DATA_HOME:-$HOME/.local/share}/docker-runner-host"
+  host_exec="$XDG_RUNTIME_DIR/docker-runner-host"
+  host_socket="$XDG_RUNTIME_DIR/docker-runner-host.sock"
+  mkdir -p "$host_root" "$host_exec"
+  # Second rootless dockerd: different data/exec/socket from the systemd sandbox Engine.
+  PATH="$bin:$PATH" nohup "$bin/dockerd-rootless.sh" \
+    --data-root "$host_root" \
+    --exec-root "$host_exec" \
+    --pidfile "$host_exec/docker.pid" \
+    --host "unix://$host_socket" \
+    >"$host_exec/dockerd.log" 2>&1 &
+  echo $! >"$host_exec/dockerd-rootless.pid"
+  waited=0
+  until DOCKER_HOST="unix://$host_socket" docker info >/dev/null 2>&1; do
+    [ "$waited" -lt 60 ] || {
+      echo "test-rootless-docker: the runner-host Engine did not start" >&2
+      [ -f "$host_exec/dockerd.log" ] && tail -n 100 "$host_exec/dockerd.log" >&2 || true
+      exit 1
+    }
+    sleep 1
+    waited=$((waited + 1))
+  done
+  host_info="$(DOCKER_HOST="unix://$host_socket" docker info --format '{{.SecurityOptions}} cgroup={{.CgroupVersion}} version={{.ServerVersion}}')"
+  echo "test-rootless-docker: runner-host Engine: $host_info"
+  case "$host_info" in
+    *rootless*) ;;
+    *) echo "test-rootless-docker: runner-host Engine is not rootless" >&2; exit 1 ;;
+  esac
+fi
+
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "DOCKER_HOST=unix://$socket" >>"$GITHUB_ENV"
+  echo "SDLC_SANDBOX_DOCKER_SOCKET=$socket" >>"$GITHUB_ENV"
   echo "SDLC_TEST_DB_DOCKER_HOST=$SDLC_TEST_DB_DOCKER_HOST" >>"$GITHUB_ENV"
+  if [ -n "$host_socket" ]; then
+    echo "SDLC_RUNNER_HOST_DOCKER_HOST=unix://$host_socket" >>"$GITHUB_ENV"
+  fi
 fi
 echo "DOCKER_HOST=unix://$socket"
+echo "SDLC_SANDBOX_DOCKER_SOCKET=$socket"
 echo "SDLC_TEST_DB_DOCKER_HOST=$SDLC_TEST_DB_DOCKER_HOST"
+if [ -n "$host_socket" ]; then
+  echo "SDLC_RUNNER_HOST_DOCKER_HOST=unix://$host_socket"
+fi

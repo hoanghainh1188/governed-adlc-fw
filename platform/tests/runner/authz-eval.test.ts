@@ -57,6 +57,7 @@ describe('evaluateAuthz denylist (H07 AC1)', () => {
         reason: 'devices',
       },
       { body: { HostConfig: { Binds: ['/:/host'] } }, reason: 'binds' },
+      { body: { HostConfig: { Binds: ['/var/run/docker.sock:/sock'] } }, reason: 'binds' },
       {
         body: { HostConfig: { Mounts: [{ Type: 'bind', Source: '/', Target: '/host' }] } },
         reason: 'bind_mount',
@@ -75,6 +76,21 @@ describe('evaluateAuthz denylist (H07 AC1)', () => {
       const decision = evaluateAuthz('POST', '/v1.44/containers/create', body);
       expect(decision, reason).toEqual({ allow: false, reason });
     }
+  });
+
+  it('allows named volumes that Compose puts in Binds (QUESTIONS #661)', () => {
+    expect(
+      evaluateAuthz('POST', '/v1.44/containers/create', {
+        HostConfig: { Binds: ['sdlcsplit_runner-approle:/run/sdlc/approle:rw'] },
+      }),
+    ).toEqual({ allow: true });
+    expect(
+      evaluateAuthz('POST', '/v1.44/containers/create', {
+        HostConfig: {
+          Binds: ['proj_data:/data', '/etc/passwd:/host:ro'],
+        },
+      }),
+    ).toEqual({ allow: false, reason: 'binds' });
   });
 
   it('refuses a non-internal network create and a host driver', () => {

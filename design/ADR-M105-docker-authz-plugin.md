@@ -32,7 +32,7 @@ The evaluator is a **denylist** of host-escape options on create:
 
 | Request | Refused when |
 |---|---|
-| `POST …/containers/create` | `Privileged`, host `PidMode` / `IpcMode` / `UTSMode` / `NetworkMode`, any `CapAdd`, any `Devices`, any `DeviceCgroupRules`, any `Binds`, any bind `Mounts`, `PublishAllPorts`, non-empty `PortBindings`, or `SecurityOpt` containing `seccomp:unconfined` / `apparmor:unconfined` |
+| `POST …/containers/create` | `Privileged`, host `PidMode` / `IpcMode` / `UTSMode` / `NetworkMode`, any `CapAdd`, any `Devices`, any `DeviceCgroupRules`, a `Binds` entry whose source is a **host path** (starts with `/`; named volumes that Compose puts in `Binds` as `<name>:/path` are allowed — QUESTIONS #661), any bind `Mounts`, `PublishAllPorts`, non-empty `PortBindings`, or `SecurityOpt` containing `seccomp:unconfined` / `apparmor:unconfined` |
 | `POST …/networks/create` | `Internal` is not `true`, or `Driver` is `host` |
 
 Every other method and path is allowed (the runner still needs pull, start, logs, connect, remove). The socket proxy and the endpoint allowlist stay as they are.
@@ -45,7 +45,7 @@ The plugin runs as a **host process** (systemd user service on a rootless Engine
 
 It is **not** a container on the Engine it guards: dockerd would need the plugin to authorize creating that container (chicken-egg). It is therefore **not** one of the six platform Compose images in `images.lock` (R089). A Dockerfile under `platform/deploy/docker-authz/` pins its Node base by digest for optional offline extract; CI and the company server run the compiled JS from the deploy tree (`node …/dist/main.js`).
 
-**Required** on the runner's own Engine (runner-host / company server). On a developer machine or trial that shares one Engine: document + `pnpm doctor` **warning** when the plugin is missing; do not reconfigure Docker Desktop.
+**Required** on the **sandbox Engine** only (QUESTIONS #661): the Engine that creates run containers (sandbox, tools, gateway). On the runner host that Engine is separate from the Engine that runs the runner-host Compose project (socket proxy, relays, registry, `sdlc-runner`, credential jobs); the socket proxy mounts the sandbox Engine's socket (ADR-M91). On a developer machine or trial that shares one Engine: document + `pnpm doctor` **warning** when the plugin is missing; do not reconfigure Docker Desktop.
 
 ### 2.4. AuthZRes always allows (QUESTIONS #660)
 
@@ -53,16 +53,16 @@ It is **not** a container on the Engine it guards: dockerd would need the plugin
 
 ### 2.5. Install and tests
 
-- Install helpers under `platform/deploy/docker-authz/scripts/` and T11: start the plugin, write the `.spec` (or pass the socket path), add `--authorization-plugin=sdlc-authz` to the runner Engine, restart dockerd.
-- CI rootless job (`test-rootless-docker.sh`) starts the plugin and enables it before `pnpm test:runner`.
-- AC3: a privileged `containers/create` sent through the socket proxy (guard bypassed) is refused by the Engine (HTTP 403 from dockerd).
+- Install helpers under `platform/deploy/docker-authz/scripts/` and T11: start the plugin, write the `.spec` (or pass the socket path), add `--authorization-plugin=sdlc-authz` to the **sandbox** Engine, restart that dockerd.
+- CI rootless job (`test-rootless-docker.sh`) starts the plugin on the sandbox Engine before `pnpm test:runner`, and a second rootless Engine without AuthZ for `pnpm test:runner-split` (QUESTIONS #661).
+- AC3: a privileged `containers/create` sent through the socket proxy (guard bypassed) is refused by the sandbox Engine (HTTP 403 from dockerd).
 
 ## 3. Rules and where they live
 
 | Rule | Where |
 |---|---|
 | Create-body denylist | `authz-rules.json` + `authz-eval.ts`; guard calls `evaluateAuthz`; plugin calls the same |
-| Plugin on the runner Engine | T11, deploy README, `test-rootless-docker.sh`, doctor `runner.authz` |
+| Plugin on the sandbox Engine only | T11 §5g-1, deploy README, `test-rootless-docker.sh`, doctor `runner.authz`; runner-host Compose on a second Engine (QUESTIONS #661) |
 | Never a container on the guarded Engine | This ADR §2.3; install scripts |
 
 ## 4. Alternatives not chosen
@@ -85,4 +85,5 @@ It is **not** a container on the Engine it guards: dockerd would need the plugin
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.1 | 2026-11-11 | Claude (H07 CI), Harry QUESTIONS #661 | §2.2: refuse host-path `Binds` only (named volumes pass); §2.3: plugin on the sandbox Engine, not the runner-host Compose Engine |
 | 1.0 | 2026-11-10 | Claude, approved by Harry | H07: shared denylist, Node legacy AuthZ plugin as a host process, doctor warn, T11 |

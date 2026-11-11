@@ -347,10 +347,14 @@ describe('AC2: integration job runs the Compose core profile', () => {
     expect(start).toBeGreaterThanOrEqual(0);
     expect(order.indexOf('pnpm test:runner')).toBeGreaterThan(start);
     expect(runs('compose')).toContain('pnpm test:runner');
-    // O01 PR 2: the split set-up after the link address exists.
+    // O01 PR 2 / H07 #661: the split set-up after the link address exists; Compose Engine ≠ AuthZ.
     const link = order.findIndex((r) => r.includes('ip link add sdlc-link type dummy'));
     expect(link).toBeGreaterThan(start);
     expect(order.indexOf('pnpm test:runner-split')).toBeGreaterThan(link);
+    const splitStep = job('runner-rootless').steps.find((s) => s.run === 'pnpm test:runner-split');
+    const splitEnv = (splitStep as { env?: Record<string, string> } | undefined)?.env ?? {};
+    expect(splitEnv.SDLC_RUNNER_SPLIT_DOCKER_HOST).toBe('${{ env.SDLC_RUNNER_HOST_DOCKER_HOST }}');
+    expect(splitEnv.SDLC_RUNNER_SPLIT_SANDBOX_SOCKET).toBe('${{ env.SDLC_SANDBOX_DOCKER_SOCKET }}');
     expect(job('ci-ok').needs).toContain('runner-rootless');
   });
 
@@ -410,6 +414,11 @@ describe('A06: database integration job', () => {
     );
     expect(rootless).toContain('SDLC_TEST_DB_DOCKER_HOST');
     expect(rootless).toContain('containerd-snapshotter');
+    // H07 #661: AuthZ sandbox Engine + runner-host Compose Engine.
+    expect(rootless).toContain('SDLC_RUNNER_HOST_DOCKER_HOST');
+    expect(rootless).toContain('SDLC_SANDBOX_DOCKER_SOCKET');
+    expect(rootless).toContain('dockerd-rootless.sh');
+    expect(rootless).toContain('docker-runner-host');
   });
 
   it('H07 live runner helpers stay AuthZ-safe (internal networks; no knowledge-db bind/port)', () => {

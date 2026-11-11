@@ -36,15 +36,17 @@ Nothing in the runner's own protection changes: the endpoint allowlist, the guar
 
 ### 2.2. What runs on the runner's Engine
 
-| On the runner's Engine | On the platform's Engine |
-|---|---|
-| `sdlc-runner`, `docker-socket-proxy` | api, worker, PostgreSQL, OpenBao, Temporal, SeaweedFS, Valkey, LiteLLM, knowledge-db, the observability profile |
-| The sandboxes, the tool and gateway containers of a run (ADR-M69, ADR-M87) | |
-| `npm-proxy` (Verdaccio): it holds no secret and no client data | |
-| One relay per egress service that must stay on the platform: `litellm`, `knowledge-db` | |
+H07 (QUESTIONS #661) splits the runner host into **two Engines** so the AuthZ denylist can stay strict on create bodies:
 
-- The runner joins each run's network with its own container (ADR-M29 §2.10, `SDLC_RUNNER_SELF_CONTAINER`), and the egress services are containers attached to that network (ADR-M25 §2.2). So the runner and the egress endpoints must be containers of the runner's Engine. A runner that stays with the platform and drives a remote Engine cannot do this.
-- **Relays (QUESTIONS #578):** LiteLLM holds the master key and the provider keys; knowledge-db holds a project's documents. Neither may run on the runner's Engine (a container inspect or a volume mount would expose them). A relay is the upstream HAProxy image, pinned by digest, in TCP mode, with **one fixed target** per relay (the service on the platform host, through the link of §2.3), a read-only root, no capability and no volume. It keeps the aliases: the sandbox still reaches `litellm:4000` and nothing else. The egress allowlist does not change.
+| On the **sandbox Engine** (AuthZ plugin, ADR-M105) | On the **runner-host Engine** (Compose project) | On the platform's Engine |
+|---|---|---|
+| The sandboxes, the tool and gateway containers of a run (ADR-M69, ADR-M87) | `sdlc-runner`, `docker-socket-proxy`, `npm-proxy`; credential and CA jobs; registry relay (VM profile) | api, worker, PostgreSQL, OpenBao, Temporal, SeaweedFS, Valkey, LiteLLM, knowledge-db, the observability profile |
+| | One relay per egress service that must stay on the platform: `litellm`, `knowledge-db` | |
+
+The socket proxy runs on the runner-host Engine and **mounts the sandbox Engine's socket** (`SDLC_DOCKER_SOCKET`). Create bodies for sandboxes therefore hit AuthZ; the runner-host Compose project may still bind-mount host files and publish the registry port (those are refused on the sandbox Engine).
+
+- The runner joins each run's network with its own container (ADR-M29 §2.10, `SDLC_RUNNER_SELF_CONTAINER`), and the egress services are containers attached to that network (ADR-M25 §2.2). So the runner and the egress endpoints must be containers of the runner-host Engine; sandboxes are created on the sandbox Engine through the proxy. A runner that stays with the platform and drives a remote Engine cannot do this.
+- **Relays (QUESTIONS #578):** LiteLLM holds the master key and the provider keys; knowledge-db holds a project's documents. Neither may run on the runner host's Engines (a container inspect or a volume mount would expose them). A relay is the upstream HAProxy image, pinned by digest, in TCP mode, with **one fixed target** per relay (the service on the platform host, through the link of §2.3), a read-only root, no capability and no volume. It keeps the aliases: the sandbox still reaches `litellm:4000` and nothing else. The egress allowlist does not change.
 
 ### 2.3. The link between the two Engines (QUESTIONS #577)
 
@@ -85,10 +87,12 @@ The `otel-collector` has no host port and is never a sandbox egress service (R08
 - **The socket's group.** A rootless Engine maps the host's `docker` group, when one exists, into its namespace, so the socket's group is not always 0. With `SDLC_DOCKER_GID` empty in the runner host's `.env`, `runner-host.sh up` reads it with a throw-away container of the relay image.
 - **OpenBao's CA certificate (#598).** The job `openbao-ca-init` copies the CA certificate from `SDLC_OPENBAO_CA_FILE` on the runner host into the runner host's `openbao-ca` volume at every start.
 - **Images on a VM (#599).** A registry relay (profile `vm`) listens on the VM's `127.0.0.1:5050` and forwards to the platform's registry on the link address. HTTP mode, `GET` and `HEAD` only. On the same server the rootless Engine reaches `127.0.0.1:5050` directly.
+- **Sandbox Engine vs runner-host Engine (#661).** On the runner host, install AuthZ only on the Engine that creates run containers. Run `runner-host/docker-compose.yml` on a second Engine without AuthZ, and set `SDLC_DOCKER_SOCKET` to the sandbox Engine's socket. CI (`test-rootless-docker.sh`) starts both: `DOCKER_HOST` is the AuthZ sandbox Engine for `pnpm test:runner`; `SDLC_RUNNER_HOST_DOCKER_HOST` is the Compose Engine for `pnpm test:runner-split`.
 
 ## 3. Rules and where they live
 
-- The runner's Engine holds no platform service and no platform data; the relays have one fixed target each; the link ports are published only on `SDLC_RUNNER_LINK_ADDR` (PR 2, with its rule line in `platform/deploy/CLAUDE.md` and a row in `design/RULES.md`).
+- The runner host's Engines hold no platform service and no platform data; the relays have one fixed target each; the link ports are published only on `SDLC_RUNNER_LINK_ADDR` (PR 2, with its rule line in `platform/deploy/CLAUDE.md` and a row in `design/RULES.md`).
+- AuthZ guards the sandbox Engine only; the proxy mounts that socket from the runner-host Engine (R147, QUESTIONS #661).
 - The proxy's allowlist, the guard and the sandbox hardening are unchanged (R061, ADR-M25).
 
 ## 4. Alternatives not chosen
@@ -115,3 +119,4 @@ The `otel-collector` has no host port and is never a sandbox egress service (R08
 |---|---|---|---|
 | 1.0 | 2026-10-24 | Claude (task O01), accepted by Harry | First version (QUESTIONS #576–#580) |
 | 1.1 | 2026-10-24 | Claude (task O01 PR 2), accepted by Harry | §2.7: the runner's OpenBao login, credentials and CA certificate on its own Engine, the registry relay (QUESTIONS #596–#599) |
+| 1.2 | 2026-11-11 | Claude (H07), Harry QUESTIONS #661 | §2.2 / §2.7: sandbox Engine (AuthZ) separate from the runner-host Compose Engine; proxy mounts the sandbox socket |
