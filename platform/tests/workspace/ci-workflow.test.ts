@@ -409,6 +409,32 @@ describe('A06: database integration job', () => {
       'utf8',
     );
     expect(rootless).toContain('SDLC_TEST_DB_DOCKER_HOST');
+    expect(rootless).toContain('containerd-snapshotter');
+  });
+
+  it('H07 live runner helpers stay AuthZ-safe (internal networks; no knowledge-db bind/port)', () => {
+    const helpers = fs.readFileSync(
+      path.join(root, 'platform/tests/integration/runner/live-helpers.ts'),
+      'utf8',
+    );
+    expect(helpers).toContain("docker('network', 'create', '--internal', name)");
+    for (const file of ['egress.test.ts', 'provision.test.ts'] as const) {
+      const text = fs.readFileSync(
+        path.join(root, 'platform/tests/integration/runner', file),
+        'utf8',
+      );
+      expect(text).toContain('createInternalNetwork');
+      expect(text).not.toMatch(/network',\s*'create',\s*[a-zA-Z.]+\)/);
+    }
+    const toolDocs = fs.readFileSync(
+      path.join(root, 'platform/tests/integration/runner/tool-docs.test.ts'),
+      'utf8',
+    );
+    expect(toolDocs).toContain('psqlIn');
+    expect(toolDocs).toMatch(/docker\(\s*'create'/);
+    expect(toolDocs).toMatch(/docker\(\s*'cp'/);
+    expect(toolDocs).not.toContain('127.0.0.1::5432');
+    expect(toolDocs).not.toContain('knowledge-db/init:/docker-entrypoint-initdb.d');
   });
 });
 

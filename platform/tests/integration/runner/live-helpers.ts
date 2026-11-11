@@ -21,6 +21,23 @@ export function docker(...args: string[]): string {
   }).trim();
 }
 
+/** `docker network create --internal` — AuthZ (H07) refuses non-internal networks/create bodies. */
+export function createInternalNetwork(name: string): void {
+  docker('network', 'create', '--internal', name);
+}
+
+/**
+ * Run psql inside a container (H07: AuthZ refuses binds and port bindings, so live tests that
+ * seed Postgres cannot publish 5432 or mount init scripts; use `docker cp` + `docker exec` instead).
+ */
+export function psqlIn(container: string, database: string, script: string): string {
+  return execFileSync(
+    'docker',
+    ['exec', '-i', container, 'psql', '-U', 'postgres', '-d', database, '-v', 'ON_ERROR_STOP=1'],
+    { encoding: 'utf8', input: script, stdio: ['pipe', 'pipe', 'pipe'] },
+  ).trim();
+}
+
 export function quietly(...args: string[]): void {
   try {
     docker(...args);
@@ -124,6 +141,15 @@ export async function buildFixtureImage(
   if (digests.length > 0) {
     const image = digests[0]!;
     return { image, cleanup: () => quietly('rmi', built) };
+  }
+
+  // H07 AuthZ refuses PortBindings: a throw-away registry on :5000 cannot be published on the
+  // guarded Engine. Need a local RepoDigest (containerd image store) instead.
+  const authzPlugins = docker('info', '--format', '{{json .Plugins.Authorization}}');
+  if (authzPlugins !== 'null' && authzPlugins !== '[]' && authzPlugins !== '') {
+    throw new Error(
+      'buildFixtureImage: AuthZ Engine needs a local image digest (enable containerd-snapshotter); cannot publish a registry port',
+    );
   }
 
   docker('pull', '-q', REGISTRY);

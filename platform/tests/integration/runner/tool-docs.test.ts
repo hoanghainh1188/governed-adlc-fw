@@ -12,14 +12,10 @@
 // `knowledge_read` is computed from that log; the clean-up removes the service network and the
 // runtime volume and leaves knowledge-db running.
 import crypto from 'node:crypto';
+import path from 'node:path';
 
-import {
-  PgVectorKnowledgeStore,
-  projectRole,
-  projectSchema,
-} from '@sdlc/adapter-knowledge-pgvector';
+import { projectRole, projectSchema } from '@sdlc/adapter-knowledge-pgvector';
 import type { ToolGrant } from '@sdlc/contracts';
-import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -35,11 +31,13 @@ import {
   type RunnerSettings,
 } from '../../../apps/runner/src/index.js';
 import { callRulesSha256 } from '../../../packages/core/src/tools/check.js';
+import { repoRoot } from '../../workspace/helpers';
 import {
   buildFixtureImage,
   docker,
   dockerSocket,
   liveEnabled,
+  psqlIn,
   quietly,
   type FixtureImage,
 } from './live-helpers';
@@ -119,7 +117,6 @@ describe.skipIf(!liveEnabled)(
     let settings: RunnerSettings;
     let tool: FixtureImage | undefined;
     let sandboxImage: FixtureImage | undefined;
-    let store: PgVectorKnowledgeStore | undefined;
     const run = crypto.randomUUID();
     const project = crypto.randomUUID();
     const indexId = crypto.randomUUID();
@@ -141,23 +138,25 @@ describe.skipIf(!liveEnabled)(
       });
       sandboxImage = await buildFixtureImage(suffix);
 
-      // knowledge-db with the init script, its port on 127.0.0.1 for the test's own set-up only.
+      // knowledge-db on the AuthZ Engine without binds/port bindings (H07 denylist). Init via
+      // docker cp; seed via docker exec psql (no host TCP publish).
       const superPassword = crypto.randomBytes(16).toString('hex');
       docker(
-        'run',
-        '-d',
+        'create',
         '--name',
         db,
         '-e',
         'POSTGRES_USER=postgres',
         '-e',
         `POSTGRES_PASSWORD=${superPassword}`,
-        '-v',
-        `${process.cwd()}/platform/deploy/knowledge-db/init:/docker-entrypoint-initdb.d:ro`,
-        '-p',
-        '127.0.0.1::5432',
         PGVECTOR,
       );
+      docker(
+        'cp',
+        `${path.join(repoRoot(), 'platform/deploy/knowledge-db/init')}/.`,
+        `${db}:/docker-entrypoint-initdb.d/`,
+      );
+      docker('start', db);
       for (let i = 0; ; i++) {
         try {
           docker(
@@ -178,44 +177,72 @@ describe.skipIf(!liveEnabled)(
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       }
-      const port = docker('port', db, '5432/tcp').split('\n')[0]!.split(':').pop()!;
-      const admin = new pg.Client({
-        connectionString: `postgres://postgres:${superPassword}@127.0.0.1:${port}/knowledge`,
-      });
-      await admin.connect();
-      await admin.query(
-        `ALTER ROLE knowledge LOGIN NOSUPERUSER CREATEROLE PASSWORD '${superPassword}'`,
-      );
-      store = new PgVectorKnowledgeStore({
-        connectionString: `postgres://knowledge:${superPassword}@127.0.0.1:${port}/knowledge`,
-      });
-      await store.ensureProject({ tenantId: TENANT, projectId: project });
+      const schema = projectSchema(project);
+      const role = projectRole(project);
       const chunk = sha(`${MODEL}\n${TEXT}`);
-      await store.putChunks({
-        tenantId: TENANT,
-        projectId: project,
-        model: MODEL,
-        chunks: [{ sha256: chunk, text: TEXT, embedding: [1, 0, 0] }],
-      });
-      await store.putIndexVersion({
-        tenantId: TENANT,
-        projectId: project,
-        indexId,
-        baseSha: 'b'.repeat(40),
-        model: MODEL,
-        documents: [{ path: PATH, contentSha256: sha(TEXT), chunks: [chunk] }],
-      });
-      docId = (
-        await admin.query<{ doc_id: string }>(
-          `SELECT doc_id FROM ${projectSchema(project)}.documents WHERE index_id = $1`,
-          [indexId],
-        )
-      ).rows[0]!.doc_id;
-      // The run's login, as OpenBao's database engine makes it (statement of @sdlc/secrets).
-      await admin.query(
-        `CREATE ROLE ${login} WITH LOGIN PASSWORD '${LOGIN_PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION CONNECTION LIMIT 4 IN ROLE ${projectRole(project)}`,
+      const contentSha = sha(TEXT);
+      docId = crypto.randomUUID();
+      const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
+      psqlIn(
+        db,
+        'knowledge',
+        `
+ALTER ROLE knowledge LOGIN NOSUPERUSER CREATEROLE PASSWORD ${sqlLiteral(superPassword)};
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE SCHEMA IF NOT EXISTS ${schema};
+CREATE TABLE IF NOT EXISTS ${schema}.chunks (
+  sha256 char(64) PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  model text NOT NULL,
+  text text NOT NULL,
+  embedding vector NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS ${schema}.index_versions (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  base_sha char(40) NOT NULL,
+  model text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS ${schema}.documents (
+  index_id uuid NOT NULL REFERENCES ${schema}.index_versions (id) ON DELETE CASCADE,
+  doc_id uuid NOT NULL,
+  path text NOT NULL,
+  content_sha256 char(64) NOT NULL,
+  PRIMARY KEY (index_id, doc_id)
+);
+CREATE TABLE IF NOT EXISTS ${schema}.document_chunks (
+  index_id uuid NOT NULL,
+  doc_id uuid NOT NULL,
+  ord integer NOT NULL,
+  chunk_sha256 char(64) NOT NULL REFERENCES ${schema}.chunks (sha256),
+  PRIMARY KEY (index_id, doc_id, ord),
+  FOREIGN KEY (index_id, doc_id) REFERENCES ${schema}.documents (index_id, doc_id) ON DELETE CASCADE
+);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${sqlLiteral(role)}) THEN
+    CREATE ROLE ${role} NOLOGIN;
+  END IF;
+END $$;
+REVOKE ALL ON SCHEMA ${schema} FROM PUBLIC;
+GRANT USAGE ON SCHEMA ${schema} TO ${role};
+GRANT SELECT ON ALL TABLES IN SCHEMA ${schema} TO ${role};
+GRANT CONNECT ON DATABASE knowledge TO ${role};
+GRANT USAGE ON SCHEMA public TO ${role};
+INSERT INTO ${schema}.chunks (sha256, tenant_id, model, text, embedding)
+VALUES (${sqlLiteral(chunk)}, ${sqlLiteral(TENANT)}::uuid, ${sqlLiteral(MODEL)}, ${sqlLiteral(TEXT)}, '[1,0,0]'::vector)
+ON CONFLICT (sha256) DO NOTHING;
+INSERT INTO ${schema}.index_versions (id, tenant_id, base_sha, model)
+VALUES (${sqlLiteral(indexId)}::uuid, ${sqlLiteral(TENANT)}::uuid, ${sqlLiteral('b'.repeat(40))}, ${sqlLiteral(MODEL)})
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO ${schema}.documents (index_id, doc_id, path, content_sha256)
+VALUES (${sqlLiteral(indexId)}::uuid, ${sqlLiteral(docId)}::uuid, ${sqlLiteral(PATH)}, ${sqlLiteral(contentSha)});
+INSERT INTO ${schema}.document_chunks (index_id, doc_id, ord, chunk_sha256)
+VALUES (${sqlLiteral(indexId)}::uuid, ${sqlLiteral(docId)}::uuid, 0, ${sqlLiteral(chunk)});
+CREATE ROLE ${login} WITH LOGIN PASSWORD ${sqlLiteral(LOGIN_PASSWORD)} NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION CONNECTION LIMIT 4 IN ROLE ${role};
+`,
       );
-      await admin.end();
 
       docker(
         'run',
@@ -255,7 +282,6 @@ describe.skipIf(!liveEnabled)(
 
     afterAll(async () => {
       if (client) await teardownSandbox(client, run).catch(() => undefined);
-      await store?.close();
       quietly('rm', '-f', '-v', db, llm);
       tool?.cleanup();
       sandboxImage?.cleanup();

@@ -70,7 +70,17 @@ for controller in cpu memory pids; do
   }
 done
 
-# 5. The rootless Engine as a systemd user service. --force: the machine's own (rootful) Engine
+# 5. Prefer the containerd image store so local builds have RepoDigests. AuthZ refuses
+#    publishing a throw-away registry port (buildFixtureImage under H07).
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/docker"
+daemon_json="${XDG_CONFIG_HOME:-$HOME/.config}/docker/daemon.json"
+if [ -f "$daemon_json" ]; then
+  node -e 'const fs=require("fs"); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,"utf8")); j.features={...(j.features||{}), "containerd-snapshotter": true}; fs.writeFileSync(p, JSON.stringify(j,null,2)+"\n");' "$daemon_json"
+else
+  printf '%s\n' '{"features":{"containerd-snapshotter":true}}' >"$daemon_json"
+fi
+
+# 6. The rootless Engine as a systemd user service. --force: the machine's own (rootful) Engine
 #    keeps running; the two never share containers, networks or volumes.
 PATH="$bin:$PATH" "$bin/dockerd-rootless-setuptool.sh" install --force
 
@@ -86,7 +96,7 @@ until DOCKER_HOST="unix://$socket" docker info >/dev/null 2>&1; do
   waited=$((waited + 1))
 done
 
-# 6. Fail early unless it is really rootless, with cgroup v2 and the systemd cgroup driver.
+# 7. Fail early unless it is really rootless, with cgroup v2 and the systemd cgroup driver.
 info="$(DOCKER_HOST="unix://$socket" docker info --format '{{.SecurityOptions}} cgroup={{.CgroupVersion}} driver={{.CgroupDriver}} version={{.ServerVersion}}')"
 echo "test-rootless-docker: $info"
 case "$info" in
@@ -94,7 +104,7 @@ case "$info" in
   *) echo "test-rootless-docker: not a rootless Engine with cgroup v2 and systemd" >&2; exit 1 ;;
 esac
 
-# 7. AuthZ plugin for create bodies (H07, ADR-M105). Starts the plugin, writes the .spec and
+# 8. AuthZ plugin for create bodies (H07, ADR-M105). Starts the plugin, writes the .spec and
 #    rootless ExecStart flag (not daemon.json — Docker rejects both), restarts dockerd.
 #    Skip when SDLC_DOCKER_AUTHZ=0 (local debugging only).
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
