@@ -59,9 +59,10 @@ describe('AuthZ plugin server (H07)', () => {
       expect(activate.status).toBe(200);
       expect(activate.json).toEqual({ Implements: ['authz'] });
 
+      // Engine JSON tag is RequestUri (moby authorization.Request); RequestURI kept as alias.
       const denied = await post(socketPath, '/AuthZPlugin.AuthZReq', {
         RequestMethod: 'POST',
-        RequestURI: '/v1.44/containers/create',
+        RequestUri: '/v1.44/containers/create',
         RequestBody: Buffer.from(
           JSON.stringify({ HostConfig: { Privileged: true } }),
           'utf8',
@@ -72,7 +73,7 @@ describe('AuthZ plugin server (H07)', () => {
 
       const allowed = await post(socketPath, '/AuthZPlugin.AuthZReq', {
         RequestMethod: 'POST',
-        RequestURI: '/v1.44/containers/create',
+        RequestUri: '/v1.44/containers/create',
         RequestBody: Buffer.from(
           JSON.stringify({
             Image: 'x@sha256:' + 'a'.repeat(64),
@@ -83,9 +84,19 @@ describe('AuthZ plugin server (H07)', () => {
       });
       expect(allowed.json).toEqual({ Allow: true });
 
-      const res = await post(socketPath, '/AuthZPlugin.AuthZRes', {
+      const aliasDenied = await post(socketPath, '/AuthZPlugin.AuthZReq', {
         RequestMethod: 'POST',
         RequestURI: '/v1.44/containers/create',
+        RequestBody: Buffer.from(
+          JSON.stringify({ HostConfig: { Privileged: true } }),
+          'utf8',
+        ).toString('base64'),
+      });
+      expect(aliasDenied.json).toMatchObject({ Allow: false, Msg: 'authz.denied:privileged' });
+
+      const res = await post(socketPath, '/AuthZPlugin.AuthZRes', {
+        RequestMethod: 'POST',
+        RequestUri: '/v1.44/containers/create',
         ResponseStatusCode: 201,
       });
       expect(res.json).toEqual({ Allow: true });

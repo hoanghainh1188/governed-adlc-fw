@@ -15,9 +15,18 @@ interface AuthzRequest {
   readonly User?: string;
   readonly UserAuthNMethod?: string;
   readonly RequestMethod?: string;
+  /**
+   * Docker's authorization.Request JSON tag is `RequestUri` (lowercase i), not `RequestURI`
+   * (moby/pkg/authorization/api.go). Accept both so unit fixtures and Engine agree.
+   */
+  readonly RequestUri?: string;
   readonly RequestURI?: string;
   /** Docker sends the raw body as a base64 string in JSON. */
   readonly RequestBody?: string;
+}
+
+function requestUri(req: AuthzRequest): string {
+  return req.RequestUri ?? req.RequestURI ?? '';
 }
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
@@ -53,7 +62,7 @@ function decodeRequestBody(encoded: string | undefined): string | null {
 
 function decide(req: AuthzRequest): AuthzDecision {
   const method = req.RequestMethod ?? '';
-  const uri = req.RequestURI ?? '';
+  const uri = requestUri(req);
   const raw = decodeRequestBody(req.RequestBody);
   if (
     method.toUpperCase() === 'POST' &&
@@ -95,7 +104,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     }
     const decision = decide(parsed);
     // Codes only (R031): method, URI path shape, allow/deny reason — never body text.
-    const pathShape = (parsed.RequestURI ?? '').replace(/\?.*/, '');
+    const pathShape = requestUri(parsed).replace(/\?.*/, '');
     process.stderr.write(
       `authz: ${parsed.RequestMethod ?? '?'} ${pathShape} allow=${decision.allow}` +
         `${decision.reason ? ` reason=${decision.reason}` : ''}\n`,
