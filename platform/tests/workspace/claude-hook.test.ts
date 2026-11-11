@@ -97,6 +97,11 @@ const REFUSED: [string, string][] = [
     "docker compose exec -T seaweedfs weed shell -master=127.0.0.1:9333 <<'EOF'\ns3.config.show\nEOF",
     'R074e',
   ],
+  // R149: the runner host set-up (V18)
+  ['sudo platform/deploy/scripts/runner-host-setup.sh --user sdlc-runner --mode vm', 'R149'],
+  ['platform/deploy/scripts/runner-host-setup.sh --user u --mode vm --dry-run', 'R149'],
+  ['sudo sh platform/deploy/scripts/runner-host-setup.sh --user u --mode vm', 'R149'],
+  ['bash -c "sudo ./runner-host-setup.sh --user u --mode vm"', 'R149'],
   // Found inside a chain, after a prefix, or in `bash -c`
   ['cd platform && pnpm install && git push --force', 'R125'],
   ['FOO=1 sudo docker volume prune', 'R039'],
@@ -139,6 +144,8 @@ const ALLOWED = [
   'gh workflow run ci.yml',
   'grep -rn "npm publish" RELEASING.md',
   'echo done 2>&1',
+  'shellcheck platform/deploy/scripts/runner-host-setup.sh',
+  'sh platform/deploy/scripts/test-rootless-docker.sh /tmp/rootless',
 ];
 
 describe('W01: the Claude Code hook refuses forbidden commands', () => {

@@ -20,6 +20,7 @@ const REASONS = {
   R125: 'never rewrite history: no force-push and no rebase; merge `origin/main` instead',
   R028b: 'never push to the default branch; push a `task/…` branch and open a pull request',
   R074e: 'never run `weed shell s3.config.show`: it prints the S3 keys',
+  R149: "`runner-host-setup.sh` changes the machine's system settings as root; only the owner runs it, in their own terminal",
 };
 
 // Words that may come before the real command in a segment.
@@ -201,6 +202,13 @@ function checkSegment(segment) {
   if (CLI_NAMES.has(cmd) && printsOperatorSecret(args)) return 'R035';
   if (cmd === 'node' && args.some((a) => /server-setup\/(?:dist|src)\/main\.[jt]s$/.test(a)))
     return 'R035';
+  // The runner host set-up (V18, ADR-M107): root changes to the machine, the owner's only.
+  if (cmd === 'runner-host-setup.sh') return 'R149';
+  if (
+    ['sh', 'bash', 'dash'].includes(cmd) &&
+    base(firstPositional(args) ?? '') === 'runner-host-setup.sh'
+  )
+    return 'R149';
   if (cmd === 'bootstrap.sh') {
     const action = firstPositional(args) ?? '';
     if (['init', 'unseal', 'root-token'].includes(action) || action.endsWith('-credentials'))

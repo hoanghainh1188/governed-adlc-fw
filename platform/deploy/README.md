@@ -454,16 +454,27 @@ The runner's settings do not change: it reaches `postgres`, `openbao`, `temporal
 
 ### Set it up
 
-1. **The runner's Engine, rootless.** On the VM, or on the same server for the user `sdlc-runner` (`sudo useradd --create-home --shell /bin/bash sdlc-runner`). The steps are those of the CI job `runner-rootless` (`platform/deploy/scripts/test-rootless-docker.sh`), with Docker's packages (`docker-ce`, `docker-ce-rootless-extras`, `uidmap`, `dbus-user-session`):
-   1. Subordinate IDs: `sudo usermod --add-subuids 200000-265535 --add-subgids 200000-265535 sdlc-runner`.
-   2. On Ubuntu 23.10 and later, an AppArmor profile that allows user namespaces for `rootlesskit` only (the profile in `test-rootless-docker.sh`, with the path `/usr/bin/rootlesskit`). Never set `kernel.apparmor_restrict_unprivileged_userns=0` for the whole machine.
-   3. cgroup v2 delegation: `/etc/systemd/system/user@.service.d/delegate.conf` with `[Service]` and `Delegate=cpu cpuset io memory pids`, then `sudo systemctl daemon-reload`. Without `cpu`, the sandbox's CPU limit is accepted but not applied.
-   4. `sudo loginctl enable-linger sdlc-runner`; then, as `sdlc-runner`, `dockerd-rootless-setuptool.sh install`.
-   5. Check, as `sdlc-runner`: `docker info --format '{{.SecurityOptions}} {{.CgroupVersion}} {{.CgroupDriver}}'` shows `rootless`, `2` and `systemd`. The socket is `/run/user/<uid>/docker.sock`.
-   6. **AuthZ plugin (H07, ADR-M105):** from the repo, as `sdlc-runner`, `pnpm exec tsc -b platform/deploy/docker-authz` then `platform/deploy/docker-authz/scripts/install-rootless.sh`. Check: `docker info` lists an authorization plugin. Runbook T11 §5g-1. `pnpm doctor` warns (`runner.authz`) when it is missing.
+1. **The runner host, with one command.** On the VM, or on the same server for the user `sdlc-runner` (`sudo useradd --create-home --shell /bin/bash sdlc-runner`), in a checkout of the **same release tag** as the platform that belongs to that user. Install Docker's packages first (`docker-ce`, `docker-ce-cli`, `docker-ce-rootless-extras`, `uidmap`, `dbus-user-session`) and Node.js for the AuthZ plugin; the command checks them, names the missing ones and installs none (QUESTIONS #672). Build the plugin once, as `sdlc-runner`: `pnpm install --frozen-lockfile && pnpm exec tsc -b platform/deploy/docker-authz`. Then (task V18, [ADR-M107](../../design/ADR-M107-runner-host-setup.md)):
+
+   ```bash
+   # the same server: a second Engine and the dummy interface with the link address
+   sudo platform/deploy/scripts/runner-host-setup.sh --user sdlc-runner --mode same-server --link-addr 10.203.0.1
+   # a separate VM: the platform host's WireGuard address
+   sudo platform/deploy/scripts/runner-host-setup.sh --user sdlc-runner --mode vm --link-addr 10.66.0.1
+   ```
+
+   Add `--project <name>` (the platform's `COMPOSE_PROJECT_NAME`) and `--ca-file <path>` (where OpenBao's `ca.pem` goes on this host) to fill those keys too. Add `--dry-run` first to see what it would change. It is safe to run again: each step checks the state first and says what is already done. It refuses a file or an `.env` key that already holds another value, before anything changes; it never sets `kernel.apparmor_restrict_unprivileged_userns=0`, never touches the machine's own Engine, and refuses an Engine that holds the platform's data. Only the owner runs it, in their own terminal (rule R149). What it does, in this order (the CI job `runner-rootless` runs the same step code, `platform/deploy/scripts/rootless-engine.sh`, through `test-rootless-docker.sh`):
+   1. Subordinate IDs: `usermod --add-subuids 200000-265535 --add-subgids 200000-265535 sdlc-runner`.
+   2. On Ubuntu 23.10 and later, an AppArmor profile that allows user namespaces for `rootlesskit` only (`/etc/apparmor.d/sdlc-rootlesskit`).
+   3. cgroup v2 delegation: `/etc/systemd/system/user@.service.d/delegate.conf` with `[Service]` and `Delegate=cpu cpuset io memory pids`, then `systemctl daemon-reload`. Without `cpu`, the sandbox's CPU limit is accepted but not applied.
+   4. `loginctl enable-linger sdlc-runner`, a restart of that user's systemd, then, as `sdlc-runner`, `dockerd-rootless-setuptool.sh install`.
+   5. The check: `docker info` shows `rootless`, cgroup `2` and the driver `systemd`. The socket is `/run/user/<uid>/docker.sock`.
+   6. **The AuthZ plugin (H07, ADR-M105):** the discovery file `/etc/docker/plugins/sdlc-authz.spec` as root, then `platform/deploy/docker-authz/scripts/install-rootless.sh` as `sdlc-runner`, with its operator key (runbook T11 §5g-1). `pnpm doctor` warns (`runner.authz`) when it is missing.
+   7. The same server only: the dummy interface `sdlc-link` with the link address (systemd-networkd: `/etc/systemd/network/50-sdlc-link.netdev` with `Kind=dummy`, `50-sdlc-link.network` with `Address=10.203.0.1/32`, then `networkctl reload`).
+   8. The runner host's `.env` (step 5): `runner-host.sh env`, then only its empty keys and the template's defaults.
 2. **The link.**
    - A separate VM: the infrastructure operator sets up a WireGuard tunnel between the two machines, for example `10.66.0.1` (the platform host) and `10.66.0.2` (the VM). Generate the WireGuard private keys on each machine, in the owner's terminal; never put them in the repository, a chat or a log. Let the platform host accept the link ports from the VM's tunnel address only.
-   - The same server: a dummy interface with one address, for example `10.203.0.1/32` (systemd-networkd: a `.netdev` file with `Kind=dummy` and a `.network` file with `Address=10.203.0.1/32`).
+   - The same server: done by step 1 (`--mode same-server`). Without systemd-networkd, make the dummy interface by hand with the same address.
 3. **The platform host's settings** in `platform/deploy/.env`:
 
    ```bash
@@ -480,13 +491,7 @@ The runner's settings do not change: it reaches `postgres`, `openbao`, `temporal
    platform/deploy/scripts/up.sh core models platform runner-link   # add knowledge if you use it
    ```
 
-5. **The runner host's checkout and settings.** A checkout of the **same release tag** as the platform (Docker and Compose are enough there; no Node.js). As the user that runs the runner's Engine:
-
-   ```bash
-   platform/deploy/scripts/runner-host.sh env   # once: platform/deploy/runner-host/.env, never overwritten
-   ```
-
-   Set `COMPOSE_PROJECT_NAME` (the platform's), `SDLC_RUNNER_LINK_ADDR` (the platform host's link address), `SDLC_DOCKER_SOCKET` (`/run/user/<uid>/docker.sock`) and `SDLC_OPENBAO_CA_FILE`. Copy `ca.pem` of the platform's `SDLC_OPENBAO_TLS_DIR` there (a public certificate; never the folder's key).
+5. **The runner host's settings.** Step 1 writes `platform/deploy/runner-host/.env` (`runner-host.sh env`, never overwritten) and sets `SDLC_DOCKER_SOCKET` (`/run/user/<uid>/docker.sock`), and, when you give them, `SDLC_RUNNER_LINK_ADDR`, `COMPOSE_PROJECT_NAME` and `SDLC_OPENBAO_CA_FILE`; set any it did not by hand. Copy `ca.pem` of the platform's `SDLC_OPENBAO_TLS_DIR` to `SDLC_OPENBAO_CA_FILE` (a public certificate; never the folder's key).
 6. **The runner's credentials**, on the platform host, in the owner's terminal: `pnpm openbao:bootstrap runner-credentials`. With `SDLC_RUNNER_DOCKER_HOST` set, the credentials go into the runner host's volume, over the Docker connection (stdin only, no file). `runner-evidence-credentials` is unchanged (OpenBao only).
 7. **Start**, on the runner host: `platform/deploy/scripts/runner-host.sh up` (add `knowledge` for the knowledge-db relay, `vm` on a separate VM for the registry relay). It refuses an Engine that holds the platform's data. Stop: `runner-host.sh down` (volumes kept).
 8. **Check** on the platform host: `pnpm doctor` shows `runner.engine` ok. On the runner host: `runner-host.sh ps`, and `docker compose -f platform/deploy/runner-host/docker-compose.yml --env-file platform/deploy/runner-host/.env --profile sandbox logs sdlc-runner`.

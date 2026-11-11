@@ -97,6 +97,7 @@
 | ADR-M103 | [Data that only grows: run events, sessions, challenges, partitions](ADR-M103-growing-data.md) | Accepted (2026-10-31); `run_events` kept at least 2 years, ended sessions and old challenges removed by definer functions in the retention loop, the growth measured and `doctor` `db.table_size`, partitions designed for later (QUESTIONS #646–#648) |
 | ADR-M104 | [A simpler release: merge, then approve npm](ADR-M104-simpler-release.md) | Accepted (2026-10-31, 1.1); the owner only merges: the upgrade test on the version pull request, `release-tag.yml` tags the merge commit and dispatches `release.yml`, `pnpm release:prepare` and Upgrade notes written by each pull request and no `npm` approval (QUESTIONS #651–#654) |
 | ADR-M105 | [Docker authorization plugin for create bodies (H07)](ADR-M105-docker-authz-plugin.md) | Accepted (2026-11-10); shared denylist + Node legacy AuthZ plugin as a host process on the runner Engine (QUESTIONS #656–#660) |
+| ADR-M107 | [One command to set up the runner host (V18)](ADR-M107-runner-host-setup.md) | Accepted (2026-11-12); `runner-host-setup.sh` with the CI script's step code (`rootless-engine.sh`), the AuthZ plugin, the same-server dummy interface and the runner host's `.env`; checks packages, installs none |
 
 
 ## Number blocks (QUESTIONS and ADR numbers)
