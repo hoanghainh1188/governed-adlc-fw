@@ -9,7 +9,9 @@
 // - no share and no token in a file, an environment variable, a command line or a log: they stay
 //   in memory (`SecretBag`) and reach the children on stdin;
 // - a new start skips what is done (OpenBao's state, the progress file) and says where the last run
-//   stopped; a failure names the step and its README section; it ends with `doctor`.
+//   stopped; a failure names the step and its README section; it ends with `doctor`;
+// - with `access` and `runner_link` in the settings (V20): the team access proxy and the runner on
+//   its own Engine, their env keys written in step 2 (the runner host's address before `configure`).
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -39,7 +41,8 @@ import {
   type Progress,
   type StopReason,
 } from './progress.js';
-import { pgpKeyBase64, usesPgp, type ServerSettings } from './settings.js';
+import { applyEnvKeys, EnvKeyConflict, settingsEnvKeys } from './env-keys.js';
+import { accessOrigin, pgpKeyBase64, usesPgp, type ServerSettings } from './settings.js';
 import { PromptAborted, type Terminal } from './terminal.js';
 
 /** The README step of each marker, and its section (`platform/deploy/README.md#…`). */
@@ -75,7 +78,8 @@ export class SetupRefused extends Error {
       | 'pgp_key_invalid'
       | 'no_share'
       | 'secret_file'
-      | 'secret_file_mode',
+      | 'secret_file_mode'
+      | 'env_conflict',
     readonly params: Readonly<Record<string, string>> = {},
   ) {
     super(`server:setup refused: ${code}`);
@@ -144,6 +148,12 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
     });
   const markDelivered = (command: string) =>
     save({ ...progress, credentials: [...new Set([...progress.credentials, command])] });
+  const unmark = (marker: string, command?: string) =>
+    save({
+      ...progress,
+      done: progress.done.filter((m) => m !== marker),
+      credentials: progress.credentials.filter((c) => c !== command),
+    });
 
   if (progress.stopped) {
     term.say('server_setup.resume', {
@@ -196,6 +206,7 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
     if (isTrialProject(composeProject)) {
       throw new SetupRefused('trial_project', { project: composeProject });
     }
+    envText = writeSettingsKeys(envText);
     const d = new FreshDeployment({
       repoRoot: deps.repoRoot,
       envFile: deps.envFile,
@@ -341,11 +352,47 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
     if (envText !== fs.readFileSync(deps.envFile, 'utf8')) {
       fs.writeFileSync(deps.envFile, envText, { mode: 0o600 });
     }
+    // The runner on its own Engine: the profile runner-link instead of sandbox (README runner step
+    // 4); `up.sh` refuses sandbox while SDLC_RUNNER_LINK_ADDR is set.
+    const link = settings.runnerLink !== undefined;
     const profiles = [
-      ...PROFILES,
+      ...PROFILES.map((p) => (p === 'sandbox' && link ? 'runner-link' : p)),
       ...(has('observability') ? ['observability'] : []),
       ...(has('knowledge') ? ['knowledge'] : []),
+      ...(settings.access ? ['access'] : []),
     ];
+    if (settings.access?.certificateFolder && !isDone('7.access-tls')) {
+      // The company CA's certificate for the proxy (README "Team access" step 3, T11 §3d).
+      checkStop();
+      const imported = await deps.exec(
+        path.join(deps.repoRoot, 'platform/deploy/access/tls.sh'),
+        ['import', settings.access.certificateFolder],
+        { env: { SDLC_ENV_FILE: deps.envFile } },
+      );
+      if (imported.status !== 0) {
+        throw new DeployStepError('access:tls import', bag.redact(imported.stderr).trim());
+      }
+      markDone('7.access-tls');
+    }
+    if (link && !isDone('7.runner-moved')) {
+      // A runner of an earlier start on the platform's Engine goes first (README runner step 4).
+      checkStop();
+      d.ok(
+        await d.compose(
+          '',
+          '--profile',
+          'sandbox',
+          'rm',
+          '--stop',
+          '--force',
+          'sdlc-runner',
+          'docker-socket-proxy',
+          'npm-proxy',
+        ),
+        'compose rm sdlc-runner',
+      );
+      markDone('7.runner-moved');
+    }
     checkStop();
     await d.up(profiles);
     markDone('7.up');
@@ -361,7 +408,8 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
         await d.credentials(await ensureAdmin(ADMIN_MIN_SECONDS.command), command);
         markDelivered(command);
       }
-      await restart('sdlc-worker', 'sdlc-runner');
+      // On its own Engine the runner restarts on the runner host (said at the end).
+      await restart(...(link ? ['sdlc-worker'] : ['sdlc-worker', 'sdlc-runner']));
       markDone('7.knowledge');
     }
     if (has('observability') && !isDone('7.observability')) {
@@ -380,6 +428,11 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
       markDone('7.observability');
     }
     markDone('7');
+    if (settings.access)
+      term.say('server_setup.access.ready', { url: accessOrigin(settings.access) });
+    if (link) {
+      term.say('server_setup.runner_link.next', { profiles: has('knowledge') ? ' knowledge' : '' });
+    }
 
     // The admin token is not needed any more; then `doctor` (read only, prints no secret).
     await revokeAdmin();
@@ -426,6 +479,33 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
     await revokeAdmin();
     if (rootToken) bag.drop(rootToken);
     rootToken = '';
+  }
+
+  /**
+   * The env keys of `access` and `runner_link` (V20), written in step 2. A new runner host address
+   * after `configure` means `configure` again (only it lets the AppRole runner accept the address);
+   * a new runner Docker host means the runner's credentials again, into the runner host's volume.
+   */
+  function writeSettingsKeys(text: string): string {
+    let result: ReturnType<typeof applyEnvKeys>;
+    try {
+      result = applyEnvKeys(text, settingsEnvKeys(settings, text));
+    } catch (error) {
+      if (!(error instanceof EnvKeyConflict)) throw error;
+      throw new SetupRefused('env_conflict', { key: error.key, path: deps.envFile });
+    }
+    if (result.changed.length === 0) return text;
+    fs.writeFileSync(deps.envFile, result.text, { mode: 0o600 });
+    term.say('server_setup.env.keys', { keys: result.changed.join(', ') });
+    if (result.changed.includes('SDLC_RUNNER_SOURCE_CIDR') && isDone('3.configure')) {
+      term.say('server_setup.runner_link.configure_again');
+      unmark('3.configure');
+    }
+    if (result.changed.includes('SDLC_RUNNER_DOCKER_HOST')) {
+      unmark('7.runner-moved', 'runner-credentials');
+      unmark('5');
+    }
+    return result.text;
   }
 
   /** Revokes the admin token; says so when OpenBao does not confirm it (review V16). */

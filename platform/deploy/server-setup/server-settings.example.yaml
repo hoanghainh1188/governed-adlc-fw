@@ -1,4 +1,4 @@
-# Settings of `pnpm server:setup` (D-08 V16; platform/deploy/README.md "Fresh deployment", steps 2-7;
+# Settings of `pnpm server:setup` (D-08 V16, V20; platform/deploy/README.md "Fresh deployment", steps 2-7;
 # runbook T11 §3.2). Copy this file OUTSIDE the repository, for example to /srv/sdlc/setup.yaml
 # (mode 600), and change every value. It holds paths only, never a secret: a secret whose file is
 # not given is asked for at a hidden prompt.
@@ -49,6 +49,32 @@ optional: []
 # dashboard:
 #   public_origin: https://sdlc.example.com
 #   client_secret_file: /srv/sdlc/secrets/github-app.pem.client-secret
+
+# With dashboard-signin and `access` below, public_origin may be left out: it is the proxy's
+# https://<hostname>:<port> (one public origin, ADR-M67 §2.8); another value is refused.
+
+# Team access (README "Team access", D-08 V20): the TLS proxy on one LAN port. The command writes
+# SDLC_ACCESS_* and SDLC_API_TRUSTED_PROXY in the env file, imports the company CA's certificate
+# with `access:tls import` and starts the profile `access` in step 7. A key the env file already
+# sets to another value is refused, never overwritten.
+# access:
+#   hostname: sdlc.example.internal       # a DNS name in the company DNS, never an IP address
+#   bind_addr: 192.0.2.10                 # the server's LAN address
+#   port: 8443                            # default 8443
+#   cli_ips: []                           # optional: IPv4 addresses for the CLI, also in the certificate
+#   tls_dir: /etc/sdlc/access-tls         # SDLC_ACCESS_TLS_DIR, outside the repository
+#   certificate_folder: /srv/sdlc/access-cert  # ca.pem, server.pem, server-key.pem from the company CA
+#                                         # (never a CA key); leave out when tls_dir already holds them
+
+# The runner on its own Docker Engine (README "The runner on its own Docker Engine", steps 3, 4, 6;
+# D-08 V20). Set up the runner host first (its Engine must answer at docker_host before step 5).
+# The command writes the three keys in step 2, before `configure`, so the key holders meet once;
+# step 5 delivers the runner's credentials to the runner host, and step 7 starts the profile
+# runner-link instead of sandbox. Then start the runner on the runner host (runner-host.sh up).
+# runner_link:
+#   link_addr: 10.203.0.1                 # SDLC_RUNNER_LINK_ADDR; a VM with WireGuard: 10.66.0.1
+#   source_cidr: 10.203.0.1/32            # SDLC_RUNNER_SOURCE_CIDR; a VM: 10.66.0.2/32
+#   docker_host: unix:///run/user/1001/docker.sock   # a VM: ssh://sdlc-runner@10.66.0.2
 
 # Only on a development machine: go on to step 3 with the throw-away certificate of compose:env.
 # On a server, leave it out: a new env file stops the command after step 2, so OpenBao's

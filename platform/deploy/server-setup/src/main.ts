@@ -36,6 +36,7 @@ const REFUSAL_KEYS = {
   no_share: 'server_setup.refused.no_share',
   secret_file: 'server_setup.refused.secret_file',
   secret_file_mode: 'server_setup.refused.secret_file_mode',
+  env_conflict: 'server_setup.refused.env_conflict',
 } as const satisfies Record<
   SetupRefused['code'] | NonNullable<ReturnType<typeof terminalRefusal>>,
   MessageKey

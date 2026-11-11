@@ -23,12 +23,18 @@ import {
   readProgress,
 } from '../../deploy/server-setup/src/progress.js';
 import {
+  accessOrigin,
   parseSettings,
   pgpKeyBase64,
   SettingsError,
   usesPgp,
   type ServerSettings,
 } from '../../deploy/server-setup/src/settings.js';
+import {
+  applyEnvKeys,
+  EnvKeyConflict,
+  settingsEnvKeys,
+} from '../../deploy/server-setup/src/env-keys.js';
 import {
   isTrialProject,
   serverSetup,
@@ -221,6 +227,7 @@ class FakeHost {
     if (cmd === 'node' && args[0]?.endsWith('doctor/dist/main.js'))
       return ok('doctor: all checks pass\n');
     if (base === 'up.sh') return ok('up: done\n');
+    if (base === 'tls.sh' && args[0] === 'import') return ok('access-tls: copied\n');
     return fail(`unexpected ${cmd}`);
   }
 }
@@ -850,5 +857,268 @@ describe('V16 AC3, AC5: the progress file', () => {
     const file = progressFileFor(f.envFile);
     expect(path.dirname(file)).toBe(f.dir);
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe('V20: team access and the runner link in the settings', () => {
+  const home = '/home/op';
+  const base = {
+    key_holders: [{ name: 'Ana' }, { name: 'Binh' }, { name: 'Chi' }],
+    github_app: { client_id: 'Iv23abc', private_key_file: '/srv/app.pem' },
+    model_providers: [{ provider: 'anthropic' }],
+  };
+  const access = {
+    hostname: 'sdlc.example.internal',
+    bind_addr: '192.0.2.10',
+    tls_dir: '/etc/sdlc/access-tls',
+    certificate_folder: '~/access-cert',
+  };
+  const runnerLink = {
+    link_addr: '10.203.0.1',
+    source_cidr: '10.203.0.1/32',
+    docker_host: 'unix:///run/user/1001/docker.sock',
+  };
+  const parse = (o: object) => parseSettings(JSON.stringify(o), home, 3);
+  const field = (o: object): string => {
+    try {
+      parse(o);
+    } catch (e) {
+      if (e instanceof SettingsError) return e.field;
+      throw e;
+    }
+    return '(none)';
+  };
+
+  it('AC1: reads access, with the default port and the derived public origin', () => {
+    const s = parse({ ...base, access, optional: ['dashboard-signin'] });
+    expect(s.access).toEqual({
+      hostname: 'sdlc.example.internal',
+      bindAddr: '192.0.2.10',
+      port: 8443,
+      ips: [],
+      tlsDir: '/etc/sdlc/access-tls',
+      certificateFolder: '/home/op/access-cert',
+    });
+    expect(s.dashboard?.publicOrigin).toBe('https://sdlc.example.internal:8443');
+    expect(accessOrigin({ hostname: 'a.example', port: 443 })).toBe('https://a.example');
+  });
+
+  it('AC1: one public origin behind the proxy; a host name, never an IP address', () => {
+    expect(
+      field({
+        ...base,
+        access,
+        optional: ['dashboard-signin'],
+        dashboard: { public_origin: 'https://other.example.internal' },
+      }),
+    ).toBe('dashboard.public_origin');
+    expect(
+      parse({
+        ...base,
+        access: { ...access, port: 443 },
+        optional: ['dashboard-signin'],
+        dashboard: { public_origin: 'https://sdlc.example.internal' },
+      }).dashboard?.publicOrigin,
+    ).toBe('https://sdlc.example.internal');
+    expect(field({ ...base, access: { ...access, hostname: '192.0.2.10' } })).toBe(
+      'access.hostname',
+    );
+    expect(field({ ...base, access: { ...access, hostname: 'localhost' } })).toBe(
+      'access.hostname',
+    );
+    expect(field({ ...base, access: { ...access, bind_addr: 'lan' } })).toBe('access.bind_addr');
+    expect(field({ ...base, access: { ...access, port: 70000 } })).toBe('access.port');
+    expect(field({ ...base, access: { ...access, cli_ips: ['x'] } })).toBe('access.cli_ips[0]');
+    expect(field({ ...base, access: { ...access, tls_dir: 'rel' } })).toBe('access.tls_dir');
+  });
+
+  it('AC2: reads runner_link and refuses what bootstrap.sh would refuse', () => {
+    expect(parse({ ...base, runner_link: runnerLink }).runnerLink).toEqual({
+      linkAddr: '10.203.0.1',
+      sourceCidr: '10.203.0.1/32',
+      dockerHost: 'unix:///run/user/1001/docker.sock',
+    });
+    expect(
+      parse({ ...base, runner_link: { ...runnerLink, docker_host: 'ssh://sdlc-runner@10.66.0.2' } })
+        .runnerLink?.dockerHost,
+    ).toBe('ssh://sdlc-runner@10.66.0.2');
+    expect(field({ ...base, runner_link: { ...runnerLink, source_cidr: '10.203.0.1' } })).toBe(
+      'runner_link.source_cidr',
+    );
+    expect(field({ ...base, runner_link: { ...runnerLink, source_cidr: '10.0.0.1/33' } })).toBe(
+      'runner_link.source_cidr',
+    );
+    expect(field({ ...base, runner_link: { ...runnerLink, docker_host: 'tcp://x:2375' } })).toBe(
+      'runner_link.docker_host',
+    );
+    expect(field({ ...base, runner_link: { ...runnerLink, link_addr: '10.203.0' } })).toBe(
+      'runner_link.link_addr',
+    );
+  });
+
+  it('AC3: env keys: set when empty or a template default, kept when equal, refused when different', () => {
+    const s = parse({
+      ...base,
+      access: { ...access, cli_ips: ['192.0.2.10'] },
+      runner_link: runnerLink,
+    });
+    const env =
+      'SDLC_ACCESS_HOST_PORT=8443\nSDLC_ACCESS_PROXY_IP=172.30.1.9\nSDLC_ACCESS_BIND_ADDR=\n';
+    const keys = settingsEnvKeys(s, env);
+    expect(Object.fromEntries(keys)).toEqual({
+      SDLC_ACCESS_BIND_ADDR: '192.0.2.10',
+      SDLC_ACCESS_HOST_PORT: '8443',
+      SDLC_ACCESS_HOSTNAME: 'sdlc.example.internal',
+      SDLC_ACCESS_TLS_DIR: '/etc/sdlc/access-tls',
+      SDLC_API_TRUSTED_PROXY: '172.30.1.9',
+      SDLC_ACCESS_IPS: '192.0.2.10',
+      SDLC_RUNNER_LINK_ADDR: '10.203.0.1',
+      SDLC_RUNNER_SOURCE_CIDR: '10.203.0.1/32',
+      SDLC_RUNNER_DOCKER_HOST: 'unix:///run/user/1001/docker.sock',
+    });
+    const first = applyEnvKeys(env, keys);
+    expect(first.changed).not.toContain('SDLC_ACCESS_HOST_PORT');
+    expect(first.text).toMatch(/^SDLC_ACCESS_BIND_ADDR=192\.0\.2\.10$/m);
+    expect(applyEnvKeys(first.text, keys)).toEqual({ text: first.text, changed: [] });
+    expect(
+      applyEnvKeys('SDLC_ACCESS_HOST_PORT=8443\n', [['SDLC_ACCESS_HOST_PORT', '9443']]).changed,
+    ).toEqual(['SDLC_ACCESS_HOST_PORT']);
+    expect(() =>
+      applyEnvKeys('SDLC_RUNNER_LINK_ADDR=10.66.0.1\n', [['SDLC_RUNNER_LINK_ADDR', '10.203.0.1']]),
+    ).toThrow(EnvKeyConflict);
+  });
+
+  /** The same settings without access, the runner link and the dashboard sign-in. */
+  function withoutLink(s: ServerSettings): ServerSettings {
+    const { access: _a, runnerLink: _r, dashboard: _d, ...rest } = s;
+    void _a;
+    void _r;
+    void _d;
+    return { ...rest, optional: [] };
+  }
+
+  function linked() {
+    const f = fixture();
+    const settings: ServerSettings = {
+      ...f.settings,
+      optional: ['knowledge', 'dashboard-signin'],
+      dashboard: { publicOrigin: 'https://sdlc.example.internal:8443' },
+      access: {
+        hostname: 'sdlc.example.internal',
+        bindAddr: '192.0.2.10',
+        port: 8443,
+        ips: [],
+        tlsDir: path.join(f.dir, 'access-tls'),
+        certificateFolder: path.join(f.dir, 'cert'),
+      },
+      runnerLink: {
+        linkAddr: '10.203.0.1',
+        sourceCidr: '10.203.0.1/32',
+        dockerHost: 'unix:///run/user/1001/docker.sock',
+      },
+    };
+    // The env file as `configure` and the credentials commands see it.
+    const seen: Record<string, string> = {};
+    const exec: Exec = (cmd, args, opts) => {
+      if (path.basename(cmd) === 'bootstrap.sh' && fs.existsSync(f.envFile)) {
+        seen[args[0] ?? ''] = fs.readFileSync(f.envFile, 'utf8');
+      }
+      return f.host.exec(cmd, args, opts);
+    };
+    return { ...f, settings, seen, deps: { ...f.deps, exec } };
+  }
+
+  it('AC1, AC2: writes the keys before configure, imports the certificate, starts access and runner-link', async () => {
+    const f = linked();
+    const r = await serverSetup(f.settings, f.deps);
+    expect(r.outcome).toBe('done');
+    expect(f.seen.configure).toMatch(/^SDLC_RUNNER_SOURCE_CIDR=10\.203\.0\.1\/32$/m);
+    expect(f.seen['runner-credentials']).toMatch(
+      /^SDLC_RUNNER_DOCKER_HOST=unix:\/\/\/run\/user\/1001\/docker\.sock$/m,
+    );
+    const env = fs.readFileSync(f.envFile, 'utf8');
+    expect(env).toMatch(/^SDLC_ACCESS_HOSTNAME=sdlc\.example\.internal$/m);
+    expect(env).toMatch(/^SDLC_API_TRUSTED_PROXY=172\.30\.1\.6$/m);
+    expect(env).toMatch(/^SDLC_API_PUBLIC_ORIGIN=https:\/\/sdlc\.example\.internal:8443$/m);
+    expect(fs.statSync(f.envFile).mode & 0o777).toBe(0o600);
+
+    const index = (pred: (c: Call) => boolean) => f.host.calls.findIndex(pred);
+    const up = index((c) => path.basename(c.cmd) === 'up.sh');
+    const tls = index((c) => path.basename(c.cmd) === 'tls.sh');
+    const rm = index((c) => c.cmd === 'docker' && c.args.includes('rm'));
+    expect(tls).toBeGreaterThan(-1);
+    expect(rm).toBeGreaterThan(-1);
+    expect(tls).toBeLessThan(up);
+    expect(rm).toBeLessThan(up);
+    expect(f.host.calls[tls]!.args).toEqual(['import', path.join(f.dir, 'cert')]);
+    expect(f.host.calls[up]!.args).toEqual([
+      'core',
+      'models',
+      'platform',
+      'runner-link',
+      'knowledge',
+      'access',
+    ]);
+    expect(f.host.calls[rm]!.args).toEqual(
+      expect.arrayContaining(['sdlc-runner', 'docker-socket-proxy', 'npm-proxy', '--stop']),
+    );
+    // On its own Engine the runner restarts on the runner host: only the worker restarts here.
+    const restart = f.host.calls.find((c) => c.cmd === 'docker' && c.args.includes('restart'))!;
+    expect(restart.args.slice(restart.args.indexOf('restart') + 1)).toEqual(['sdlc-worker']);
+    expect(f.term.said('server_setup.access.ready')).toBe(true);
+    expect(f.term.said('server_setup.runner_link.next')).toBe(true);
+    expect(f.host.delivered).toContain('runner-credentials');
+  });
+
+  it('AC3: a second run changes nothing and imports nothing again', async () => {
+    const f = linked();
+    await serverSetup(f.settings, f.deps);
+    const before = fs.readFileSync(f.envFile, 'utf8');
+    const first = f.host.calls.length;
+    const again = new ScriptedTerminal(f.host);
+    await serverSetup(f.settings, { ...f.deps, terminal: again });
+    const second = f.host.calls.slice(first);
+    expect(fs.readFileSync(f.envFile, 'utf8')).toBe(before);
+    expect(again.said('server_setup.env.keys')).toBe(false);
+    expect(second.some((c) => path.basename(c.cmd) === 'tls.sh')).toBe(false);
+    expect(second.some((c) => c.cmd === 'docker' && c.args.includes('rm'))).toBe(false);
+    expect(f.host.configureRuns).toBe(1);
+  });
+
+  it('AC3: refuses an env key that holds another value, and changes nothing', async () => {
+    const f = linked();
+    await serverSetup(withoutLink(f.settings), f.deps);
+    const env = fs.readFileSync(f.envFile, 'utf8').concat('SDLC_RUNNER_LINK_ADDR=10.66.0.1\n');
+    fs.writeFileSync(f.envFile, env, { mode: 0o600 });
+    const again = new ScriptedTerminal(f.host);
+    const error = await serverSetup(f.settings, { ...f.deps, terminal: again }).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(SetupStopped);
+    expect((error as SetupStopped).cause).toBeInstanceOf(SetupRefused);
+    expect(((error as SetupStopped).cause as SetupRefused).code).toBe('env_conflict');
+    expect(((error as SetupStopped).cause as SetupRefused).params).toMatchObject({
+      key: 'SDLC_RUNNER_LINK_ADDR',
+    });
+    expect(fs.readFileSync(f.envFile, 'utf8')).toBe(env);
+  });
+
+  it('AC2: a runner link added after configure runs configure again and delivers the runner credentials again', async () => {
+    const f = linked();
+    await serverSetup(withoutLink(f.settings), f.deps);
+    expect(f.host.configureRuns).toBe(1);
+    const delivered = f.host.delivered.filter((c) => c === 'runner-credentials').length;
+    const again = new ScriptedTerminal(f.host);
+    await serverSetup(
+      { ...withoutLink(f.settings), runnerLink: f.settings.runnerLink! },
+      {
+        ...f.deps,
+        terminal: again,
+      },
+    );
+    expect(again.said('server_setup.runner_link.configure_again')).toBe(true);
+    expect(f.host.configureRuns).toBe(2);
+    expect(f.host.delivered.filter((c) => c === 'runner-credentials').length).toBe(delivered + 1);
+    expect(f.seen.configure).toMatch(/^SDLC_RUNNER_SOURCE_CIDR=10\.203\.0\.1\/32$/m);
   });
 });

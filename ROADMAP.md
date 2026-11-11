@@ -75,6 +75,9 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **A10** Resource measurement + backup / restore drill + internal CA / TLS
 - **V15** Release on the tag: one workflow builds the images, the lock file is a release asset (done, v0.7.0)
 - **V16** `pnpm server:setup`: a guided fresh deployment on a server (steps 2–7) (done, v0.8.0)
+- **V18** One command to set up the runner host
+- **V19** `pnpm server:setup` runs steps 8–13
+- **V20** Team access and the runner link in the `server:setup` settings
 - **H02** Dependencies an agent adds: licence, known vulnerabilities, name checks (done, v0.8.0)
 - **H03** Design: deleting a client's data on request (done, v0.8.0)
 - **H03a** Client data deletion 1: tenant states and the anonymization of people
