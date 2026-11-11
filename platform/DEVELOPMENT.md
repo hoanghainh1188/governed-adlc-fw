@@ -63,6 +63,8 @@ Then run the suites of section 2 that cover the code you changed (section 5 list
 
 CI layout (`.github/workflows/ci.yml`): pull requests, a daily run on `main` (the `scan` job only), a weekly run with every job, and manual dispatch. The heavy jobs (`compose`, `sandbox-image`) run only when their paths change, after `checks` passed, never on a draft pull request. After a pull request that changes the gate steps, the worker or the pilot suite, run the weekly jobs on the branch: `gh workflow run ci --ref <branch>`.
 
+CI installs no tool with apt where it can avoid it: GitHub's runners cannot always reach the Ubuntu mirror. `age` (jobs `compose` and `upgrade`) is the release binary pinned by `AGE_VERSION` and `AGE_SHA256`, like Gitleaks, Trivy and actionlint. Chromium for `pnpm test:dashboard` comes from Playwright without `--with-deps`; apt (with retries) runs only when the runner image lacks one of its libraries. On a developer machine or the server, install `age` as before.
+
 ---
 
 ## 3. Live tests run by the owner

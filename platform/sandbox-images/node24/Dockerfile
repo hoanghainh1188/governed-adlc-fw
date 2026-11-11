@@ -28,7 +28,9 @@ USER root
 #   (CVE-2026-115905, release scan of v0.8.0, PR #466).
 # - libbrotli1 is upgraded to Debian's fixed package (CVE-2026-111497, the same scan) from the
 #   dated Debian security snapshot of 2026-10-27; the base reads a snapshot of 2026-09-13. The extra
-#   source is removed again. Remove this step when the pinned base image ships the fix.
+#   source is removed again. linux-libc-dev comes from the same snapshot (6.12.113-1,
+#   CVE-2026-98432, found by the image scan on 2026-11-11, PR #502). Remove this step when the
+#   pinned base image ships both fixes.
 # - The Agent Server keeps its own state (conversations, bash events) under the relative path
 #   `workspace/…` of its working directory by default. The runner starts the sandbox in
 #   /workspace, which is the repository, so the state would show up as changed files. The OH_*
@@ -44,6 +46,7 @@ RUN node --version | grep -Eq '^v24\.' \
        > /etc/apt/sources.list.d/sdlc-security-fix.sources \
   && apt-get update \
   && apt-get install -y --no-install-recommends --only-upgrade libbrotli1=1.1.0-2+deb13u1 \
+       linux-libc-dev=6.12.113-1 \
   && rm -f /etc/apt/sources.list.d/sdlc-security-fix.sources \
   && rm -rf /var/lib/apt/lists/* \
   && corepack enable pnpm \
