@@ -6,7 +6,7 @@
 # reliably visible to dockerd inside the namespace. The plugin listens under $HOME (shared).
 # Legacy AuthZ discovery only scans /etc/docker/plugins and /usr/lib/docker/plugins; for rootless
 # we write the .spec into the host /etc/docker/plugins (sudo) so the next RootlessKit start copies
-# it up. daemon.json lists the plugin by name only.
+# it up. Rootful lists the plugin in daemon.json; rootless uses the ExecStart flag only.
 #
 # Usage:
 #   platform/deploy/docker-authz/scripts/enable.sh [--dist <main.js>] [--socket <path>]
@@ -115,35 +115,52 @@ else
   fi
 fi
 
-# daemon.json: plugin by name only (path entries are not valid AuthZ plugin ids).
-node -e '
-  const fs = require("fs");
-  const p = process.argv[1];
-  const j = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : {};
-  const prev = Array.isArray(j["authorization-plugins"]) ? j["authorization-plugins"] : [];
-  // Drop prior absolute-socket entries from older enable.sh; keep other named plugins.
-  const next = prev.filter((id) => typeof id === "string" && !id.includes("/") && id !== "sdlc-authz");
-  next.push("sdlc-authz");
-  j["authorization-plugins"] = next;
-  fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
-' "$daemon_json"
-
-# Rootless: also pass --authorization-plugin on dockerd's ExecStart. daemon.json alone can list
-# the plugin in `docker info` while the live AuthZ middleware chain stays empty after some
-# rootless restarts; the CLI flag forces the chain to load sdlc-authz (H07 AC3).
-if [ "$uid" -ne 0 ] && command -v systemctl >/dev/null; then
-  drop_in="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/docker.service.d"
-  mkdir -p "$drop_in"
-  # Read the unit file itself (not merged drop-ins) so ExecStart= resets do not yield an empty line.
-  frag=$(systemctl --user show docker.service -p FragmentPath --value 2>/dev/null || true)
-  exec_line=""
-  if [ -n "$frag" ] && [ -f "$frag" ]; then
-    exec_line=$(sed -n 's/^ExecStart=//p' "$frag" | head -1)
+# Enable AuthZ on the Engine. Docker refuses the same directive from both a flag and
+# daemon.json ("specified both as a flag and in the configuration file").
+# - Rootful: list the plugin by name in daemon.json only.
+# - Rootless: pass --authorization-plugin on dockerd ExecStart only. daemon.json alone can
+#   show the plugin in `docker info` while the live AuthZ chain stays empty after some
+#   rootless restarts; the CLI flag forces the chain to load sdlc-authz (H07 AC3). Always
+#   strip sdlc-authz from daemon.json on rootless so a prior enable run cannot conflict.
+if [ "$uid" -eq 0 ]; then
+  node -e '
+    const fs = require("fs");
+    const p = process.argv[1];
+    const j = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : {};
+    const prev = Array.isArray(j["authorization-plugins"]) ? j["authorization-plugins"] : [];
+    // Drop prior absolute-socket entries from older enable.sh; keep other named plugins.
+    const next = prev.filter((id) => typeof id === "string" && !id.includes("/") && id !== "sdlc-authz");
+    next.push("sdlc-authz");
+    j["authorization-plugins"] = next;
+    fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
+  ' "$daemon_json"
+else
+  if [ -f "$daemon_json" ]; then
+    node -e '
+      const fs = require("fs");
+      const p = process.argv[1];
+      const j = JSON.parse(fs.readFileSync(p, "utf8"));
+      const prev = Array.isArray(j["authorization-plugins"]) ? j["authorization-plugins"] : [];
+      const next = prev.filter((id) => id !== "sdlc-authz");
+      if (next.length === 0) delete j["authorization-plugins"];
+      else j["authorization-plugins"] = next;
+      fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
+    ' "$daemon_json"
   fi
-  if [ -n "$exec_line" ]; then
-    printf '%s\n' '[Service]' 'ExecStart=' "ExecStart=$exec_line --authorization-plugin=sdlc-authz" \
-      >"$drop_in/sdlc-authz.conf"
-    systemctl --user daemon-reload
+  if command -v systemctl >/dev/null; then
+    drop_in="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/docker.service.d"
+    mkdir -p "$drop_in"
+    # Read the unit file itself (not merged drop-ins) so ExecStart= resets do not yield an empty line.
+    frag=$(systemctl --user show docker.service -p FragmentPath --value 2>/dev/null || true)
+    exec_line=""
+    if [ -n "$frag" ] && [ -f "$frag" ]; then
+      exec_line=$(sed -n 's/^ExecStart=//p' "$frag" | head -1)
+    fi
+    if [ -n "$exec_line" ]; then
+      printf '%s\n' '[Service]' 'ExecStart=' "ExecStart=$exec_line --authorization-plugin=sdlc-authz" \
+        >"$drop_in/sdlc-authz.conf"
+      systemctl --user daemon-reload
+    fi
   fi
 fi
 

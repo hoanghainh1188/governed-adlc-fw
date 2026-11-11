@@ -88,7 +88,8 @@ case "$info" in
 esac
 
 # 7. AuthZ plugin for create bodies (H07, ADR-M105). Starts the plugin, writes the .spec and
-#    daemon.json, restarts dockerd. Skip when SDLC_DOCKER_AUTHZ=0 (local debugging only).
+#    rootless ExecStart flag (not daemon.json — Docker rejects both), restarts dockerd.
+#    Skip when SDLC_DOCKER_AUTHZ=0 (local debugging only).
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 authz_main="$repo_root/platform/deploy/docker-authz/dist/main.js"
 if [ "${SDLC_DOCKER_AUTHZ:-1}" != "0" ]; then
