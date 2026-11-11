@@ -25,6 +25,31 @@ export type ProviderSettings =
   | { readonly provider: 'anthropic'; readonly apiKeyFile?: string }
   | { readonly provider: 'ollama'; readonly apiBase: string };
 
+/** Team access through the proxy (README "Team access", V09, ADR-M67; D-08 V20 AC1). */
+export interface AccessSettings {
+  /** The DNS name people open; never an IP address (passkeys refuse it). */
+  readonly hostname: string;
+  /** The server's LAN address the proxy is published on. */
+  readonly bindAddr: string;
+  readonly port: number;
+  /** IPv4 addresses for the CLI, in the certificate too (`SDLC_ACCESS_IPS`). */
+  readonly ips: readonly string[];
+  /** `SDLC_ACCESS_TLS_DIR`: outside the repository. */
+  readonly tlsDir: string;
+  /** A folder with the company CA's `ca.pem`, `server.pem`, `server-key.pem` for `access:tls import`. */
+  readonly certificateFolder?: string;
+}
+
+/** The runner on its own Engine, the platform host's side (README runner steps 3, 4, 6; V20 AC2). */
+export interface RunnerLinkSettings {
+  /** `SDLC_RUNNER_LINK_ADDR`: the platform host's address on the link. */
+  readonly linkAddr: string;
+  /** `SDLC_RUNNER_SOURCE_CIDR`: the runner host as OpenBao sees it. */
+  readonly sourceCidr: string;
+  /** `SDLC_RUNNER_DOCKER_HOST`: `ssh://<user>@<host>` or `unix:///<socket>`. */
+  readonly dockerHost: string;
+}
+
 export interface ServerSettings {
   /** The env file of README step 2; default `platform/deploy/.env` of the checkout. */
   readonly envFile?: string;
@@ -34,6 +59,8 @@ export interface ServerSettings {
   readonly providers: readonly ProviderSettings[];
   readonly optional: readonly OptionalPart[];
   readonly dashboard?: { readonly publicOrigin: string; readonly clientSecretFile?: string };
+  readonly access?: AccessSettings;
+  readonly runnerLink?: RunnerLinkSettings;
   /**
    * Go on to step 3 with the throw-away certificate of `compose:env` (a development machine, the
    * live test). Off by default: on a server, OpenBao's certificate comes from the company CA
@@ -52,6 +79,18 @@ export class SettingsError extends Error {
 const CLIENT_ID = /^[A-Za-z0-9._-]{4,64}$/;
 const URL = /^https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?\/?$/;
 const ORIGIN = /^(https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?|http:\/\/localhost(?::\d{1,5})?)$/;
+const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+/** A DNS name with at least one dot, never an IPv4 address. */
+const HOSTNAME =
+  /^(?=.{1,253}$)(?!\d+(?:\.\d+){3}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+/** The forms `bootstrap.sh runner-credentials` accepts (ADR-M91 §2.7). */
+const DOCKER_HOST =
+  /^(?:ssh:\/\/[A-Za-z0-9._-]+@[A-Za-z0-9.-]+(?::\d{1,5})?|unix:\/\/\/[A-Za-z0-9._/-]+)$/;
+
+/** The public origin of the dashboard behind the proxy: `https://<host>[:<port>]`. Pure. */
+export function accessOrigin(a: Pick<AccessSettings, 'hostname' | 'port'>): string {
+  return a.port === 443 ? `https://${a.hostname}` : `https://${a.hostname}:${a.port}`;
+}
 
 type Mapping = Readonly<Record<string, unknown>>;
 
@@ -86,6 +125,51 @@ function absolutePath(map: Mapping, key: string, field: string, home: string): s
 
 function optionalPath(map: Mapping, key: string, field: string, home: string): string | undefined {
   return map[key] === undefined ? undefined : absolutePath(map, key, field, home);
+}
+
+function cidr(map: Mapping, key: string, field: string): string {
+  const value = text(map, key, field);
+  const [addr = '', bits = '', ...rest] = value.split('/');
+  const n = Number(bits);
+  if (rest.length > 0 || !IPV4.test(addr) || !/^\d{1,2}$/.test(bits) || n > 32) {
+    throw new SettingsError(field);
+  }
+  return value;
+}
+
+function accessSettings(value: unknown, home: string): AccessSettings {
+  const a = mapping(value, 'access');
+  const port = a.port === undefined ? 8443 : a.port;
+  if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new SettingsError('access.port');
+  }
+  const ips = (a.cli_ips === undefined ? [] : list(a.cli_ips, 'access.cli_ips')).map((v, i) => {
+    if (typeof v !== 'string' || !IPV4.test(v)) throw new SettingsError(`access.cli_ips[${i}]`);
+    return v;
+  });
+  const certificateFolder = optionalPath(
+    a,
+    'certificate_folder',
+    'access.certificate_folder',
+    home,
+  );
+  return {
+    hostname: text(a, 'hostname', 'access.hostname', HOSTNAME).toLowerCase(),
+    bindAddr: text(a, 'bind_addr', 'access.bind_addr', IPV4),
+    port,
+    ips,
+    tlsDir: absolutePath(a, 'tls_dir', 'access.tls_dir', home),
+    ...(certificateFolder ? { certificateFolder } : {}),
+  };
+}
+
+function runnerLinkSettings(value: unknown): RunnerLinkSettings {
+  const r = mapping(value, 'runner_link');
+  return {
+    linkAddr: text(r, 'link_addr', 'runner_link.link_addr', IPV4),
+    sourceCidr: cidr(r, 'source_cidr', 'runner_link.source_cidr'),
+    dockerHost: text(r, 'docker_host', 'runner_link.docker_host', DOCKER_HOST),
+  };
 }
 
 function provider(value: unknown, i: number, home: string): ProviderSettings {
@@ -153,19 +237,29 @@ export function parseSettings(yamlText: string, home: string, shares: number): S
   if (optional.includes('dashboard-actions') && !optional.includes('dashboard-signin'))
     throw new SettingsError('optional');
 
+  const access = root.access === undefined ? undefined : accessSettings(root.access, home);
+  const runnerLink =
+    root.runner_link === undefined ? undefined : runnerLinkSettings(root.runner_link);
+
   let dashboard: ServerSettings['dashboard'];
   if (optional.includes('dashboard-signin')) {
-    const d = mapping(root.dashboard, 'dashboard');
+    const d = root.dashboard === undefined && access ? {} : mapping(root.dashboard, 'dashboard');
     const clientSecretFile = optionalPath(
       d,
       'client_secret_file',
       'dashboard.client_secret_file',
       home,
     );
-    dashboard = {
-      publicOrigin: text(d, 'public_origin', 'dashboard.public_origin', ORIGIN),
-      ...(clientSecretFile ? { clientSecretFile } : {}),
-    };
+    // Behind the proxy there is one public origin, the proxy's (ADR-M67 §2.8): derived from
+    // `access`, and a different `public_origin` is refused.
+    const publicOrigin =
+      access && d.public_origin === undefined
+        ? accessOrigin(access)
+        : text(d, 'public_origin', 'dashboard.public_origin', ORIGIN);
+    if (access && publicOrigin !== accessOrigin(access)) {
+      throw new SettingsError('dashboard.public_origin');
+    }
+    dashboard = { publicOrigin, ...(clientSecretFile ? { clientSecretFile } : {}) };
   } else if (root.dashboard !== undefined) {
     throw new SettingsError('dashboard');
   }
@@ -182,6 +276,8 @@ export function parseSettings(yamlText: string, home: string, shares: number): S
     providers,
     optional,
     ...(dashboard ? { dashboard } : {}),
+    ...(access ? { access } : {}),
+    ...(runnerLink ? { runnerLink } : {}),
     throwawayTls,
   };
 }

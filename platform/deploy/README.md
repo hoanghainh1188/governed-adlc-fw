@@ -90,8 +90,11 @@ How to bring up the whole platform on a new machine with Docker Compose, from an
 - Step 4 reads each secret from a file named in the settings or at a hidden prompt; the LiteLLM master and salt keys are made inside the container. Step 6 builds the database URL from `.env` and gives it to the migrations on standard input.
 - A new `.env` stops the command after step 2, so OpenBao's certificate comes from the company CA first ([T11 §3c](../../handbook/03-templates/T11-openbao-runbook.md#3c-tls-on-port-8200-the-ca-the-certificate-renewal)); then run it again.
 - It can start again after a failure: each step checks the state (OpenBao initialised or sealed, the credentials delivered, pending migrations; `server-setup-progress.json` next to `.env` holds step names only) and skips what is done. A failure names the step and its section below. A new start says where the last one stopped. It ends with `pnpm doctor`.
+- With an `access` section (D-08 V20), it also does [Team access](#team-access-operator) steps 2–4: it writes the `SDLC_ACCESS_*` keys and `SDLC_API_TRUSTED_PROXY` in step 2, imports the company CA's certificate for the proxy (`access:tls import`) and starts the profile `access` in step 7. With the dashboard sign-in, the public origin is the proxy's.
+- With a `runner_link` section (V20), it also does the platform host's part of [The runner on its own Docker Engine](#the-runner-on-its-own-docker-engine-operator), steps 3, 4 and 6: it writes `SDLC_RUNNER_SOURCE_CIDR`, `SDLC_RUNNER_LINK_ADDR` and `SDLC_RUNNER_DOCKER_HOST` in step 2, before `configure`, so the key holders meet once; step 5 delivers the runner's credentials to the runner host; step 7 starts the profile `runner-link` instead of `sandbox`. Set up the runner host first (its steps 1, 2 and 5); start the runner there at the end (its step 7).
+- A key that `.env` already sets to another value than the settings is refused, never overwritten.
 
-Still by hand: the company CA certificate, the GitHub App, and steps 8–14. `pnpm test:fresh-deploy` runs steps 2–7 through the same code.
+Still by hand: the company CA certificate, the GitHub App, the runner host, and steps 8–14. `pnpm test:fresh-deploy` runs steps 2–7 through the same code.
 
 **Trying the platform on a developer machine (the community trial)?** `pnpm trial:up --settings <file>` runs steps 2–13 below for you with throw-away keys, on its own Compose project `sdlc-trial` ([TRIAL.md §3.2](../../TRIAL.md#32-the-platform), D-08 V02); after a reboot, `pnpm trial:start` unseals it with the key shares it keeps encrypted with your passphrase (V08). Never on a server.
 
@@ -118,7 +121,7 @@ After the first deployment: [Restart after a reboot](#restart-after-a-reboot), [
 | Person A and Person B for the project, never the same person | Leadership | Separation of duties (2+N); `adlc admin project apply` refuses one person in both roles |
 | An encrypted backup target outside the server | Operator | [Backup and restore](#backup-and-restore) |
 
-**The runner's Engine and the key holders.** To keep the key holders to one meeting, put `SDLC_RUNNER_SOURCE_CIDR` (the runner host's address as OpenBao sees it, for example `10.66.0.2/32`) in `platform/deploy/.env` after step 2 and before step 3: `configure` then already accepts it, and the runner section's own `configure` is not needed. Set `SDLC_RUNNER_LINK_ADDR` and `SDLC_RUNNER_DOCKER_HOST` only after `server:setup` has finished, because its step 7 starts the profile `sandbox`, which `up.sh` refuses while `SDLC_RUNNER_LINK_ADDR` is set.
+**The runner's Engine and the key holders.** With `pnpm server:setup`, put the runner host in the settings' `runner_link` section: the command does what this paragraph says. By hand: to keep the key holders to one meeting, put `SDLC_RUNNER_SOURCE_CIDR` (the runner host's address as OpenBao sees it, for example `10.66.0.2/32`) in `platform/deploy/.env` after step 2 and before step 3: `configure` then already accepts it, and the runner section's own `configure` is not needed. Set `SDLC_RUNNER_LINK_ADDR` and `SDLC_RUNNER_DOCKER_HOST` only after `server:setup` has finished, because its step 7 starts the profile `sandbox`, which `up.sh` refuses while `SDLC_RUNNER_LINK_ADDR` is set.
 - `pnpm install` and `pnpm build`.
 
 <a id="github-app-permissions"></a>**The GitHub App's settings.** This is the one list of the App's permissions; other documents link here. One App per installation of the platform (`design/ADR-M23-github-adapter.md` §2.2).
@@ -408,6 +411,8 @@ People on other machines of the company LAN use the CLI and the dashboard throug
 
 ### Set it up
 
+With `pnpm server:setup`, the settings' `access` section does steps 2–4 ([Fresh deployment](#fresh-deployment-operator), D-08 V20); step 1 and step 5 stay yours. By hand:
+
 1. **A host name.** Choose the DNS name people open, for example `sdlc.example.internal`, and make it point to the server's LAN address in the company DNS. An IP address alone is not enough: passkeys refuse it.
 2. **Settings** in `platform/deploy/.env`:
 
@@ -461,7 +466,7 @@ The runner's settings do not change: it reaches `postgres`, `openbao`, `temporal
 2. **The link.**
    - A separate VM: the infrastructure operator sets up a WireGuard tunnel between the two machines, for example `10.66.0.1` (the platform host) and `10.66.0.2` (the VM). Generate the WireGuard private keys on each machine, in the owner's terminal; never put them in the repository, a chat or a log. Let the platform host accept the link ports from the VM's tunnel address only.
    - The same server: a dummy interface with one address, for example `10.203.0.1/32` (systemd-networkd: a `.netdev` file with `Kind=dummy` and a `.network` file with `Address=10.203.0.1/32`).
-3. **The platform host's settings** in `platform/deploy/.env`:
+3. **The platform host's settings** in `platform/deploy/.env` (with `pnpm server:setup`, the settings' `runner_link` section does this step, step 4 and step 6: [Fresh deployment](#fresh-deployment-operator)):
 
    ```bash
    SDLC_RUNNER_LINK_ADDR=10.66.0.1          # the same server: 10.203.0.1

@@ -233,7 +233,7 @@ Each row: the backlog task, its design record, and the tests that prove it. "uni
 | Area | Task, design | Tests |
 |---|---|---|
 | `adlc trial report` | V01; ADR-M65 | unit: `cli/trial-report.test.ts` (markers in every free field, no slug, code, UUID, e-mail, repository or link; limits; retries) |
-| `pnpm server:setup` | V16; ADR-M98 | unit: `deploy/server-setup.test.ts` (a simulated OpenBao: key custody, tokens, a second start), `deploy/server-setup-static.test.ts` (the README steps, the catalog, `configure --issue-admin-token`), `workspace/claude-hook.test.ts`; `pnpm test:fresh-deploy` runs steps 2–7 through it |
+| `pnpm server:setup` | V16, V20; ADR-M98 | unit: `deploy/server-setup.test.ts` (a simulated OpenBao: key custody, tokens, a second start; V20: the `access` and `runner_link` settings, their env keys, the profiles of step 7), `deploy/server-setup-static.test.ts` (the README steps, the catalog, `configure --issue-admin-token`), `workspace/claude-hook.test.ts`; `pnpm test:fresh-deploy` runs steps 2–7 through it |
 | `pnpm trial:up`, `trial:down` | V02 | unit: `trial/trial-up.test.ts`, `deploy/trial-up-static.test.ts` (the script follows the README "Fresh deployment" steps, through the shared `platform/deploy/steps`); `pnpm test:trial-up` |
 | `pnpm trial:start` and the key file | V08; ADR-M76 | unit: `trial/trial-keys.test.ts`, `trial/trial-start.test.ts`, `trial/trial-down.test.ts`, `deploy/trial-up-static.test.ts`, `doctor/checks.test.ts`; `pnpm test:trial-up` |
 | GitHub App from a manifest | V03 | unit: `deploy/github-app.test.ts` (a fake GitHub only; the manifest equals the README's permissions table) |
