@@ -103,13 +103,14 @@ services:
   # Only for `openbao:bootstrap runner-credentials` with SDLC_RUNNER_DOCKER_HOST (QUESTIONS #597):
   # writes the role ID and the secret ID it reads on stdin into the volume runner-approle, owned by
   # the runner's user (node, 1000). It mounts nothing else, so the delivery creates no other volume.
+  # No cap_drop: AuthZ (H07) refuses CapAdd on this Engine; deliver_approle runs as root with the
+  # image defaults so it can chown the files without CapAdd (platform services keep cap_drop ALL).
   runner-approle-init:
     image: haproxy:3.2.26-alpine@sha256:dfba86f031bd4c9039f10f8cc5de75991d1b6766d5460f0335b980408503baad
     profiles: [credentials]
     restart: 'no'
     network_mode: none
     read_only: true
-    cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     volumes:
       - runner-approle:/run/sdlc/approle

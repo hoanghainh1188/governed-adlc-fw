@@ -203,7 +203,9 @@ describe('O01: the runner host Compose file', () => {
     expect(s.profiles).toEqual(['credentials']);
     expect(s.network_mode).toBe('none');
     expect(s.read_only).toBe(true);
-    expect(s.cap_drop).toEqual(['ALL']);
+    // H07: no cap_drop so deliver_approle can chown without CapAdd on the AuthZ Engine.
+    expect(s.cap_drop).toBeUndefined();
+    expect(s.cap_add).toBeUndefined();
     expect(s.volumes).toEqual(['runner-approle:/run/sdlc/approle']);
     // The same volume and path as the runner's.
     expect(svc(host, 'sdlc-runner').volumes).toContain('runner-approle:/run/sdlc/approle');
