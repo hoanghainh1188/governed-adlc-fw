@@ -1,0 +1,97 @@
+# The link from the platform server to vLLM on a separate GPU host (task L01 PR 2,
+# design/ADR-M71 §4.2). Service `vllm-link` of the profile `models-remote`.
+#
+# The image's entrypoint fills in ${SDLC_GPU_*} (and only those: NGINX_ENVSUBST_FILTER) and writes
+# the result to /etc/nginx/conf.d, inside the http block of the image's nginx.conf.
+# Static test: platform/tests/deploy/models-remote-static.test.ts. Live test: pnpm test:vllm-link.
+#
+# Rules (ADR-M71 §4.2, R148):
+#   - Listens on 8000 without TLS on the internal network `models` only, under the name `vllm`:
+#     LiteLLM's entry (http://vllm:8000/v1) does not change. No host port.
+#   - Calls the GPU host's gateway with mutual TLS: its client certificate, the GPU host's
+#     certificate verified against the link's CA and its name (proxy_ssl_verify on). Never off.
+#   - Only the four routes below; everything else answers 404.
+#   - Logs hold no header, no body and no query string (R031).
+
+server_tokens off;
+
+log_format sdlc_vllm_link escape=json
+  '{"time":"$time_iso8601","method":"$request_method","path":"$uri","status":$status,'
+  '"upstream_status":"$upstream_status","bytes":$body_bytes_sent,"duration":$request_time}';
+
+client_max_body_size 16m;
+client_header_timeout 10s;
+client_body_timeout 60s;
+
+upstream sdlc_gpu_gateway {
+  # The name the GPU host's certificate holds; its address comes from extra_hosts
+  # (SDLC_GPU_HOST_ADDR), so no DNS is needed. One GPU host: never "temporarily disabled" after a
+  # failed call (max_fails=0), so the next call tries again at once.
+  server ${SDLC_GPU_HOST_NAME}:${SDLC_GPU_LINK_PORT} max_fails=0;
+  keepalive 8;
+}
+
+proxy_buffering off;
+proxy_request_buffering off;
+proxy_http_version 1.1;
+proxy_connect_timeout 10s;
+proxy_read_timeout ${SDLC_GPU_LINK_READ_TIMEOUT}s;
+proxy_send_timeout ${SDLC_GPU_LINK_READ_TIMEOUT}s;
+proxy_set_header Connection "";
+proxy_set_header Authorization "";
+
+# Mutual TLS to the gateway (ADR-M71 §4.2).
+proxy_ssl_protocols TLSv1.2 TLSv1.3;
+proxy_ssl_certificate /etc/nginx/tls/client.pem;
+proxy_ssl_certificate_key /etc/nginx/tls/client-key.pem;
+proxy_ssl_trusted_certificate /etc/nginx/tls/ca.pem;
+proxy_ssl_verify on;
+proxy_ssl_verify_depth 2;
+proxy_ssl_name ${SDLC_GPU_HOST_NAME};
+proxy_ssl_server_name on;
+proxy_ssl_session_reuse on;
+
+server {
+  listen 8000;
+  server_name _;
+  keepalive_timeout 75s;
+  access_log /dev/stdout sdlc_vllm_link;
+
+  location = /v1/chat/completions {
+    limit_except POST {
+      deny all;
+    }
+    proxy_pass https://sdlc_gpu_gateway;
+  }
+  location = /v1/completions {
+    limit_except POST {
+      deny all;
+    }
+    proxy_pass https://sdlc_gpu_gateway;
+  }
+  location = /v1/models {
+    limit_except GET {
+      deny all;
+    }
+    proxy_pass https://sdlc_gpu_gateway;
+  }
+  location = /health {
+    limit_except GET {
+      deny all;
+    }
+    proxy_pass https://sdlc_gpu_gateway;
+  }
+  location / {
+    return 404;
+  }
+}
+
+# nginx's own status for the health check: 127.0.0.1 inside the container, never published.
+server {
+  listen 127.0.0.1:8081;
+  access_log off;
+  location = /healthz {
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+}

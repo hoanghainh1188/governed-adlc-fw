@@ -150,7 +150,7 @@ jobs:
           # tests need Docker.
           decide_heavy run_compose "Compose integration job" \
             "platform/deploy/, the OpenBao client, the LiteLLM adapter, the Cost Controller, the runner, the intent workflow or a live test" \
-            platform/deploy/ platform/packages/secrets/ platform/tests/integration/openbao/ platform/packages/adapters/model-litellm/ platform/packages/core/src/cost/ platform/tests/integration/litellm/ platform/apps/runner/ platform/tests/integration/runner/ platform/tests/integration/attack/ platform/apps/worker/src/workflows/ platform/apps/worker/src/temporal.ts platform/packages/workflow-client/ platform/tests/integration/workflow/compose-smoke.test.ts platform/tests/integration/deploy/seaweedfs-access.test.ts platform/tests/integration/deploy/access.test.ts platform/tests/integration/backup/
+            platform/deploy/ platform/packages/secrets/ platform/tests/integration/openbao/ platform/packages/adapters/model-litellm/ platform/packages/core/src/cost/ platform/tests/integration/litellm/ platform/apps/runner/ platform/tests/integration/runner/ platform/tests/integration/attack/ platform/apps/worker/src/workflows/ platform/apps/worker/src/temporal.ts platform/packages/workflow-client/ platform/tests/integration/workflow/compose-smoke.test.ts platform/tests/integration/deploy/seaweedfs-access.test.ts platform/tests/integration/deploy/access.test.ts platform/tests/integration/deploy/vllm-link.test.ts platform/tests/integration/backup/
 
           # C04: the sandbox images, the runner and the package proxy (design/ADR-M25 §2.9).
           decide_heavy run_sandbox_image "Sandbox image job" \
@@ -371,6 +371,9 @@ jobs:
       # V09: team access through the TLS proxy (profile access): from another network only the
       # proxy answers, TLS, routes, limits, headers; own throw-away project and throw-away CA.
       - run: pnpm test:access
+      # L01 PR 2: vLLM on a separate GPU host, the mutual TLS link (profile models-remote) to the GPU
+      # host's gateway, a stub in place of vLLM and a throw-away CA; two throw-away projects.
+      - run: pnpm test:vllm-link
       # B07 session 2: the intent workflow on the real Temporal (sticky queues), workers stopped
       # and started; own throw-away Compose project and a throw-away platform PostgreSQL.
       - run: pnpm test:workflow-compose

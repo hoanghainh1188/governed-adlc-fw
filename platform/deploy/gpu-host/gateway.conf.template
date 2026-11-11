@@ -1,0 +1,111 @@
+# The gateway in front of vLLM on a separate GPU host (task L01 PR 2, design/ADR-M71 §4.1).
+#
+# The image's entrypoint fills in ${SDLC_GPU_LINK_*} (and only those: NGINX_ENVSUBST_FILTER) and
+# writes the result to /etc/nginx/conf.d, inside the http block of the image's nginx.conf.
+# Static test: platform/tests/deploy/models-remote-static.test.ts. Live test: pnpm test:vllm-link.
+#
+# Rules (ADR-M71 §4.1, R148):
+#   - One TLS listener (8443). The client must show a certificate of the link's CA
+#     (ssl_verify_client on) whose subject names the link (CN = SDLC_GPU_LINK_CLIENT_CN): with a
+#     company CA, the other certificates of the company are refused.
+#   - Only the four routes below; everything else answers 404 (the other vLLM routes stay closed).
+#   - Logs hold no header, no body and no query string (R031).
+
+server_tokens off;
+
+# The path without its query string: $uri. Never $request, $args, a header or a body.
+log_format sdlc_gpu_link escape=json
+  '{"time":"$time_iso8601","client":"$remote_addr","method":"$request_method",'
+  '"path":"$uri","status":$status,"bytes":$body_bytes_sent,"duration":$request_time}';
+
+# Long prompts: up to 16 MiB of request body.
+client_max_body_size 16m;
+client_header_timeout 10s;
+client_body_timeout 60s;
+
+# TLS 1.2 and 1.3 only (Mozilla "intermediate").
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+ssl_prefer_server_ciphers off;
+ssl_session_tickets off;
+ssl_session_cache shared:sdlc_gpu_tls:5m;
+ssl_session_timeout 1h;
+ssl_certificate /etc/nginx/tls/server.pem;
+ssl_certificate_key /etc/nginx/tls/server-key.pem;
+# The client certificate: signed by the link's CA (directly or through one intermediate).
+ssl_client_certificate /etc/nginx/tls/ca.pem;
+ssl_verify_client on;
+ssl_verify_depth 2;
+
+# The client certificate's subject must name the link (RFC 2253 form, for example
+# "CN=sdlc-vllm-link,O=Example"): any other subject gets 403.
+map $ssl_client_s_dn $sdlc_link_client {
+  default 0;
+  "~(^|,)CN=${SDLC_GPU_LINK_CLIENT_CN}(,|$)" 1;
+}
+
+# Streamed answers pass at once; a long answer may take minutes.
+proxy_buffering off;
+proxy_request_buffering off;
+proxy_http_version 1.1;
+proxy_connect_timeout 10s;
+proxy_read_timeout ${SDLC_GPU_LINK_READ_TIMEOUT}s;
+proxy_send_timeout ${SDLC_GPU_LINK_READ_TIMEOUT}s;
+proxy_set_header Host vllm;
+proxy_set_header Connection "";
+# vLLM needs no key (it is reachable from this gateway only); a header the caller sends is dropped.
+proxy_set_header Authorization "";
+
+# Docker's DNS: vllm's address is looked up again when it changes (a recreated container).
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+server {
+  listen 8443 ssl;
+  server_name _;
+  keepalive_timeout 75s;
+  access_log /dev/stdout sdlc_gpu_link;
+
+  set $sdlc_vllm http://vllm:8000;
+
+  if ($sdlc_link_client = 0) {
+    return 403;
+  }
+
+  location = /v1/chat/completions {
+    limit_except POST {
+      deny all;
+    }
+    proxy_pass $sdlc_vllm;
+  }
+  location = /v1/completions {
+    limit_except POST {
+      deny all;
+    }
+    proxy_pass $sdlc_vllm;
+  }
+  location = /v1/models {
+    limit_except GET {
+      deny all;
+    }
+    proxy_pass $sdlc_vllm;
+  }
+  location = /health {
+    limit_except GET {
+      deny all;
+    }
+    proxy_pass $sdlc_vllm;
+  }
+  location / {
+    return 404;
+  }
+}
+
+# nginx's own status for the health check: 127.0.0.1 inside the container, never published.
+server {
+  listen 127.0.0.1:8081;
+  access_log off;
+  location = /healthz {
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+}
