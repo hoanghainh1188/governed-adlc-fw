@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** for §2.1–§2.3 (Harry, 2026-11-12, in the O06 plan; QUESTIONS #676). §2.4 (monorepos) is **open** (QUESTIONS #677) |
+| Status | **Accepted** for §2.1–§2.3 (Harry, 2026-11-12, in the O06 plan; QUESTIONS #676). §2.4 (monorepos) decided in principle (Harry, 2026-11-12, QUESTIONS #677); its detail and the D-05 change come in version 1.1 |
 | Date | 2026-11-12 |
 | Decided by | Harry (O06 plan, PR 1, approved on 2026-11-12) |
 | Related | D-08 O06 AC1–AC3; D-02 NFR-05; ADR-M34 §2.4 (instruction files); ADR-M38 §2.7 (how G6 reads CI); QUESTIONS #126, #159, #440, #676, #677; handbook Ch.13 §13.10.2a, Ch.14 §14.10.3 |
@@ -49,9 +49,9 @@ A check that appears before the limit turns the state into `pending` or a result
 
 Handbook Ch.13 §13.10.2a lists what a repository needs before its first intent (`AGENTS.md` registered with the agent, no other instruction file, CI on pull requests), with the refusal each missing point causes. Ch.14 §14.10.3 gives the steps for a repository without CI.
 
-### 2.4. Monorepos (AC2): open
+### 2.4. Monorepos (AC2): decided in principle
 
-Not decided in this PR. The options and their questions are in QUESTIONS #677. Until then: one project per repository, and a nested `AGENTS.md` blocks G4 (ADR-M34 §2.4).
+Harry decided the approach on 2026-11-12 (QUESTIONS #677): several projects on one repository, each with its folder (`projects.repo_path`); the agent works in that folder; G4 checks the instruction files inside it; G5 fails a change outside it; one poll per repository. The detail and the D-05 change come in a design PR (version 1.1 of this ADR), after a check of how OpenHands 1.48 loads its skills. Until O06 PR 2: one project per repository, and a nested `AGENTS.md` blocks G4 (ADR-M34 §2.4).
 
 ## 3. Consequences
 
@@ -63,4 +63,4 @@ Not decided in this PR. The options and their questions are in QUESTIONS #677. U
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
-| 1.0 | 2026-11-12 | Claude (task O06 PR 1) | §2.1–§2.3 accepted with the O06 plan; §2.4 open (QUESTIONS #677) |
+| 1.0 | 2026-11-12 | Claude (task O06 PR 1) | §2.1–§2.3 accepted with the O06 plan; §2.4 decided in principle (QUESTIONS #677), detail in 1.1 |

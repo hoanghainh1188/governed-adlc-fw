@@ -190,7 +190,7 @@ Check these points once per repository, before Person A creates the first intent
 
 **Very large repositories.** The platform lists every path of the start commit to find instruction files. GitHub cuts the answer short for a very large tree. The platform then lists the tree folder by folder (at most 200 requests to GitHub for one commit). Only a tree too large even for that fails G4 with `tree_truncated`: tell the platform operator, who can raise the limit.
 
-**Monorepos.** One project per repository is the rule today. A monorepo whose packages each have an `AGENTS.md` cannot run an agent until those files are removed or registered. Projects per package are an open question (design/QUESTIONS.md #677).
+**Monorepos.** One project per repository is the rule today. A monorepo whose packages each have an `AGENTS.md` cannot run an agent until those files are removed or registered. Several projects on one repository, each with its own folder, come in a later version (design/QUESTIONS.md #677).
 
 ### 13.10.3. Approving G4 (High risk)
 
