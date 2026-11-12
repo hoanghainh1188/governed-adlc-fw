@@ -79,6 +79,10 @@ describeDb('C06 session 1: gate G4 on PostgreSQL', () => {
     });
     t.world.gitDown = false;
     await t.setConfig(`run:\n  agent_key: ${t.agent.key}\n`);
+    // O06: the project is the whole repository unless a test gives it a folder.
+    for (const project of await t.f.scope.projects.list()) {
+      if (project.repo_path !== '') await t.f.scope.projects.update(project.id, { repo_path: '' });
+    }
   });
 
   describe('AC1: POLICY at Medium risk', () => {
@@ -211,6 +215,48 @@ describeDb('C06 session 1: gate G4 on PostgreSQL', () => {
       // The files are removed: the run may start.
       t.world.paths = ['AGENTS.md', 'src/main.ts'];
       expect(await t.settle(intent)).toEqual({ outcome: 'waiting', reason: 'run_pending' });
+    });
+
+    it('O06: with a folder only the folder and the repository root count; both pinned files are checked', async () => {
+      const intent = await atG4(t, 'medium');
+      const project = (await t.f.scope.projects.getById(intent.project_id))!;
+      await t.f.scope.projects.update(project.id, { repo_path: 'packages/web' });
+      const agent = await seedAgent(t.f.scope, t.f.users.a, {
+        model: MODEL,
+        instructionsRef: 'packages/web/AGENTS.md@v1',
+        instructionsSha256: sha256(AGENTS_MD),
+        rootInstructions: { ref: 'AGENTS.md@v1', sha256: sha256(AGENTS_MD) },
+        tools: ['file_editor', 'terminal'],
+      });
+      await t.setConfig(`run:\n  agent_key: ${agent.key}\n`);
+      // Another package's AGENTS.md is not read from packages/web: the run may start.
+      t.world.paths = ['AGENTS.md', 'packages/web/AGENTS.md', 'packages/api/AGENTS.md', 'x.ts'];
+      expect(await t.settle(intent)).toEqual({ outcome: 'waiting', reason: 'run_pending' });
+    });
+
+    it('O06: a folder file the agent does not pin, or a root file it does not pin, fails G4', async () => {
+      const intent = await atG4(t, 'medium');
+      const project = (await t.f.scope.projects.getById(intent.project_id))!;
+      await t.f.scope.projects.update(project.id, { repo_path: 'packages/web' });
+      // The default agent pins AGENTS.md only: packages/web/CLAUDE.md is read from the folder.
+      t.world.paths = ['AGENTS.md', 'packages/web/CLAUDE.md', 'packages/api/CLAUDE.md'];
+      expect(await t.settle(intent)).toMatchObject({ cause: 'instructions_unpinned' });
+      t.world.paths = ['AGENTS.md', '.cursorrules'];
+      expect(await t.settle(intent)).toMatchObject({ cause: 'instructions_unpinned' });
+    });
+
+    it('O06: a second pinned file that is missing or changed fails G4', async () => {
+      const intent = await atG4(t, 'medium');
+      const agent = await seedAgent(t.f.scope, t.f.users.a, {
+        model: MODEL,
+        instructionsSha256: sha256(AGENTS_MD),
+        rootInstructions: { ref: 'CLAUDE.md@v1', sha256: 'e'.repeat(64) },
+        tools: ['file_editor', 'terminal'],
+      });
+      await t.setConfig(`run:\n  agent_key: ${agent.key}\n`);
+      t.world.paths = ['AGENTS.md', 'CLAUDE.md'];
+      // The fake host serves AGENTS_MD for every path: CLAUDE.md differs from the pinned hash.
+      expect(await t.settle(intent)).toMatchObject({ cause: 'instructions_mismatch' });
     });
 
     it('C07 #126: a commit the Git host lists only in part → instructions_unpinned (tree_truncated)', async () => {

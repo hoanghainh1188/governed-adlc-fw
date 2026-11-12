@@ -89,6 +89,7 @@ export interface G5Breach {
     | 'secret_found'
     | 'secret_scan_failed'
     | 'out_of_scope'
+    | 'outside_project_path'
     | 'max_budget'
     | 'spend_at_stop'
     | 'max_iterations'
@@ -132,6 +133,10 @@ export function g5Breach(facts: G5Facts, config: ValidatedProjectConfig): G5Brea
       check: 'secret_scan_failed',
       escalation: { route: 'technical', trigger: 'unusual_behaviour' },
     };
+  }
+  // O06 (ADR-M106 §2.4): a change outside the project's folder, like a change outside the plan.
+  if (changes.outsideFolder > 0) {
+    return { reason: 'out_of_scope', check: 'outside_project_path', escalation: null };
   }
   if (changes.outOfScope > 0 || run.status === 'stopped_scope') {
     return { reason: 'out_of_scope', check: 'out_of_scope', escalation: null };

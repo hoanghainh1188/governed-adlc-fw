@@ -27,6 +27,8 @@ export interface G5Changes {
   readonly changedFiles: number;
   readonly outOfScope: number;
   readonly instructionFiles: number;
+  /** O06: changed paths outside the project's folder (0 before O06 and without a folder). */
+  readonly outsideFolder: number;
   readonly pathsSha256: string;
 }
 
@@ -104,6 +106,7 @@ export async function gatherG5Facts(scope: TenantScope, intentId: string): Promi
           changedFiles: num(checked.changed_files),
           outOfScope: num(checked.out_of_scope),
           instructionFiles: num(checked.instruction_files),
+          outsideFolder: num(checked.outside_folder),
           pathsSha256: checked.paths_sha256,
         }
       : null;

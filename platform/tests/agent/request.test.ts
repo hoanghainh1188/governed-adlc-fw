@@ -145,3 +145,31 @@ describe('buildTaskMessage (AC2)', () => {
     expect(message).toMatch(/finish tool/);
   });
 });
+
+// O06 (ADR-M106 §2.4): a contract with a project folder makes OpenHands work in that folder, and
+// the task message names it; git and the reads report keep the repository root.
+describe('buildConversationRequest with a project folder', () => {
+  const folder = {
+    ...input,
+    contract: { ...CONTRACT, schema_version: 4, repo_path: 'packages/web' } as typeof CONTRACT,
+  };
+  const body = buildConversationRequest(folder) as unknown as Body;
+
+  it('works in <workspace>/<repo_path>', () => {
+    expect(body.workspace).toEqual({
+      kind: 'LocalWorkspace',
+      working_dir: '/workspace/packages/web',
+    });
+  });
+
+  it('tells the agent to change files only in the folder', () => {
+    const text = taskMessage(folder.contract, TASK, '/workspace');
+    expect(text).toContain('Your project is the folder packages/web');
+  });
+
+  it('without a folder, nothing changes', () => {
+    const plain = buildConversationRequest(input) as unknown as Body;
+    expect(plain.workspace).toEqual({ kind: 'LocalWorkspace', working_dir: '/workspace' });
+    expect(taskMessage(CONTRACT, TASK, '/workspace')).not.toContain('Your project is the folder');
+  });
+});

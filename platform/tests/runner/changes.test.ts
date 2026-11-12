@@ -41,4 +41,25 @@ describe('checkChangedPaths', () => {
       instructionFiles: 0,
     });
   });
+
+  it("O06: counts paths outside the folder, and the folder's own instruction files", () => {
+    const result = checkChangedPaths(
+      policy,
+      ['**'],
+      [
+        'packages/web/src/a.ts',
+        'packages/web/CLAUDE.md',
+        'packages/web/.agents/skills/x.md',
+        'packages/api/src/b.ts',
+        'README.md',
+      ],
+      'packages/web',
+    );
+    expect(result).toMatchObject({ changedFiles: 5, outsideFolder: 2, instructionFiles: 2 });
+    // Without a folder nothing is outside, and the rule is the repository's.
+    expect(checkChangedPaths(policy, ['**'], ['packages/api/src/b.ts'])).toMatchObject({
+      outsideFolder: 0,
+      instructionFiles: 0,
+    });
+  });
 });

@@ -193,6 +193,12 @@ export function buildTaskMessage(
   const files = task.plan.plannedFiles.map((file) => `- ${file}`).join('\n');
   return [
     `You work in the Git repository at ${workingDir}, on the branch ${contract.branch}.`,
+    ...((contract.repo_path ?? '') === ''
+      ? []
+      : [
+          '',
+          `Your project is the folder ${contract.repo_path}: change files only inside it. A change outside it fails the run.`,
+        ]),
     '',
     `Project instructions: follow ${INSTRUCTIONS_FILE} at the repository root, if the file exists.`,
     '',
@@ -218,4 +224,14 @@ export function buildTaskMessage(
     '- Install dependencies only from the lockfile (for example `pnpm install --frozen-lockfile`).',
     options.finishRule,
   ].join('\n');
+}
+
+/**
+ * The folder the agent works in (task O06, ADR-M106 §2.4): the project's folder of the contract
+ * (`repo_path`, schema 4) inside the repository at `workingDir`, or the repository itself. Git
+ * commands and the file-read report keep using `workingDir`.
+ */
+export function agentWorkingDir(contract: RunContract, workingDir: string): string {
+  const folder = contract.repo_path ?? '';
+  return folder === '' ? workingDir : `${workingDir}/${folder}`;
 }

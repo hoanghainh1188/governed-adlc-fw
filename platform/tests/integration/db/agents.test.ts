@@ -424,6 +424,7 @@ describeDb('C10: the agent register on PostgreSQL', () => {
           key: 'coder-openhands',
           version: '1.0.0',
           instructionsSha256: SHA('c'),
+          rootInstructionsSha256: null,
           tools: ['file_editor', 'terminal'],
           adapter: 'openhands',
           modelRef: MODEL,

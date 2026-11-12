@@ -209,7 +209,7 @@ export async function evaluateG4(
       subject: config.run.agent_key,
     };
   }
-  if (facts.instructions.sha256 === null) {
+  if (facts.instructions.sha256 === null || facts.instructions.root?.sha256 === null) {
     return {
       kind: 'fail',
       reason: 'instructions_mismatch',
@@ -225,6 +225,9 @@ export async function evaluateG4(
       autonomyLevel: autonomy,
       allowedModels: facts.allowedModels,
       instructionsSha256: facts.instructions.sha256,
+      ...(facts.instructions.root === null
+        ? {}
+        : { rootInstructionsSha256: facts.instructions.root.sha256 }),
       now,
     });
   } catch (error) {
@@ -334,6 +337,8 @@ export async function evaluateG4(
     agentKey: agent.agent.key,
     agentVersion: agent.agent.version,
     instructionsSha256: agent.agent.instructionsSha256,
+    rootInstructionsSha256: agent.agent.rootInstructionsSha256 ?? null,
+    repoPath: facts.repoPath,
     modelRef: agent.agent.modelRef,
     // effectiveAutonomy is at most L2 and not L0 here.
     autonomyLevel: autonomy as RunContractAutonomy,

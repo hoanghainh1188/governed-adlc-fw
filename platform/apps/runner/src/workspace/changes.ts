@@ -24,6 +24,8 @@ import crypto from 'node:crypto';
 
 import {
   isAgentInstructionPath,
+  isInsideRepoPath,
+  readsAsInstructions,
   type EvidenceStore,
   type PolicyEngine,
   type RunContract,
@@ -51,6 +53,8 @@ export interface CheckedChanges {
   readonly changedFiles: number;
   readonly outOfScope: number;
   readonly instructionFiles: number;
+  /** O06 (ADR-M106 §2.4): changed paths outside the contract's `repo_path`. */
+  readonly outsideFolder: number;
   /** SHA-256 of the RFC 8785 JSON of the sorted changed paths (an array of strings). */
   readonly pathsSha256: string;
   readonly diffSha256: string;
@@ -64,13 +68,19 @@ export function checkChangedPaths(
   policy: Pick<PolicyEngine, 'checkScope'>,
   plannedFiles: readonly string[],
   changedFiles: readonly string[],
+  /** O06: the project's folder ('' = the whole repository). */
+  repoPath = '',
 ): Omit<CheckedChanges, 'diffSha256' | 'secrets' | 'reviewSize' | 'dependencies'> {
   const sorted = [...changedFiles].sort();
   const scope = policy.checkScope({ plannedFiles, changedFiles: sorted });
   return {
     changedFiles: sorted.length,
     outOfScope: scope.outOfScope.length,
-    instructionFiles: sorted.filter(isAgentInstructionPath).length,
+    // With a folder, also the files the agent reads from it (its own root files and skills).
+    instructionFiles: sorted.filter(
+      (p) => isAgentInstructionPath(p) || readsAsInstructions(p, repoPath),
+    ).length,
+    outsideFolder: sorted.filter((p) => !isInsideRepoPath(p, repoPath)).length,
     // For an array of strings, RFC 8785 is exactly JSON.stringify.
     pathsSha256: crypto.createHash('sha256').update(JSON.stringify(sorted), 'utf8').digest('hex'),
   };
@@ -83,7 +93,12 @@ export async function storeChanges(
   cloneDir: string,
 ): Promise<CheckedChanges> {
   const patch = await computeRunPatch(deps, contract, cloneDir);
-  const checked = checkChangedPaths(deps.policy, contract.planned_files, patch.changedFiles);
+  const checked = checkChangedPaths(
+    deps.policy,
+    contract.planned_files,
+    patch.changedFiles,
+    contract.repo_path ?? '',
+  );
   // Before anything else uses the clone: the staged index is the run's change.
   const reviewSize = await measureReviewSize({
     cloneDir,
@@ -130,6 +145,7 @@ export async function storeChanges(
       out_of_scope: checked.outOfScope,
       instruction_files: checked.instructionFiles,
       paths_sha256: checked.pathsSha256,
+      ...(checked.outsideFolder > 0 ? { outside_folder: checked.outsideFolder } : {}),
     });
     await tx.runEvents.append(contract.run_id, 'secrets_scanned', secretsScannedPayload(secrets));
     await tx.runEvents.append(contract.run_id, 'diff_measured', diffMeasuredPayload(reviewSize));

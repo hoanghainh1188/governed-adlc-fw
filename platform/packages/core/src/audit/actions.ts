@@ -298,6 +298,7 @@ export const AUDIT_ACTIONS = {
   /**
    * G5 failed for a run (task C07, ADR-M34 §2.8): the exact cause next to the gate decision's
    * reason code: `instructions_changed`, `secret_found`, `secret_scan_failed`, `out_of_scope`,
+   * `outside_project_path` (O06: a change outside the project folder, reason `out_of_scope`),
    * `max_budget`, `spend_at_stop`, `max_iterations`, `max_duration`, `stalled` or
    * `changes_missing` (H04 added the two secret checks, ADR-M93 §2.4). The run's plan is refused at G3
    * after `out_of_scope` (QUESTIONS #131). Never a path.

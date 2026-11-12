@@ -196,6 +196,8 @@ export const RUN_EVENT_TYPES = {
     out_of_scope: 'count',
     instruction_files: 'count',
     paths_sha256: 'sha256',
+    // O06 (ADR-M106 §2.4): changed paths outside the project's folder; absent before O06.
+    outside_folder: 'count?',
   },
   /**
    * The runner's secret scan of the run's added lines, outside the sandbox (H04, ADR-M93 §2.3):

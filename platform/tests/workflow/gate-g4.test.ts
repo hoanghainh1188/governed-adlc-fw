@@ -30,6 +30,8 @@ const PROPOSAL: RunProposal = {
   maxDurationMin: 60,
   baseSha: '1'.repeat(40),
   dataClass: 'internal',
+  repoPath: '',
+  rootInstructionsSha256: null,
 };
 
 function policy(yaml = '') {

@@ -91,6 +91,12 @@ export async function verifyRunContract(
     return reject('tool_not_enforceable');
   }
 
+  // O06 (ADR-M106 §2.4): only the OpenHands adapter works in the project's folder; any other
+  // adapter would run in the whole repository and read other packages' instructions.
+  if ((contract.repo_path ?? '') !== '' && contract.agent_adapter !== 'openhands') {
+    return reject('folder_not_enforceable');
+  }
+
   await scope.runEvents.append(run.id, 'contract_accepted', {
     contract_sha256: stored.contract_sha256,
     key_version: stored.key_version,
@@ -127,4 +133,5 @@ export const RUN_CONTRACT_REJECT_MESSAGES = {
   revoked: 'run_contract.reject.revoked',
   run_not_startable: 'run_contract.reject.run_not_startable',
   tool_not_enforceable: 'run_contract.reject.tool_not_enforceable',
+  folder_not_enforceable: 'run_contract.reject.folder_not_enforceable',
 } as const satisfies Record<RunContractRejectReason, MessageKey>;

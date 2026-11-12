@@ -17,6 +17,7 @@ import {
   type ToolGrant,
 } from './tools.js';
 import type { AutonomyLevel } from './codes.js';
+import { isRepoPath } from './repo-path.js';
 import {
   budget,
   GIT_SHA,
@@ -38,10 +39,16 @@ import {
  * 3 (X04, ADR-M69 §2.6): `tool_grants`. The worker issues schema 3; the runner also accepts
  * schema 2 (X03, `agent_adapter`), which has no `tool_grants` and so no register tools. A contract
  * of schema 1 is refused (`malformed`).
+ *
+ * 4 (O06, ADR-M106 §2.4, D-03 1.53): schema 3 plus `repo_path` and `root_instructions_sha256`. The
+ * worker issues it only for a project with a folder or an agent with a second pinned file
+ * (`RUN_CONTRACT_SCHEMA_FOLDER`), so every other contract stays schema 3, byte for byte.
  */
 export const RUN_CONTRACT_SCHEMA_VERSION = 3;
+/** O06: the schema of a contract with `repo_path` and `root_instructions_sha256`. */
+export const RUN_CONTRACT_SCHEMA_FOLDER = 4;
 /** Schema versions the runner accepts. */
-export const RUN_CONTRACT_SCHEMA_VERSIONS = [2, 3] as const;
+export const RUN_CONTRACT_SCHEMA_VERSIONS = [2, 3, 4] as const;
 
 /** Autonomy levels a contract may grant: L0 never runs an agent (D-02 FR-03), L3+ not in the MVP. */
 export const RUN_CONTRACT_AUTONOMY_LEVELS = [
@@ -82,6 +89,13 @@ export interface RunContract {
    * sorted by key; may be empty. Absent in schema 2.
    */
   readonly tool_grants?: readonly ToolGrant[];
+  /**
+   * Schema 4 (O06): the project's folder in the repository (`projects.repo_path`; '' = the whole
+   * repository). The agent works in it; G5 fails a change outside it. Absent before schema 4.
+   */
+  readonly repo_path?: string;
+  /** Schema 4 (O06): the SHA-256 of the agent's second pinned file, or null. */
+  readonly root_instructions_sha256?: string | null;
   readonly autonomy_level: RunContractAutonomy;
   /** Cost cap in USD as a decimal string (`"2"`, `"0.5"`, at most 6 decimals). */
   readonly max_budget_usd: string;
@@ -118,6 +132,9 @@ export const RUN_CONTRACT_REJECT_REASONS = [
   // X04 (ADR-M69 §2.6): a tool grant the runner cannot enforce or turn into the gateway's
   // configuration, or whose call rules differ from the runner's own catalogue.
   'tool_not_enforceable',
+  // O06 (ADR-M106 §2.4): a project folder that the contract's agent adapter cannot work in (only
+  // OpenHands sets its working folder per run).
+  'folder_not_enforceable',
 ] as const;
 export type RunContractRejectReason = (typeof RUN_CONTRACT_REJECT_REASONS)[number];
 
@@ -199,6 +216,8 @@ const FIELDS: Readonly<Record<keyof RunContract, Check>> = {
   instructions_sha256: text(SHA256),
   allowed_tools: sortedSet(TOOL, 0),
   tool_grants: toolGrants,
+  repo_path: (value) => typeof value === 'string' && isRepoPath(value),
+  root_instructions_sha256: (value) => value === null || text(SHA256)(value),
   autonomy_level: (value) =>
     typeof value === 'string' &&
     (RUN_CONTRACT_AUTONOMY_LEVELS as readonly string[]).includes(value),
@@ -217,7 +236,8 @@ export const RUN_CONTRACT_FIELDS = Object.keys(FIELDS) as readonly (keyof RunCon
 
 /**
  * Checks a value against the Run Contract schema: every field of its schema version present with
- * the right format (`tool_grants` in schema 3 only), no other field, every register tool of
+ * the right format (`tool_grants` from schema 3, `repo_path` and `root_instructions_sha256` in
+ * schema 4 only), no other field, every register tool of
  * `allowed_tools` with exactly one grant and every grant in `allowed_tools`, and `expires_at` after
  * `issued_at`. Returns the first field that fails.
  */
@@ -228,10 +248,13 @@ export function validateRunContract(value: unknown): RunContractValidation {
   const record = value as Record<string, unknown>;
   const extra = Object.keys(record).find((key) => !Object.hasOwn(FIELDS, key));
   if (extra !== undefined) return { ok: false, field: extra };
-  const schema2 = record.schema_version === 2;
+  const schema = record.schema_version;
   for (const field of RUN_CONTRACT_FIELDS) {
-    if (field === 'tool_grants' && schema2) {
-      if (Object.hasOwn(record, 'tool_grants')) return { ok: false, field };
+    const absent =
+      (field === 'tool_grants' && schema === 2) ||
+      ((field === 'repo_path' || field === 'root_instructions_sha256') && schema !== 4);
+    if (absent) {
+      if (Object.hasOwn(record, field)) return { ok: false, field };
       continue;
     }
     if (!FIELDS[field](record[field])) return { ok: false, field };

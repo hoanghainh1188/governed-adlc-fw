@@ -4,9 +4,11 @@
 
 ### Upgrade notes
 - **Database (O06 PR 2a):** `pnpm db:migrate` runs migration `0049-project-repo-path` (`projects.repo_path`, empty for every existing project; `agents.root_instructions_ref`, `root_instructions_sha256`, null). Existing projects are not checked: two active projects on one repository stay as they are until one of them changes, and then the folder rule applies.
+- **Runner and worker together (O06 PR 2b):** a runner older than this release refuses a Run Contract of schema 4 (`malformed`). Only projects with a folder get one, but upgrade the runner host (`pnpm runner-host:up` with the new images) together with the platform host.
 
 ### Added
 - **Monorepos, part 1: data and administration** (task O06 PR 2a, ADR-M106 §2.4, QUESTIONS #677, #678). A project can be one folder of a repository: `adlc admin project create|update --folder <path>`, `folder:` in the project file, `repo_path` in the admin API. The folders of a tenant's active projects on one repository never overlap (a trigger with a lock; `repo_path_overlap`), and the repository and folder change only while the project has no open intent. An agent can pin a second file, the repository root's instruction file: `adlc admin agent register|update --root-instructions <path@label> --root-instructions-file <file>` (`none` removes it); a change is a new version. Runs do not use the folder yet: that is O06 PR 2b.
+- **Monorepos, part 2: runs in the project folder** (task O06 PR 2b, ADR-M106 1.2 §2.4). For a project with a folder, OpenHands works in that folder and reads only its instruction files and the repository root's; G4 checks the agent's two pinned files and refuses any other instruction file it would read there (another package's `AGENTS.md` no longer blocks); G5 sends the intent back to G3 when the run changed a file outside the folder (`outside_project_path`). The Run Contract of such a run has `schema_version` 4 (`repo_path`, `root_instructions_sha256`); every other contract is unchanged. The runner refuses a folder for any adapter but OpenHands (`folder_not_enforceable`).
 
 ### Upgrade notes
 - **Project configuration (O06):** the default configuration gains `verification.ci_missing_minutes` (15), so the default `config_hash` changes. Nothing to do; a project that sets its own `verification` section needs no change (the default fills the new key).
