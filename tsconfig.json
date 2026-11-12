@@ -24,6 +24,7 @@
     { "path": "platform/apps/worker" },
     { "path": "platform/apps/runner" },
     { "path": "platform/apps/tool-project-docs" },
+    { "path": "platform/apps/tool-code-index" },
     { "path": "platform/apps/cli" },
     { "path": "platform/apps/dashboard" },
     { "path": "platform/deploy/steps" },

@@ -4,7 +4,7 @@
 # Usage: platform/deploy/scripts/images.sh mode        # prints `published` or `local`
 #        platform/deploy/scripts/images.sh get <NAME>  # prints SDLC_IMAGE_<NAME> of the lock file
 #        platform/deploy/scripts/images.sh export      # prints the lock file's NAME=value lines
-#        platform/deploy/scripts/images.sh verify      # cosign and gh check of the six images
+#        platform/deploy/scripts/images.sh verify      # cosign and gh check of the seven images
 #
 # `published` only on a release checkout: a Git checkout whose HEAD is exactly the tag
 # v<version of the root package.json>, with no change to a tracked file. Everything else (main, a
@@ -16,7 +16,7 @@
 #   2. platform/deploy/.images/vX.Y.Z.lock (ignored by Git), downloaded once over HTTPS from
 #      https://github.com/hoanghainh1188/governed-adlc-fw/releases/download/vX.Y.Z/images.lock
 #      (a public repository: no token).
-# Every lock file must be complete: SDLC_IMAGES_VERSION equal to the root package.json and the six
+# Every lock file must be complete: SDLC_IMAGES_VERSION equal to the root package.json and the seven
 # images pinned by digest on the one registry path. On a release checkout a lock file that is
 # missing or not complete stops the script with an error: it never builds silently instead.
 # Tags v0.6.0 and before hold their lock file in the commit and keep their own copy of this script.
@@ -27,7 +27,7 @@
 #   SDLC_IMAGES_LOCK  the lock file to use instead of the download
 set -eu
 
-NAMES="API WORKER RUNNER OTEL_COLLECTOR SANDBOX_NODE24 TOOL_PROJECT_DOCS"
+NAMES="API WORKER RUNNER OTEL_COLLECTOR SANDBOX_NODE24 TOOL_PROJECT_DOCS TOOL_CODE_INDEX"
 PREFIX="ghcr.io/hoanghainh1188/governed-adlc-fw"
 RELEASES="https://github.com/hoanghainh1188/governed-adlc-fw/releases/download"
 
@@ -48,6 +48,7 @@ image_of() {
   case "$1" in
     SANDBOX_NODE24) echo sandbox-node24 ;;
     TOOL_PROJECT_DOCS) echo tool-project-docs ;;
+    TOOL_CODE_INDEX) echo tool-code-index ;;
     OTEL_COLLECTOR) echo sdlc-otel-collector ;;
     *) echo "sdlc-$(echo "$1" | tr '[:upper:]' '[:lower:]')" ;;
   esac

@@ -56,6 +56,7 @@ const IMAGES: Record<string, string> = {
   OTEL_COLLECTOR: 'sdlc-otel-collector',
   SANDBOX_NODE24: 'sandbox-node24',
   TOOL_PROJECT_DOCS: 'tool-project-docs',
+  TOOL_CODE_INDEX: 'tool-code-index',
 };
 
 const temps: string[] = [];
@@ -197,14 +198,14 @@ describe('V12, V15: release-check.mjs, the release gate', () => {
     expect(fs.existsSync(notes)).toBe(false);
   });
 
-  it('the mode lock accepts a complete lock file and writes the six image references', () => {
+  it('the mode lock accepts a complete lock file and writes the seven image references', () => {
     const images = path.join(tempDir(), 'images.txt');
     const r = lockCheck(lockText('0.1.2'), '0.1.2', ['--images-out', images]);
     expect(r.err).toBe('');
     expect(r.status).toBe(0);
     expect(r.out).toBe('release-check: images.lock for 0.1.2 ok\n');
     const refs = fs.readFileSync(images, 'utf8').trim().split('\n');
-    expect(refs).toHaveLength(6);
+    expect(refs).toHaveLength(7);
     for (const ref of refs)
       expect(ref).toMatch(new RegExp(`^${PREFIX}/[a-z0-9-]+@sha256:[0-9a-f]{64}$`));
   });
@@ -448,9 +449,9 @@ describe('V15: verify-images.sh pins the signer at the exact tag (ADR-M94 §2.6)
     expect(r.err).not.toContain('cosign');
   });
 
-  it('fails on an error and unless it verified six images', () => {
+  it('fails on an error and unless it verified seven images', () => {
     expect(script).toContain('set -euo pipefail');
-    expect(script).toContain('if [ "$count" != 6 ]; then');
+    expect(script).toContain('if [ "$count" != 7 ]; then');
     expect(
       fs.statSync(path.join(root, 'platform/tools/release/verify-images.sh')).mode & 0o111,
     ).not.toBe(0);

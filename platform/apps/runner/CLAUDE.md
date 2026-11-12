@@ -18,4 +18,4 @@ Rules for `platform/apps/runner`, the agent and model adapters (`platform/packag
 
 ## Commands
 Run from the repo root.
-- Sandbox images (ADR-M25, T11 §5g): `pnpm sandbox-image:build node24`; OpenCode (X03, ADR-M88): `NODE24=<node24 by digest> pnpm sandbox-image:build node24-opencode`. The first tool (X04 PR 3b, ADR-M89): `pnpm tool-image:build project-docs`.
+- Sandbox images (ADR-M25, T11 §5g): `pnpm sandbox-image:build node24`; OpenCode (X03, ADR-M88): `NODE24=<node24 by digest> pnpm sandbox-image:build node24-opencode`. The first tool (X04 PR 3b, ADR-M89): `pnpm tool-image:build project-docs`; the code tool (X06, ADR-M108): `pnpm tool-image:build code-index`.

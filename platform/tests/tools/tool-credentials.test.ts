@@ -133,6 +133,45 @@ describe('issuing the secrets of a read_documents tool (QUESTIONS #535, #541)', 
     ).rejects.toThrow();
   });
 
+  it('X06: a read_code tool gets a login of the code read role and no model key', async () => {
+    const { scope } = fakeScope([]);
+    const kinds: string[] = [];
+    const wrapped: string[][] = [];
+    const { creds } = fakeCredentials();
+    const result = await issueToolSecrets(
+      scope,
+      {
+        databaseCredentials: {
+          ...creds,
+          issueRunLogin: (input) => {
+            kinds.push(`${input.kind ?? 'docs'} ${input.grantRole}`);
+            return creds.issueRunLogin(input);
+          },
+        },
+        wrapper: {
+          wrap: (fields) => {
+            wrapped.push(Object.keys(fields));
+            return Promise.resolve(secret('wrapping-token'));
+          },
+        },
+        costController: { issueToolKey: () => Promise.reject(new Error('no key for code')) },
+      },
+      {
+        runId: RUN,
+        projectId: PROJECT,
+        grants: [grant('code-index', ['read_code'])],
+        indexIds: new Map([['code-index', INDEX]]),
+        models: new Map(),
+        ttlSeconds: 3900,
+        wrapTtlSeconds: 900,
+        toolBudgetUsd: '0.5',
+      },
+    );
+    expect(kinds).toEqual([`code kcode_p${PROJECT.replaceAll('-', '')}_read`]);
+    expect(wrapped).toEqual([['db_username', 'db_password']]);
+    expect(result.get('code-index')).toMatchObject({ indexId: INDEX });
+  });
+
   it('the tool key never gets more than the run key', () => {
     expect(smallerUsd('0.5', '2')).toBe('0.5');
     expect(smallerUsd('0.5', '0.1')).toBe('0.1');

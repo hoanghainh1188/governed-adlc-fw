@@ -12,6 +12,7 @@
 import crypto from 'node:crypto';
 
 import {
+  PgCodeIndexReader,
   PgCodeIndexStore,
   PgVectorKnowledgeStore,
   projectRole,
@@ -193,6 +194,94 @@ describe.skipIf(!superUrl)('X06 PR 1 live: the code index store', () => {
     ]);
     expect(role.rowCount).toBe(0);
     expect(await store.listIndexVersions(projectA)).toEqual([]);
+  });
+
+  it('X06 PR 2: the reader answers the three questions as a run login of the code read role', async () => {
+    const version = crypto.randomUUID();
+    await store.putIndexVersion({
+      tenantId: TENANT,
+      projectId: projectB,
+      indexId: version,
+      baseSha: 'c'.repeat(40),
+      format: CODE_INDEX_FORMAT,
+      files: [
+        ...FILES,
+        {
+          path: 'src/load_100%.ts',
+          language: 'typescript',
+          contentSha256: sha('odd'),
+          symbols: [{ name: 'load_x', kind: 'function', role: 'def', line: 2 }],
+          imports: [],
+        },
+      ],
+    });
+    // As OpenBao's creation statement makes it: a login in the code read role only.
+    const user = `v-code-${crypto.randomBytes(4).toString('hex')}`;
+    const pw = crypto.randomBytes(16).toString('hex');
+    await admin.query(
+      `CREATE ROLE "${user}" WITH LOGIN PASSWORD '${pw}' IN ROLE ${codeIndexReadRole(projectB)}`,
+    );
+    const url = new URL(superUrl!);
+    const reader = new PgCodeIndexReader({
+      host: url.hostname,
+      port: Number(url.port),
+      database: 'knowledge',
+      user,
+      password: pw,
+      schema: codeIndexSchema(projectB),
+    });
+    try {
+      const defs = await reader.findSymbol({ indexId: version, name: 'load', limit: 10 });
+      // A prefix search: `_` is a plain character, so `load_x` does not match `load`+any char.
+      expect(defs.map((d) => `${d.path}:${String(d.line)} ${d.name!}`)).toEqual([
+        'src/repo.ts:1 loadOrder',
+        'src/load_100%.ts:2 load_x',
+      ]);
+      expect(
+        (await reader.findSymbol({ indexId: version, name: 'load_', limit: 10 })).map(
+          (d) => d.name,
+        ),
+      ).toEqual(['load_x']);
+      expect(
+        await reader.findSymbol({
+          indexId: version,
+          name: 'OrderService',
+          kind: 'method',
+          limit: 5,
+        }),
+      ).toEqual([]);
+      const refs = await reader.findReferences({ indexId: version, name: 'loadOrder', limit: 5 });
+      expect(refs.map((r) => `${r.path}:${String(r.line)} ${r.kind!}`)).toEqual([
+        'src/order.ts:5 call',
+      ]);
+      const related = await reader.relatedFiles({
+        indexId: version,
+        path: 'src/repo.ts',
+        limit: 5,
+      });
+      expect(related.map((r) => `${r.path} ${r.relation!}`)).toEqual(['src/order.ts imported_by']);
+      expect(related[0]!.contentSha256).toMatch(/^[0-9a-f]{64}$/);
+      // Another version ID finds nothing.
+      expect(
+        await reader.findSymbol({ indexId: crypto.randomUUID(), name: 'load', limit: 5 }),
+      ).toEqual([]);
+    } finally {
+      await reader.close();
+    }
+    // The same login cannot read another project's code schema.
+    const other = new PgCodeIndexReader({
+      host: url.hostname,
+      port: Number(url.port),
+      database: 'knowledge',
+      user,
+      password: pw,
+      schema: codeIndexSchema(projectA),
+    });
+    await expect(other.findSymbol({ indexId: version, name: 'load', limit: 5 })).rejects.toThrow(
+      'knowledge.read_failed',
+    );
+    await other.close();
+    await admin.query(`DROP ROLE "${user}"`);
   });
 
   it('errors are store_unavailable, without the password or a value', async () => {

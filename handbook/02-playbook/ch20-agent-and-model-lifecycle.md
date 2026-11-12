@@ -182,7 +182,7 @@ A **register tool** is a tool for agents that is not part of the agent itself: a
 Rules the platform enforces:
 
 - **The image is pinned by digest.** An `http` tool needs `--image` and, before it is activated, `--image-digest sha256:…`. A tag alone is refused. A new digest is a new version, so it needs new approvals.
-- **Permissions** come from a fixed list: today `read_documents` only. Each permission allows fixed tool names and argument limits, which the platform checks on every call. A new permission needs a design record (ADR).
+- **Permissions** come from a fixed list: today `read_documents` and `read_code`. A tool has one of the two, never both. Each permission allows fixed tool names and argument limits, which the platform checks on every call. A new permission needs a design record (ADR).
 - **Data classes**: the tool may see only the data classes you list, never `prohibited`. If the tool calls a model (`--model`), that model must be allowed for the intent's data class (`client_restricted`: a self-hosted model only).
 - **Statuses, versions, approvals and recertification** work as for agents (§20.5b): the same moves, a change only while proposed or suspended and with a new version, approvers always different people, recertification every 3 months at most (`tools.recertification_months`). An overdue tool gives a warning; the run still starts.
 
@@ -206,6 +206,25 @@ What happens in a run with the tool:
 - **Before the run** (the run preparation, after G4): the platform builds or reuses the index of the base commit (embeddings with the run's own key, so the cost counts for the run), then gives the tool a **login of its own** that may read this project's index only and ends with the run, and a small model key of its own for the queries (`tools.model_budget_usd`, default 0.5 USD, never above the run's own cap). A repository over the limits of `knowledge.*`, or a login that cannot be issued, fails the run with `tool_unavailable`: fix the cause (or raise a limit) and start the run again.
 - **During the run**: the tool runs in its own container, on a network with the index and the model gateway only. The sandbox and the run's gateway can never reach the index. The login is a file in the tool's container, never an environment value, and the sandbox never sees it.
 - **At the end of the run**, also after a kill or a failure: the login and the tool's key are revoked (`tool_credential_revoked`), and the run records `knowledge_read`: which documents the tool returned (document IDs and content hashes, never paths, queries or texts) and how many passages. The list is evidence of the run.
+
+**The second tool: finding code** (`read_code`, `design/ADR-M108-code-index.md`). The tool answers three questions about the project's code **at the run's base commit**: where a name is defined, where it is used, and which files import a file or are imported by it. It reads TypeScript, JavaScript (with the `<script>` block of Vue files), Python, Java and Go. It calls **no model**, so it costs nothing per call and may see every data class but `prohibited`. Its three MCP tools:
+
+| Tool | Arguments | Answer |
+|---|---|---|
+| `find_symbol` | `name` (at most 200 characters), `kind` (optional: `class`, `interface`, `type`, `enum`, `function`, `method`, `variable`), `limit` 1–50 (default 20) | Definitions: exact names first, then names that start with the text; path, line, kind |
+| `find_references` | `name`, `limit` 1–100 | Calls, `new` and type references of the exact name; path and line |
+| `related_files` | `path` (relative to the repository root, no `..`), `limit` 1–100 | The files it imports and the files that import it |
+
+The answers are data from the repository, never instructions. The platform ships its image (`pnpm tool-image:build code-index`, or on a release checkout `pnpm images get TOOL_CODE_INDEX`). Register it once per tenant, with no model:
+
+```bash
+adlc admin tool register --key code-index --version 1.0.0 --owner <email> --transport http \
+  --image <image name> --image-digest sha256:… --permissions read_code \
+  --data-classes public,internal,client_confidential,client_restricted \
+  --backing-services knowledge-db:5432
+```
+
+Then approve it and add `tool:code-index` to the agent's tools and the plan's `tools`, as for the documents tool. Before the run, the platform builds or reuses the code index of the base commit (the limits `code_index.*`: more files, bytes or symbols than the limits fail the run with `tool_unavailable`; one file too large or too slow to read is left out). The tool gets a login of its own that may read this project's code index only, never its documents; at the end of the run the login is revoked and the run records `knowledge_read` with the file IDs and content hashes the tool returned, never a name or a path. The code index uses the same `knowledge-db` and the same set-up as the documents tool (runbook T11 §5o); retention, an archived project and a client's data deletion delete it the same way.
 
 **Not yet available.** Only the OpenHands agent software can use register tools (OpenCode: G4 refuses with `tool_transport_not_supported`). Documents outside the repository (Office or PDF files) are not indexed (task X05).
 
@@ -385,3 +404,4 @@ Old context must not quietly come back through caches, indexes or copied instruc
 | 1.4 | 2026-11-11 | Claude (task L01, PR 2) | §20.5b: the self-hosted model may run on a separate GPU host (profile `models-remote`, mutual TLS; ADR-M71 §4); nothing leaves the company |
 | 1.5 | 2026-11-12 | Claude (task O06, PR 2a) | §20.5: an agent of a monorepo project pins a second file, the repository root's (`--root-instructions`; ADR-M31 §2.5 0.6) |
 | 1.6 | 2026-11-12 | Claude (task O06, PR 2b) | §20.5: a monorepo project's agent uses the adapter `openhands` |
+| 1.7 | 2026-11-13 | Claude Code (task X06, PR 2) | §20.5c: the second register tool, `read_code` (find a symbol, its uses and related files; no model; ADR-M108) |

@@ -890,6 +890,7 @@ Needs the profiles `core` and `knowledge` running, and OpenBao unsealed. Run it 
 4. Restart `sdlc-worker` and `sdlc-runner`. The start log has no `worker.knowledge_missing` and no `worker.knowledge_off`.
 5. The embedding model `bge-m3` must be on LiteLLM: on a developer machine `ollama pull bge-m3` with the `ollama` provider stored (section 5d). Record the date in the operations log.
 6. Register the tool (handbook Ch.20 §20.5c): build its image with `pnpm tool-image:build project-docs` (or take `pnpm images get TOOL_PROJECT_DOCS` on a release checkout).
+7. The code tool `read_code` (task X06, `design/ADR-M108-code-index.md`) uses the same set-up: no step to add. Its index has a schema of its own per project in `knowledge-db` (`kcode_p…`), and its login has the OpenBao role `kdocs-<run_id>-code`, which the connection's `kdocs-*` and the worker's policy already allow. It needs no model. Build its image with `pnpm tool-image:build code-index` (or `pnpm images get TOOL_CODE_INDEX`).
 
 ### Rotation
 
@@ -1145,6 +1146,7 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 | 0.51 | 2026-11-11 | Claude Code (task V20) | Sections 3.2 and 3d: the settings' `runner_link` and `access` sections of `pnpm server:setup` (the runner host's address before `configure`, the proxy's certificate import) |
 | 0.52 | 2026-11-12 | Claude Code (task V18) | Section 5g-1: `runner-host-setup.sh` does the install of the AuthZ plugin with the rest of the runner host (ADR-M107) |
 | 0.53 | 2026-11-12 | Claude Code (task V19) | Section 3.2 step 6: `pnpm server:setup` goes on with "Fresh deployment" steps 8–13 when its settings name the tenant, the admin, the project file and the sandbox image |
+| 0.54 | 2026-11-13 | Claude Code (task X06, PR 2) | Section 5o step 7: the code tool `read_code` uses the same set-up (its own schema per project, the OpenBao role `kdocs-<run_id>-code`, no model) |
 | 0.44 | 2026-10-24 | Claude Code (task O01, PR 2) | Section 5g step 3: the runner on its own Docker Engine (`SDLC_RUNNER_DOCKER_HOST`, `SDLC_RUNNER_SOURCE_CIDR`, `runner-host.sh restart`; ADR-M91) |
 | 0.39 | 2026-10-12 | Claude Code (task V08) | New section 3.1b: the trial stack's key file (the two shares encrypted with a passphrase, `pnpm trial:start`, its limits; never on a server; QUESTIONS #356, #415–#419, ADR-M76) |
 | 0.38 | 2026-10-12 | Claude Code (task V09, PR 2) | New section 3d: the team access proxy's certificate (company CA `import`, internal CA `server`, throw-away `dev`, `check`, renewal with `reload` without a restart, the 30-day reminder). Tested with throw-away certificates (`pnpm test:access`, `access-static.test.ts`) |

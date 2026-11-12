@@ -15,8 +15,12 @@
 // - X04 PR 3a (ADR-M89 §2.3): a `read_documents` tool gets the project's index, built with the
 //   run's key; without the index store the run fails `tool_unavailable`, the key is revoked and
 //   nothing is wrapped (`knowledge_unavailable`).
+// - X06 PR 2 (ADR-M108 §2.8): a `read_code` tool gets the code index and a login of the code read
+//   role, and no model key.
 import crypto from 'node:crypto';
 
+import { TreeSitterExtractor } from '@sdlc/adapter-code-treesitter';
+import { CODE_INDEX_FORMAT } from '@sdlc/contracts';
 import { sql } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -925,6 +929,88 @@ describeDb('C06 session 1: gate G4 on PostgreSQL', () => {
       // One wrapping token per tool, with the login and the key; only it and the index ID go on.
       expect(calls.wrapped).toContainEqual(['db_username', 'db_password', 'llm_key', '900']);
       expect([...retried.run.toolSecrets.entries()].map(([k, v]) => [k, v.indexId])).toEqual([
+        [key, row!.id],
+      ]);
+    });
+
+    it('X06 PR 2: a read_code tool gets the code index and a login of the code read role, no key', async () => {
+      const key = `code-${crypto.randomBytes(3).toString('hex')}`;
+      await registerTool(t.f.scope, {
+        toolKey: key,
+        version: '1.0.0',
+        ownerId: t.f.users.a,
+        transport: 'http',
+        imageRef: 'ghcr.io/example/code-index',
+        imageDigest: `sha256:${'e'.repeat(64)}`,
+        permissions: ['read_code'],
+        allowedDataClasses: ['internal', 'client_confidential', 'client_restricted'],
+        backingServices: ['knowledge-db:5432'],
+      });
+      await changeToolStatus(t.f.scope, key, { to: 'active' });
+      const agent = await seedAgent(t.f.scope, t.f.users.gov, {
+        model: MODEL,
+        instructionsSha256: sha256(AGENTS_MD),
+        tools: ['file_editor', `tool:${key}`],
+        activatedAt: T0,
+      });
+      await t.setConfig(`run:\n  agent_key: ${agent.key}\n`);
+      const intent = await atG4WithPlanTools(['file_editor', `tool:${key}`]);
+      expect(await t.settle(intent)).toEqual({ outcome: 'waiting', reason: 'run_pending' });
+
+      // Without the code index (knowledge-db off): the run fails, as for documents.
+      expect(await prepareRun(t.f.scope, deps(), intent.id)).toEqual({
+        ok: false,
+        reason: 'tool_unavailable',
+      });
+
+      const versions: string[] = [];
+      const logins: string[] = [];
+      const withCode: PrepareRunDeps = {
+        ...deps(),
+        code: {
+          gitHost: {
+            listPaths: () => Promise.resolve(['README.md', 'src/a.ts']),
+            getFileAtCommit: () => Promise.resolve('export function a() { return 1; }'),
+          },
+          store: {
+            ensureProject: () => Promise.resolve(),
+            putIndexVersion: (input) => {
+              versions.push(input.indexId);
+              return Promise.resolve();
+            },
+            deleteIndexVersion: () => Promise.resolve({ chunks: 0 }),
+            listIndexVersions: () => Promise.resolve([]),
+            deleteOrphanChunks: () => Promise.resolve(0),
+            dropProject: () => Promise.resolve(),
+            close: () => Promise.resolve(),
+          },
+          extractor: new TreeSitterExtractor(),
+        },
+        databaseCredentials: {
+          issueRunLogin: (input) => {
+            logins.push(`${input.kind ?? 'docs'} ${input.grantRole}`);
+            return Promise.resolve({ username: new Secret('v-login'), password: new Secret('pw') });
+          },
+          revokeRunLogins: () => Promise.resolve(),
+        },
+      };
+      const keysBefore = calls.keys.length;
+      const prepared = await prepareRun(t.f.scope, withCode, intent.id);
+      expect(prepared).toMatchObject({ ok: true });
+      if (!prepared.ok) return;
+      const project = (await t.reload(intent)).project_id;
+      const row = await t.f.scope.knowledgeIndexes.findReady(
+        project,
+        BASE_1,
+        CODE_INDEX_FORMAT,
+        'code',
+      );
+      expect(row).toMatchObject({ id: versions[0], kind: 'code', documents: 1, chunks: 1 });
+      expect(logins).toEqual([`code kcode_p${project.replaceAll('-', '')}_read`]);
+      // No model key for the code tool: only the run's own key was issued.
+      expect(calls.keys.slice(keysBefore).filter((k) => k.startsWith('tool:'))).toEqual([]);
+      expect(calls.wrapped).toContainEqual(['db_username', 'db_password', '900']);
+      expect([...prepared.run.toolSecrets.entries()].map(([k, v]) => [k, v.indexId])).toEqual([
         [key, row!.id],
       ]);
     });

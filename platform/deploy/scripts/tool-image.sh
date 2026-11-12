@@ -6,15 +6,17 @@
 #
 #   pnpm tool-image:build project-docs              # registry localhost:5000
 #   pnpm tool-image:build project-docs --no-push    # build only (CI scans it)
+#   pnpm tool-image:build code-index                # X06 (ADR-M108): the `read_code` tool
 #
-# A release publishes the same image to GHCR (release-images.yml, `tool-project-docs`); a release
-# checkout prints it with `pnpm images get TOOL_PROJECT_DOCS`.
+# A release publishes the same images to GHCR (release-images.yml, `tool-project-docs`,
+# `tool-code-index`); a release checkout prints them with `pnpm images get TOOL_PROJECT_DOCS` or
+# `pnpm images get TOOL_CODE_INDEX`.
 set -eu
 
 tool="${1:-}"
 case "$tool" in
-  project-docs) ;;
-  *) echo "usage: $0 project-docs [--no-push]" >&2; exit 2 ;;
+  project-docs | code-index) ;;
+  *) echo "usage: $0 project-docs|code-index [--no-push]" >&2; exit 2 ;;
 esac
 push=1
 [ "${2:-}" = "--no-push" ] && push=0

@@ -11,3 +11,5 @@ export {
 } from './reader.js';
 // X06 (design/ADR-M108 §2.4): the code index, schema `kcode_p<…>` in the same `knowledge-db`.
 export { PgCodeIndexStore, type PgCodeIndexStoreOptions } from './code-store.js';
+// X06 PR 2 (design/ADR-M108 §2.8): the read side of the code index, for the `read_code` tool.
+export { PgCodeIndexReader, type CodeHit, type PgCodeIndexReaderOptions } from './code-reader.js';

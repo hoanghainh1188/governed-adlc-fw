@@ -17,7 +17,8 @@ import {
   parseTenantId,
   type G4Deps,
   type G6Deps,
-  type KnowledgeDeps,
+  type CodeIndexDeps,
+  KnowledgeDeps,
   type PlatformDatabase,
   type PublishDeps,
   type Registry,
@@ -56,6 +57,8 @@ export async function createWorkerRuns(options: {
   readonly logger?: SecretsLogger;
   /** X04 PR 3a: the index of a project's documents; absent when `knowledge-db` is off. */
   readonly knowledge?: KnowledgeDeps;
+  /** X06 PR 2: the code index of a project; absent when `knowledge-db` is off. */
+  readonly code?: CodeIndexDeps;
   /** X04 PR 3b: OpenBao's database engine, for the database login of a `read_documents` tool. */
   readonly databaseCredentials?: RunDatabaseCredentials;
 }): Promise<WorkerRuns> {
@@ -94,6 +97,7 @@ export async function createWorkerRuns(options: {
         wrapper: options.wrapper,
         egressAllowlist: settings.egressAllowlist,
         ...(options.knowledge ? { knowledge: options.knowledge } : {}),
+        ...(options.code ? { code: options.code } : {}),
         ...(options.databaseCredentials
           ? { databaseCredentials: options.databaseCredentials }
           : {}),

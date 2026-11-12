@@ -383,7 +383,7 @@ Every table (except `tenants`) has `tenant_id uuid not null` and `created_at tim
 | transport | text | `http` (MCP over Streamable HTTP, one container per tool and run) or `stdio` (a program inside the sandbox image; no credential, no backing service) |
 | image_ref | text null | Image name. Required for `http` |
 | image_digest | text null | `sha256:` digest. Required for `http` once `active`; a tag alone is refused |
-| permissions | text[] | Codes from the catalogue in `@sdlc/contracts` (first: `read_documents`) |
+| permissions | text[] | Codes from the catalogue in `@sdlc/contracts`: `read_documents`, `read_code` (version 1.72, X06), never both |
 | allowed_data_classes | data_class[] | Never `prohibited`; `client_restricted` only when the tool sends nothing outside the server |
 | backing_services | text[] | `alias:port` entries the tool container may reach on its own tool network |
 | model_ref | text null | Gateway model name the tool calls, if any (D-07 §4 rules) |
@@ -1117,6 +1117,7 @@ CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log
 | 1.63 | 2026-10-24 | Claude (task H04), approved by Harry on 2026-10-24 in the H04 plan (QUESTIONS #586–#590) | §5: G5 reason codes `secret_in_diff`, `secret_scan_failed`; §6.4: run event `secrets_scanned` and the value kind `codes`; migration `0042-diff-scan`; ADR-M93 |
 | 1.64 | 2026-10-26 | Claude (task H05), approved by Harry on 2026-10-26 in the H05 plan (QUESTIONS #456, #601–#605) | §5: five gate reason codes (`review_too_large`, `review_size_unknown`, `generated_change`, `mechanical_change`, `cannot_split`); §6.4: run event `diff_measured`, audit action `gate.g5_split_requested`; migration `0043-review-limits`; ADR-M95 |
 | 1.69 | 2026-11-12 | Claude Code (task U09, PR 1), approved by Harry in the U09 plan | §6.1 `passkey_challenges.action`: the admin step-up codes of U09 (one per area; no intent, escalation, gate or input hash); no migration (ADR-M73 1.7 §2.4b, QUESTIONS #685) |
+| 1.72 | 2026-11-13 | Claude Code (task X06, PR 2), approved by Harry in the X06 plan (QUESTIONS #700) | §6.1 `tools.permissions`: the catalogue adds `read_code`, never with `read_documents` (migration `0052-read-code-permission`); the run event `knowledge_read` and the evidence kind `knowledge_read` also hold what a `read_code` tool returned (file IDs and content hashes) (ADR-M108 §2.8) |
 | 1.71 | 2026-11-12 | Claude Code (task X06, PR 1), approved by Harry in the X06 plan (QUESTIONS #696–#700) | §6.1 `knowledge_indexes.kind` (`docs` or `code`; migration `0051-code-index`); §10.1: retention and client data deletion of the code index; audit `knowledge.purged` gets `kind` (ADR-M108) |
 | 1.70 | 2026-11-12 | Claude Code (task V14), approved by Harry in the V14 plan (QUESTIONS #691–#693) | §6.2 `intents.human_effort_hours`: a person's estimate of the human effort in hours, null by default, 0.25 to 10000; changes only while the intent is open and never back to null (trigger `SDA29`); audit `intent.effort_estimated` (migration `0050-intent-effort-estimate`, ADR-M79 §2.6) |
 | 1.68 | 2026-11-12 | Claude Code (task O06 PR 2a), approved by Harry in the O06 PR 2 plan | §6.1 `projects.repo_path`: the folder rule holds among active projects and is a database trigger (migration 0049, `SDA28`), not only the admin module |

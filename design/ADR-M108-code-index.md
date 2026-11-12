@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (task X06 PR 1). The plan and the answers to QUESTIONS #696–#700 were approved by Harry on 2026-11-12 |
+| Status | **Proposed** (task X06 PR 1, PR 2). The plan and the answers to QUESTIONS #696–#700 were approved by Harry on 2026-11-12 |
 | Date | 2026-11-12 |
 | Decided by | Harry (X06 plan, 2026-11-12) |
 | Related | D-08 X06 AC1, AC2; D-01 §5.8b (code context); D-02 NFR-03, NFR-05, FR-33, FR-44; D-05 §6.1, §10.1; ADR-M69 (tool register), ADR-M87 (MCP gateway), ADR-M89 (the index of a project's documents), ADR-M51 (retention), ADR-M97 (client data deletion), ADR-M80 (threat model); design/QUESTIONS.md #361, #696–#700 |
@@ -83,8 +83,9 @@ Today an agent finds these things by reading files in the sandbox with `grep`. T
 
 ### 2.8. The tool (PR 2; QUESTIONS #700)
 
-- A new permission `read_code` in the catalogue of `@sdlc/contracts`, with three tools and their call rules: `find_symbol` (a name, an optional kind), `find_references` (a name), `related_files` (a path). Every argument has a length limit; a path is relative, with no `..`.
-- A new image `tool-code-index` (`platform/apps/tool-code-index`), built, scanned and pinned like `tool-project-docs` (R089).
+- A new permission `read_code` in the catalogue of `@sdlc/contracts`, with three tools and their call rules: `find_symbol` (`name` ≤ 200, optional `kind`, `limit` 1–50), `find_references` (`name` ≤ 200, `limit` 1–100), `related_files` (`path` ≤ 1000, `limit` 1–100). The tool checks every argument again; a path is relative, with no `.`, `..`, empty part, backslash or control character; a `kind` is a kind of definition. A tool has `read_code` or `read_documents`, never both (the register and migration 0052).
+- `find_symbol` returns exact names first, then names that start with the text (a prefix search, `%` and `_` taken as plain characters); `find_references` takes the exact name; `related_files` returns the files of the same index the file imports and the files that import it.
+- A new image `tool-code-index` (`platform/apps/tool-code-index`), built, scanned and pinned like `tool-project-docs` (R089): `pnpm tool-image:build code-index`, both release workflow matrices, the lock job (`SDLC_IMAGE_TOOL_CODE_INDEX`), the release gate, `verify-images.sh` (seven images), `images.sh` and the CI scan. Its runtime files are `config.json` (the index ID, the code schema, the database) and `credentials.json` (the login only: no model key).
 - The run's login is **one OpenBao role per run and tool**, `kdocs-<run_id>-code`, whose creation statement grants only the project's code read role. The name matches the connection's `allowed_roles` `kdocs-*` and the worker policy, so no OpenBao change and no upgrade step is needed, and the revocation by the prefix `kdocs-<run_id>` revokes both logins of a run.
 - The tool writes its answer log lines as the documents tool does; the runner records them as `knowledge_read` (file IDs and content hashes only, never a path, a name or a query).
 - Handbook Ch.13 and Ch.20, the deploy README and runbook T11 describe the tool in PR 2.
@@ -109,3 +110,4 @@ Today an agent finds these things by reading files in the sandbox with `grep`. T
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-12 | Claude Code (task X06 PR 1) | First version, with the answers to QUESTIONS #696–#700 (Harry, 2026-11-12, X06 plan) |
+| 0.2 | 2026-11-13 | Claude Code (task X06 PR 2) | §2.8: the call rules, the search order, one index permission per tool (migration 0052), the image and its runtime files |

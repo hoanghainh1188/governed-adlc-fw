@@ -5,7 +5,7 @@
 # - check: platform/tools/release/release-check.mjs (the tag equals package.json and
 #   PLATFORM_VERSION, the CHANGELOG section with its Upgrade notes), and the tagged commit is on
 #   main;
-# - images: release-images.yml with push: true builds and scans all six images on both
+# - images: release-images.yml with push: true builds and scans all seven images on both
 #   architectures, and only then pushes, signs and attests them and writes images.lock;
 # - verify-images: every digest of that images.lock carries a cosign signature and a build
 #   provenance attestation made by release-images.yml at this exact tag (verify-images.sh);

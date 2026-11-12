@@ -305,6 +305,15 @@ importers:
         specifier: 1.25.0
         version: 1.25.0(long@5.3.2)(protobufjs@8.8.0)
 
+  platform/apps/tool-code-index:
+    dependencies:
+      '@sdlc/adapter-knowledge-pgvector':
+        specifier: workspace:*
+        version: link:../../packages/adapters/knowledge-pgvector
+      '@sdlc/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+
   platform/apps/tool-project-docs:
     dependencies:
       '@sdlc/adapter-knowledge-pgvector':

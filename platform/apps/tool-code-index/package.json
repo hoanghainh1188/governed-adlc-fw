@@ -1,0 +1,16 @@
+{
+  "name": "@sdlc/tool-code-index",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "The read_code register tool: symbols and related files of a project (MCP over Streamable HTTP). See design/ADR-M108.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@sdlc/adapter-knowledge-pgvector": "workspace:*",
+    "@sdlc/contracts": "workspace:*"
+  }
+}

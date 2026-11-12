@@ -26,7 +26,8 @@
 // 7. (X04 PR 3a, 3b; ADR-M89) for a `read_documents` tool: the index of the project's documents at
 //    the base commit, then the tool's database login and model key, wrapped for the runner
 //    (`tools/credentials.ts`). A failure ends the run `failed` (`tool_unavailable`, run event
-//    `knowledge_unavailable`) and revokes what was issued.
+//    `knowledge_unavailable`) and revokes what was issued. X06 (ADR-M108): the same for a
+//    `read_code` tool, with the code index and a login of the code read role (no model key).
 // If anything fails after the contract, the key is revoked and the run is cancelled
 // (`prepare_failed`), so no run waits in `queued` with a live key.
 import {
@@ -46,6 +47,7 @@ import type { CostController } from '../cost/controller.js';
 import type { TenantScope } from '../db/tenant-scope.js';
 import type { Registry } from '../registry/registry.js';
 import { issueRunContract } from '../run-contract/issue.js';
+import { buildCodeIndex, type CodeIndexDeps } from '../knowledge/code-indexer.js';
 import { buildProjectIndex, type KnowledgeDeps } from '../knowledge/indexer.js';
 import { loadEffectiveConfig } from '../registry/effective-config.js';
 import { isRecordableModel } from '../run-events/types.js';
@@ -81,6 +83,11 @@ export interface PrepareRunDeps {
    * Without it a run with such a tool fails (`tool_unavailable`).
    */
   readonly knowledge?: KnowledgeDeps;
+  /**
+   * X06 PR 2 (ADR-M108 §2.6): the code index for a `read_code` tool. Without it a run with such a
+   * tool fails (`tool_unavailable`).
+   */
+  readonly code?: CodeIndexDeps;
   /**
    * X04 PR 3b (QUESTIONS #535, #540): OpenBao's database engine, for the database login of a
    * `read_documents` tool. Without it a run with such a tool fails (`tool_unavailable`).
@@ -482,7 +489,7 @@ async function failForFeedback(
 /** The stop reason of a run whose register tool could not be prepared (X04 PR 3a). */
 export const TOOL_UNAVAILABLE = 'tool_unavailable';
 
-/** The index version and the model of each `read_documents` grant, by tool key. */
+/** The index version of each `read_documents` and `read_code` grant, and the model of each `read_documents` grant, by tool key. */
 interface IndexedTools {
   readonly indexIds: ReadonlyMap<string, string>;
   readonly models: ReadonlyMap<string, string>;
@@ -493,7 +500,8 @@ interface IndexedTools {
 /**
  * Builds or reuses the index of the project's documents for each grant with `read_documents`
  * (ADR-M89 §2.3). The model is the tool's `model_ref` and must be one of the contract's allowed
- * models (G4 checked it for the data class). Returns the index versions or the error code.
+ * models (G4 checked it for the data class). X06: the code index for each grant with `read_code`
+ * (ADR-M108 §2.6). Returns the index versions or the error code.
  */
 async function indexForTools(
   scope: TenantScope,
@@ -503,23 +511,27 @@ async function indexForTools(
   runId: string,
   key: RedactedSecret,
 ): Promise<IndexedTools | KnowledgeErrorCode> {
-  const grants = proposal.toolGrants.filter((g) => g.permissions.includes('read_documents'));
+  const docGrants = proposal.toolGrants.filter((g) => g.permissions.includes('read_documents'));
+  const codeGrants = proposal.toolGrants.filter((g) => g.permissions.includes('read_code'));
   const indexIds = new Map<string, string>();
   const models = new Map<string, string>();
-  if (grants.length === 0) return { indexIds, models, toolBudgetUsd: '0' };
+  if (docGrants.length === 0 && codeGrants.length === 0) {
+    return { indexIds, models, toolBudgetUsd: '0' };
+  }
   try {
-    if (!deps.knowledge) throw new KnowledgeError('store_unavailable');
+    if (docGrants.length > 0 && !deps.knowledge) throw new KnowledgeError('store_unavailable');
+    if (codeGrants.length > 0 && !deps.code) throw new KnowledgeError('store_unavailable');
     const project = await scope.projects.getById(intent.project_id);
     const ref = project ? projectRepoRef(project) : undefined;
     if (!ref) throw new KnowledgeError('file_unreadable');
     const { config } = await loadEffectiveConfig(scope.projectConfigs, intent.project_id);
-    for (const grant of grants) {
+    for (const grant of docGrants) {
       const tool = await scope.tools.getByKey(grant.tool_key);
       const model = tool?.model_ref ?? null;
       if (model === null || !proposal.allowedModels.includes(model)) {
         throw new KnowledgeError('model_not_allowed');
       }
-      const built = await buildProjectIndex(scope, deps.knowledge, {
+      const built = await buildProjectIndex(scope, deps.knowledge!, {
         ref,
         projectId: intent.project_id,
         baseSha: proposal.baseSha,
@@ -532,6 +544,19 @@ async function indexForTools(
       });
       indexIds.set(grant.tool_key, built.indexId);
       models.set(grant.tool_key, model);
+    }
+    // X06 (ADR-M108 §2.6): no model; one index of the commit serves every `read_code` grant.
+    if (codeGrants.length > 0) {
+      const built = await buildCodeIndex(scope, deps.code!, {
+        ref,
+        projectId: intent.project_id,
+        baseSha: proposal.baseSha,
+        runId,
+        intentId: intent.id,
+        limits: config.code_index,
+        now: deps.registry.now(),
+      });
+      for (const grant of codeGrants) indexIds.set(grant.tool_key, built.indexId);
     }
     return { indexIds, models, toolBudgetUsd: String(config.tools.model_budget_usd) };
   } catch (error) {

@@ -67,6 +67,8 @@ export function checkPermissions(values: readonly string[]): ToolPermission[] {
   if (values.length === 0 || values.length > 10 || !values.every(isToolPermission)) {
     invalid('permissions');
   }
+  // X06 (ADR-M108 §2.8): a tool reads one index with one login, never both.
+  if (values.includes('read_code') && values.includes('read_documents')) invalid('permissions');
   return [...new Set(values)].sort();
 }
 

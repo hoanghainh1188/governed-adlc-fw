@@ -9,6 +9,10 @@
 //
 // The run ID alone finds every lease and the role, so no lease ID is kept or travels (R031). The
 // worker's policy allows these paths for `kdocs-*` only (`policies/worker.hcl`).
+//
+// X06 (ADR-M108 §2.8, QUESTIONS #700): a `read_code` tool's role is `kdocs-<run_id>-code`, with the
+// project's code read role (`kcode_p…_read`). It matches `kdocs-*`, so OpenBao needs no change, and
+// the revocation by the prefix `kdocs-<run_id>` ends both logins of a run.
 import type { RedactedSecret, RunDatabaseCredentials, RunDatabaseLogin } from '@sdlc/contracts';
 
 import type { Caller } from './client.js';
@@ -19,15 +23,19 @@ import { Redacted } from './redacted.js';
 export const KNOWLEDGE_DB_CONNECTION = 'knowledge-db';
 
 const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-/** A project's read role (`kdocs_p<32 hex>_read`): the only role a run's login may get. */
-const READ_ROLE = /^kdocs_p[0-9a-f]{32}_read$/;
+/** A project's read role of each kind: the only role a run's login of that kind may get. */
+const READ_ROLES = {
+  docs: /^kdocs_p[0-9a-f]{32}_read$/,
+  code: /^kcode_p[0-9a-f]{32}_read$/,
+} as const;
+type LoginKind = keyof typeof READ_ROLES;
 /** Logins live at most one day; a run's time cap is far below (configuration `run.*`). */
 export const MAX_LOGIN_TTL_SECONDS = 86_400;
 
-/** The OpenBao role of one run. */
-export function runDatabaseRole(runId: string): string {
+/** The OpenBao role of one run and kind (`kdocs-<run_id>`, `kdocs-<run_id>-code`). */
+export function runDatabaseRole(runId: string, kind: LoginKind = 'docs'): string {
   if (!RUN_ID.test(runId)) throw new SecretsError('secrets.database.invalid_input');
-  return `kdocs-${runId}`;
+  return kind === 'code' ? `kdocs-${runId}-code` : `kdocs-${runId}`;
 }
 
 /**
@@ -36,8 +44,8 @@ export function runDatabaseRole(runId: string): string {
  * read the project's schema (through the read role); `VALID UNTIL` ends it even if a revocation
  * fails.
  */
-export function creationStatements(grantRole: string): string[] {
-  if (!READ_ROLE.test(grantRole)) throw new SecretsError('secrets.database.invalid_input');
+export function creationStatements(grantRole: string, kind: LoginKind = 'docs'): string[] {
+  if (!READ_ROLES[kind].test(grantRole)) throw new SecretsError('secrets.database.invalid_input');
   return [
     `CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION CONNECTION LIMIT 4 IN ROLE ${grantRole};`,
   ];
@@ -59,8 +67,10 @@ export class DatabaseCredentials implements RunDatabaseCredentials {
     readonly runId: string;
     readonly grantRole: string;
     readonly ttlSeconds: number;
+    readonly kind?: LoginKind;
   }): Promise<RunDatabaseLogin> {
-    const role = runDatabaseRole(input.runId);
+    const kind = input.kind ?? 'docs';
+    const role = runDatabaseRole(input.runId, kind);
     const { ttlSeconds } = input;
     if (
       !Number.isSafeInteger(ttlSeconds) ||
@@ -75,7 +85,7 @@ export class DatabaseCredentials implements RunDatabaseCredentials {
       path: `${this.mount}/roles/${role}`,
       body: {
         db_name: KNOWLEDGE_DB_CONNECTION,
-        creation_statements: creationStatements(input.grantRole),
+        creation_statements: creationStatements(input.grantRole, kind),
         revocation_statements: REVOCATION_STATEMENTS,
         default_ttl: ttlSeconds,
         max_ttl: ttlSeconds,
@@ -97,6 +107,7 @@ export class DatabaseCredentials implements RunDatabaseCredentials {
   }
 
   async revokeRunLogins(runId: string): Promise<void> {
+    // The prefix `kdocs-<run_id>` also covers `kdocs-<run_id>-code` (X06).
     const role = runDatabaseRole(runId);
     await this.call({
       operation: 'database revoke',
@@ -104,12 +115,14 @@ export class DatabaseCredentials implements RunDatabaseCredentials {
       path: `sys/leases/revoke-prefix/${this.mount}/creds/${role}`,
       body: { sync: true },
     });
-    // 404: the role is gone already (a second revocation).
-    await this.call({
-      operation: 'database role delete',
-      method: 'DELETE',
-      path: `${this.mount}/roles/${role}`,
-      accept: [404],
-    });
+    // 404: the role is gone already (a second revocation) or the run had no login of that kind.
+    for (const kind of ['docs', 'code'] as const) {
+      await this.call({
+        operation: 'database role delete',
+        method: 'DELETE',
+        path: `${this.mount}/roles/${runDatabaseRole(runId, kind)}`,
+        accept: [404],
+      });
+    }
   }
 }

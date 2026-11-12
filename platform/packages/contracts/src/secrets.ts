@@ -58,7 +58,9 @@ export interface RunDatabaseLogin {
 /**
  * Short-lived database logins for a run's tools (X04 PR 3b, ADR-M69 §2.4, QUESTIONS #535, #537,
  * #540): one OpenBao database role per run, `kdocs-<run_id>`, whose only grant is `grantRole`.
- * Everything is found again from the run ID, so no lease ID ever travels or is stored (R031).
+ * X06 (ADR-M108 §2.8, QUESTIONS #700): a `read_code` tool's login has the role
+ * `kdocs-<run_id>-code` and the project's code read role. Everything is found again from the run
+ * ID, so no lease ID ever travels or is stored (R031).
  */
 export interface RunDatabaseCredentials {
   /** Creates (or replaces) the run's role and issues one login that lives `ttlSeconds`. */
@@ -66,8 +68,10 @@ export interface RunDatabaseCredentials {
     readonly runId: string;
     readonly grantRole: string;
     readonly ttlSeconds: number;
+    /** X06: `code` for a `read_code` tool; `docs` when absent. */
+    readonly kind?: 'docs' | 'code';
   }): Promise<RunDatabaseLogin>;
-  /** Revokes every login of the run and deletes its role. Revoking twice is harmless. */
+  /** Revokes every login of the run and deletes its roles. Revoking twice is harmless. */
   revokeRunLogins(runId: string): Promise<void>;
 }
 

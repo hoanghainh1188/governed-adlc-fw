@@ -10,7 +10,12 @@
 // contract: the logins by the run's role, the keys by their aliases. Revoking twice is harmless;
 // the run events `tool_credential_revoked` / `tool_credential_revoke_failed` are written once per
 // tool.
+//
+// X06 (ADR-M108 §2.8, QUESTIONS #700): a `read_code` grant gets a login of the role
+// `kdocs-<run_id>-code` (member of the project's code read role only) and no model key: its
+// wrapping token holds `{ db_username, db_password }`.
 import {
+  codeIndexReadRole,
   knowledgeReadRole,
   validateRunContract,
   type RedactedSecret,
@@ -23,8 +28,9 @@ import type { CostController } from '../cost/controller.js';
 import { fromMicros, toMicros } from '../cost/money.js';
 import type { TenantScope } from '../db/tenant-scope.js';
 
-/** The permission whose tools read the project's index (ADR-M89). */
+/** The permissions whose tools read one of the project's indexes (ADR-M89, ADR-M108). */
 const READ_DOCUMENTS = 'read_documents';
+const READ_CODE = 'read_code';
 
 /** One tool's secrets for the runner: its wrapping token and the index version it reads. */
 export interface PreparedToolSecrets {
@@ -36,9 +42,9 @@ export interface IssueToolSecretsInput {
   readonly runId: string;
   readonly projectId: string;
   readonly grants: readonly ToolGrant[];
-  /** The index version of each `read_documents` grant, by tool key (the run preparation built it). */
+  /** The index version of each `read_documents` or `read_code` grant, by tool key. */
   readonly indexIds: ReadonlyMap<string, string>;
-  /** The model of each grant's tool (`model_ref`), by tool key. */
+  /** The model of each `read_documents` grant's tool (`model_ref`), by tool key. */
   readonly models: ReadonlyMap<string, string>;
   /** The logins and keys live as long as the run may (its time cap plus the start window). */
   readonly ttlSeconds: number;
@@ -55,9 +61,11 @@ export interface ToolCredentialDeps {
   readonly costController: Pick<CostController, 'issueToolKey'>;
 }
 
-/** The grants whose tools need a credential (today: `read_documents` only). */
+/** The grants whose tools need a credential: `read_documents` and `read_code`. */
 export function credentialGrants(grants: readonly ToolGrant[]): ToolGrant[] {
-  return grants.filter((grant) => grant.permissions.includes(READ_DOCUMENTS));
+  return grants.filter(
+    (grant) => grant.permissions.includes(READ_DOCUMENTS) || grant.permissions.includes(READ_CODE),
+  );
 }
 
 /** The smaller of two decimal USD amounts, as a decimal string. */
@@ -81,8 +89,23 @@ export async function issueToolSecrets(
   if (!deps.databaseCredentials) throw new Error('tool credentials are not set up');
   for (const grant of grants) {
     const indexId = input.indexIds.get(grant.tool_key);
+    if (indexId === undefined) throw new Error('tool index missing');
+    if (grant.permissions.includes(READ_CODE)) {
+      const login = await deps.databaseCredentials.issueRunLogin({
+        runId: input.runId,
+        grantRole: codeIndexReadRole(input.projectId),
+        ttlSeconds: input.ttlSeconds,
+        kind: 'code',
+      });
+      const wrapped = await deps.wrapper.wrap(
+        { db_username: login.username, db_password: login.password },
+        { ttlSeconds: input.wrapTtlSeconds },
+      );
+      secrets.set(grant.tool_key, { wrapped, indexId });
+      continue;
+    }
     const model = input.models.get(grant.tool_key);
-    if (indexId === undefined || model === undefined) throw new Error('tool index missing');
+    if (model === undefined) throw new Error('tool index missing');
     const login = await deps.databaseCredentials.issueRunLogin({
       runId: input.runId,
       grantRole: knowledgeReadRole(input.projectId),
