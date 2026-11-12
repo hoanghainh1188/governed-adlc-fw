@@ -18,6 +18,7 @@ import { SecretBag } from '../../steps/dist/secrets.js';
 
 import { parseSettings, SettingsError, type ServerSettings } from './settings.js';
 import { README_SECTIONS, serverSetup, SetupRefused, SetupStopped } from './setup.js';
+import { TeamRefused } from './team-steps.js';
 import { processTerminal } from './process-terminal.js';
 import { terminalRefusal } from './terminal.js';
 
@@ -37,8 +38,11 @@ const REFUSAL_KEYS = {
   secret_file: 'server_setup.refused.secret_file',
   secret_file_mode: 'server_setup.refused.secret_file_mode',
   env_conflict: 'server_setup.refused.env_conflict',
+  project_file: 'server_setup.refused.project_file',
+  sandbox_image_conflict: 'server_setup.refused.sandbox_image_conflict',
+  no_person_a: 'server_setup.refused.no_person_a',
 } as const satisfies Record<
-  SetupRefused['code'] | NonNullable<ReturnType<typeof terminalRefusal>>,
+  SetupRefused['code'] | TeamRefused['code'] | NonNullable<ReturnType<typeof terminalRefusal>>,
   MessageKey
 >;
 
@@ -140,7 +144,7 @@ async function main(argv: string[]): Promise<number> {
     }
     const section = `${README}${README_SECTIONS[error.step]}`;
     const cause = error.cause;
-    if (cause instanceof SetupRefused) {
+    if (cause instanceof SetupRefused || cause instanceof TeamRefused) {
       sayError(REFUSAL_KEYS[cause.code], cause.params);
     } else if (cause instanceof DeployStepError) {
       sayError('server_setup.failed', { step: error.step, what: cause.step, section });

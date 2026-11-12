@@ -2,10 +2,10 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** (task V16). Version 1.1: §2.5, team access and the runner link in the settings (task V20) |
+| Status | **Accepted** (task V16). Version 1.1: §2.5, team access and the runner link in the settings (task V20). Version 1.2: §2.6, steps 8–13 (task V19) |
 | Date | 2026-10-29 |
 | Decided by | Harry (QUESTIONS #616–#618 accepted with changes, 2026-10-28, PR #453; V16 plan approved 2026-10-29; V18–V20 plan approved 2026-11-11, QUESTIONS #673) |
-| Related | D-08 tasks V16, V20; QUESTIONS #616, #618, #673; ADR-M67 (team access); ADR-M91 (the runner on its own Engine); ADR-M19 (OpenBao bootstrap); ADR-M76 (the trial key file); ADR-M63 (TLS); runbook T11 §3.2, §5, §5.1; `platform/deploy/README.md` "Fresh deployment"; rules R035, R081 |
+| Related | D-08 tasks V16, V17, V19, V20; QUESTIONS #616, #618, #671, #673; ADR-M67 (team access); ADR-M91 (the runner on its own Engine); ADR-M19 (OpenBao bootstrap); ADR-M76 (the trial key file); ADR-M63 (TLS); runbook T11 §3.2, §5, §5.1; `platform/deploy/README.md` "Fresh deployment"; rules R035, R081 |
 
 ## 1. Context
 
@@ -50,10 +50,28 @@ The step code of README steps 3–7 moves from `platform/deploy/trial/src/up.ts`
 - Step 7 with `runner_link`: it removes a runner of an earlier start from the platform's Engine (`compose rm --stop --force sdlc-runner docker-socket-proxy npm-proxy`, once), then starts the profile `runner-link` instead of `sandbox`; with `knowledge` it restarts only the worker. It ends by saying how to start the runner on the runner host.
 - Step 7 with `access`: `access:tls import <folder>` once, when the folder is given, then the profile `access`; `up.sh` checks the settings and the certificate as before. With the dashboard sign-in, the public origin is the proxy's (`https://<host>[:<port>]`, ADR-M67 §2.8); another `dashboard.public_origin` is a settings error.
 
+### 2.6 Steps 8–13 (V19, version 1.2)
+
+- Four more keys of the settings, all or none: `tenant` (slug, name), `admin` (email, name), `project_file` (the V17 file) and `sandbox_image` (an image by digest). `ai_record` is optional. None is a secret. Without the four keys, the command ends after step 7 as before, and steps 8–14 stay by hand.
+- The steps run after step 7, once the admin token is revoked: they need the api, not OpenBao. Code: `server-setup/src/team-steps.ts`.
+- Step 8:
+  - `adlc ops bootstrap`. The `platform_app` URL is built from the env file and goes on standard input: `adlc ops … --db-url-stdin` is new for every `ops` command. It is never in `SDLC_DB_URL`.
+  - The token comes back in the child's output, which the command keeps in memory. It is shown once, between two clears of the screen and the scroll-back, then given to `adlc login --token-stdin`.
+  - A second start skips the step when `adlc whoami` works. When the tenant exists and the admin is logged out, it issues a new token for the admin (`adlc ops token issue`) instead.
+- Steps 9–12:
+  - The command copies the project file into a private temporary folder. In the copy, `sandbox.image` is set from the settings and the agent's instructions file gets an absolute path. A project file that names another image is refused before step 8.
+  - `adlc admin project apply --dry-run` shows the numeric GitHub IDs, and the operator confirms them. Then `--yes` applies the copy, and the copy is removed. A second run finds nothing to change.
+- Step 13:
+  - With `ai_record`, the command runs `adlc ops ai-record set` on behalf of Person A of the project file (QUESTIONS #671), with the version that `ai-record show` gave.
+  - It skips the step when the record already matches the settings.
+- The command never approves the agent, never issues a team member's token and never creates an intent. It ends with the commands that `apply` leaves to each person, and step 14 for Person A.
+- Markers in the progress file: `8`, `9`, `13`.
+- `pnpm test:fresh-deploy` runs the command twice: steps 2–7, then, with the sandbox image built, steps 8–13. A fake GitHub API over HTTPS answers the lookups.
+
 ## 3. Consequences
 
 - One sequence for the server, the trial and the live test: a change of a README "Fresh deployment" step changes `platform/deploy/steps` and the tests that check it.
 - The real initialisation (A10 PR 3) needs fewer hand-made commands, and no person sees a root or admin token.
-- Still by hand: the company CA certificate (T11 §3c), the GitHub App, the key holders' presence, and steps 8–14.
+- Still by hand: the company CA certificate (T11 §3c), the GitHub App, the key holders' presence, the sandbox image of step 10, and step 14 (and steps 8–13 without their settings).
 - With PGP keys, a key holder's copy of their share is encrypted text that only their private key opens; the paper copy is the decrypted share, written on their own computer (T11 §3.2).
 - Not covered: the self-hosted model provider (`vllm`, ADR-M71) stays a manual step 4 entry; the profile `models-local` is not started by the command.

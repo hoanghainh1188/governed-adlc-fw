@@ -5,15 +5,23 @@
 // dispatch only). The static test `platform/tests/deploy/fresh-deploy-readme.test.ts` keeps the
 // README and this test in step: every credentials command the README names runs here.
 //
-// Steps 2–7 run through `pnpm server:setup`'s own code (`serverSetup`, D-08 V16 AC6) with throw-away
-// keys: a scripted terminal plays the three key holders (it reads each share the command shows and
-// types two of them back at the hidden prompts); the GitHub App key and the model key are
-// throw-away files. Steps 8–14 follow `deploy-steps.ts` (shared with `pnpm test:upgrade`, O02).
+// Steps 2–13 run through `pnpm server:setup`'s own code (`serverSetup`, D-08 V16 AC6, V19 AC5) with
+// throw-away keys: a scripted terminal plays the three key holders (it reads each share the command
+// shows and types two of them back at the hidden prompts) and the operator (it keeps the admin
+// token shown once); the GitHub App key and the model key are throw-away files. The command runs
+// twice: steps 2–7 first, then, with the sandbox image built on the started platform, again with
+// the settings of steps 8–13 (a second start: steps 2–7 skip what is done). A fake GitHub API over
+// HTTPS (a throw-away certificate) answers the lookups of the project file. What stays with people
+// (the team's tokens, the agent's approvals, step 14) follows `deploy-steps.ts` (shared with
+// `pnpm test:upgrade`, O02).
 //
 // Own Compose project (own name, subnet, ports +31000, random env file), removed afterwards. The
 // sandbox image: SDLC_SANDBOX_IMAGE when set, else `build.sh node24`.
+import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import https from 'node:https';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -28,18 +36,25 @@ import { SecretBag } from '../../../deploy/steps/dist/secrets.js';
 import { repoRoot } from '../../workspace/helpers';
 import { CREDENTIALS_COMMANDS, Deployment } from './deploy-steps';
 
-/** Plays the key holders: keeps each share it is shown, types them back at the share prompts. */
-function keyHolders(d: Deployment): Terminal {
+/**
+ * Plays the key holders (keeps each share it is shown, types them back at the share prompts) and
+ * the operator (keeps the admin token of step 8, checks the GitHub IDs).
+ */
+function people(d: Deployment): Terminal {
   const shares: string[] = [];
   let next = 0;
+  let last: MessageKey | undefined;
   return {
-    say: () => undefined,
+    say: (key) => {
+      last = key;
+    },
     warn: () => undefined,
     print: () => undefined,
     pause: () => Promise.resolve(),
     clear: () => undefined,
     showSecret: (text) => {
-      shares.push(d.keep(text));
+      if (last === 'server_setup.token.show') d.useToken('admin', text);
+      else shares.push(d.keep(text));
     },
     hidden: (key: MessageKey) => {
       if (key !== 'server_setup.share.prompt') return Promise.reject(new Error(`prompt ${key}`));
@@ -48,6 +63,46 @@ function keyHolders(d: Deployment): Terminal {
       return Promise.resolve(share);
     },
   };
+}
+
+/** A fake GitHub API over HTTPS with a throw-away certificate: `GET /users/<login>` only. */
+async function fakeGithub(tmp: string): Promise<{ url: string; ca: string; close: () => void }> {
+  const key = path.join(tmp, 'github-key.pem');
+  const ca = path.join(tmp, 'github-cert.pem');
+  execFileSync(
+    'openssl',
+    [
+      'req',
+      '-x509',
+      '-newkey',
+      'rsa:2048',
+      '-nodes',
+      '-keyout',
+      key,
+      '-out',
+      ca,
+      '-days',
+      '1',
+      '-subj',
+      '/CN=127.0.0.1',
+      '-addext',
+      'subjectAltName=IP:127.0.0.1',
+    ],
+    { stdio: 'ignore' },
+  );
+  const ids: Record<string, number> = { 'fresh-a': 7001, 'fresh-b': 7002 };
+  const server = https.createServer(
+    { key: fs.readFileSync(key), cert: fs.readFileSync(ca) },
+    (req, res) => {
+      const login = /^\/users\/([^/]+)$/.exec(req.url ?? '')?.[1] ?? '';
+      const id = ids[login];
+      res.writeHead(id ? 200 : 404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(id ? { id, login, type: 'User' } : { message: 'Not Found' }));
+    },
+  );
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address() as AddressInfo;
+  return { url: `https://127.0.0.1:${port}`, ca, close: () => server.close() };
 }
 
 const enabled = process.env.SDLC_FRESH_DEPLOY_TEST === '1';
@@ -72,6 +127,8 @@ describe.skipIf(!enabled)(
     });
     const litellmUrl = `http://127.0.0.1:${4000 + PORT_OFFSET}`;
     const timings: Record<string, number> = {};
+    let github: { url: string; ca: string; close: () => void } | undefined;
+    let image = '';
     const started = Date.now();
     const mark = (step: string) => {
       timings[step] = Math.round((Date.now() - started) / 1000);
@@ -94,41 +151,75 @@ describe.skipIf(!enabled)(
         }) as string,
       );
       const providerKey = d.keep(`sk-${randomBytes(24).toString('hex')}`);
-      // Steps 2–7: the command's own code, with every credentials command of README step 5.
-      const result = await serverSetup(
-        {
-          envFile: d.options.envFile,
-          keyHolders: [{ name: 'Holder 1' }, { name: 'Holder 2' }, { name: 'Holder 3' }],
-          appClientId: 'Iv23fresh0deploy0test',
-          appKeyFile: file('app.pem', pem),
-          providers: [{ provider: 'anthropic', apiKeyFile: file('anthropic.key', providerKey) }],
-          optional: [],
-          throwawayTls: true,
+      const base = {
+        envFile: d.options.envFile,
+        keyHolders: [{ name: 'Holder 1' }, { name: 'Holder 2' }, { name: 'Holder 3' }],
+        appClientId: 'Iv23fresh0deploy0test',
+        appKeyFile: file('app.pem', pem),
+        providers: [
+          { provider: 'anthropic' as const, apiKeyFile: file('anthropic.key', providerKey) },
+        ],
+        optional: [],
+        throwawayTls: true,
+      };
+      const terminal = people(d);
+      github = await fakeGithub(tmp);
+      const deps = {
+        repoRoot: repoRoot(),
+        envFile: d.options.envFile,
+        exec,
+        terminal,
+        bag: new SecretBag(),
+        keys: { shares: 3, threshold: 2 },
+        stopRequested: () => false,
+        now: () => new Date(),
+        // The CLI's own HOME (its saved login) and the fake GitHub API.
+        cliEnv: {
+          HOME: tmp,
+          SDLC_GITHUB_API_URL: github.url,
+          NODE_EXTRA_CA_CERTS: github.ca,
         },
-        {
-          repoRoot: repoRoot(),
-          envFile: d.options.envFile,
-          exec,
-          terminal: keyHolders(d),
-          bag: new SecretBag(),
-          keys: { shares: 3, threshold: 2 },
-          stopRequested: () => false,
-          now: () => new Date(),
-        },
-      ).catch((error: unknown) => {
+      };
+      const stopped = (error: unknown) => {
         const cause = (error as { cause?: { step?: string; detail?: string } }).cause;
         throw new Error(
           `server:setup stopped: ${cause?.step ?? ''} ${d.redact(cause?.detail ?? '')}`,
         );
-      });
-      expect(result.outcome).toBe('done');
+      };
+      // Steps 2–7: the command's own code, with every credentials command of README step 5.
+      const first = await serverSetup(base, deps).catch(stopped);
+      expect(first.outcome).toBe('done');
       expect(CREDENTIALS_COMMANDS.length).toBe(10);
       mark('server_setup');
       d.adoptDatabase();
-      d.tenant(); // step 8
+      // Step 10 on the started platform; then steps 8–13 through the command (V19).
+      image = process.env.SDLC_SANDBOX_IMAGE ?? d.buildSandboxImage();
+      expect(image).toMatch(/@sha256:[0-9a-f]{64}$/);
+      mark('image');
+      const second = await serverSetup(
+        {
+          ...base,
+          team: {
+            tenant: { slug: 'fresh', name: 'Fresh' },
+            admin: { email: 'admin@fresh.test', name: 'Admin' },
+            projectFile: d.projectFile(),
+            sandboxImage: image,
+            aiRecord: {
+              aiAllowed: 'yes',
+              classes: ['public', 'internal'],
+              prodLogs: 'no',
+              disclosure: 'standard_note',
+            },
+          },
+        },
+        deps,
+      ).catch(stopped);
+      expect(second.outcome).toBe('done');
+      mark('team');
     }, SETUP_TIMEOUT_MS);
 
     afterAll(() => {
+      github?.close();
       process.stdout.write(`e07:fresh_deploy_seconds:${JSON.stringify(timings)}\n`);
       if (process.env.SDLC_FRESH_DEPLOY_KEEP === '1') return;
       d.down();
@@ -167,13 +258,22 @@ describe.skipIf(!enabled)(
       expect(litellmUrl).toMatch(/^http:\/\/127\.0\.0\.1:/);
     });
 
-    it('steps 8–14: tenant, team, sandbox image, agent, configuration, AI record, first intent at G1', async () => {
-      d.team(); // step 9
-      mark('team');
-      const image = process.env.SDLC_SANDBOX_IMAGE ?? d.buildSandboxImage(); // step 10
-      expect(image).toMatch(/@sha256:[0-9a-f]{64}$/);
-      mark('image');
-      d.agentConfigAndRecord(image); // steps 11–13
+    it('steps 8–13 through the command, then what stays with people, then the first intent at G1', async () => {
+      // Steps 8–13 (V19): the tenant, the team, the agent, the configuration with the image by
+      // digest, the AI record on behalf of Person A; the agent is registered, never approved.
+      expect(d.sdlc('admin', ['admin', 'agent', 'show', '--key', 'coder'])).toMatchObject({
+        status: 'proposed',
+      });
+      const config = d.sdlc('admin', ['admin', 'config', 'show', '--project', 'pilot']);
+      expect(JSON.stringify(config)).toContain(image);
+      expect(
+        d.sdlc('operator', ['ops', 'ai-record', 'show', '--tenant', 'fresh', '--project', 'pilot']),
+      ).toMatchObject({
+        version: 1,
+        ai_allowed: 'yes',
+      });
+      // What stays with people: the team's tokens and the agent's two approvals.
+      d.peopleSteps();
       expect(d.sdlc('admin', ['admin', 'agent', 'show', '--key', 'coder'])).toMatchObject({
         status: 'active',
       });

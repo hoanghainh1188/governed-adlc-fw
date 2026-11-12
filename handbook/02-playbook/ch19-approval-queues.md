@@ -459,6 +459,8 @@ What the command does, in this order:
 
 A refused file writes nothing. Running the same file again changes nothing. If a change fails part-way, fix the cause and run the same file again: the command skips what is done.
 
+On a new server, `pnpm server:setup` can run this command for the operator, with the file named in its settings (`project_file`) and the sandbox image added as `sandbox.image` (task V19; `platform/deploy/README.md`, "Fresh deployment"). It shows the GitHub IDs the same way and changes nothing until the operator confirms them. It also creates the tenant and its first admin, and can write the project AI record on behalf of Person A from its settings. Everything in the list below stays with people there too.
+
 What the command never does, because it belongs to a person:
 
 - It never revokes a role. A role the file does not list is shown and kept; revoke it with `adlc admin role revoke`.
@@ -649,6 +651,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | 0.48 | 2026-10-29 | Claude (task U08) | §19.8e: create an intent and link its spec, submit the plan, build an Evidence Pack in the dashboard; a refused link keeps the intent; the L1 proposal command (ADR-M73) |
 | 0.49 | 2026-10-29 | Claude (docs, newcomer review) | §19.8d: a link to the commented example `platform/deploy/project.example.yaml` |
 | 0.50 | 2026-10-30 | Claude (v0.10.0, ADR-M100) | §19.8c: the old command `sdlc` is removed in v0.10.0; `adlc` still reads its login |
+| 0.51 | 2026-11-12 | Claude (task V19) | §19.8d: `pnpm server:setup` can run `adlc admin project apply` with the file of its settings; what stays with people is the same |
 | 0.26 | 2026-10-09 | Claude (docs review E2) | §19.8d points to the set-up order of the deployment guide |
 | 0.25 | 2026-10-09 | Claude (docs review fixes) | §19.8b: what reject and request-changes do at G5–G7; the HOTL gates with a block window besides G2 and G3 |
 | 0.24 | 2026-10-09 | Claude (docs review PR C2) | §19.8c: what counts as one acceptance criterion for Spec Kit and BMAD (each top-level list item; ROLLOUT-GUIDE said "every Given / When / Then item"); anchors for linking a spec, the plan file, plan drafts, the cost report, the gate times, the block window and the AI record |

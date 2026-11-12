@@ -11,7 +11,8 @@
 // - a new start skips what is done (OpenBao's state, the progress file) and says where the last run
 //   stopped; a failure names the step and its README section; it ends with `doctor`;
 // - with `access` and `runner_link` in the settings (V20): the team access proxy and the runner on
-//   its own Engine, their env keys written in step 2 (the runner host's address before `configure`).
+//   its own Engine, their env keys written in step 2 (the runner host's address before `configure`);
+// - with `tenant`, `admin`, `project_file` and `sandbox_image` (V19): steps 8–13 (team-steps.ts).
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -43,6 +44,7 @@ import {
 } from './progress.js';
 import { applyEnvKeys, EnvKeyConflict, settingsEnvKeys } from './env-keys.js';
 import { accessOrigin, pgpKeyBase64, usesPgp, type ServerSettings } from './settings.js';
+import { teamSteps } from './team-steps.js';
 import { PromptAborted, type Terminal } from './terminal.js';
 
 /** The README step of each marker, and its section (`platform/deploy/README.md#…`). */
@@ -53,6 +55,9 @@ export const README_SECTIONS = {
   '5': '#5-credentials-of-every-process',
   '6': '#6-database',
   '7': '#7-start-the-platform',
+  '8': '#8-the-tenant-and-its-first-admin',
+  '9': '#9-the-project-and-its-team',
+  '13': '#13-the-project-ai-record',
 } as const;
 export type Step = keyof typeof README_SECTIONS;
 
@@ -63,6 +68,9 @@ const STEP_MESSAGES = {
   '5': 'server_setup.step.5',
   '6': 'server_setup.step.6',
   '7': 'server_setup.step.7',
+  '8': 'server_setup.step.8',
+  '9': 'server_setup.step.9',
+  '13': 'server_setup.step.13',
 } as const satisfies Record<Step, MessageKey>;
 
 /** An admin token with less time left than this is replaced before the next command. */
@@ -116,6 +124,8 @@ export interface SetupDeps {
   /** True after Ctrl-C, SIGTERM or SIGHUP: the command stops before the next step. */
   readonly stopRequested: () => boolean;
   readonly now: () => Date;
+  /** More environment for `adlc` in steps 8–13 (tests only: HOME, a fake GitHub API). */
+  readonly cliEnv?: Readonly<Record<string, string>>;
 }
 
 export interface SetupResult {
@@ -434,8 +444,31 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
       term.say('server_setup.runner_link.next', { profiles: has('knowledge') ? ' knowledge' : '' });
     }
 
-    // The admin token is not needed any more; then `doctor` (read only, prints no secret).
+    // The admin token is not needed any more.
     await revokeAdmin();
+    const apiUrl = `http://127.0.0.1:${hostPort(envText, 'SDLC_API_HOST_PORT', 8090)}`;
+
+    // Steps 8–13 (V19), with their settings: the tenant, the team, the AI record.
+    if (settings.team) {
+      await teamSteps({
+        team: settings.team,
+        repoRoot: deps.repoRoot,
+        exec: deps.exec,
+        terminal: term,
+        bag,
+        envText,
+        apiUrl,
+        ...(deps.cliEnv ? { cliEnv: deps.cliEnv } : {}),
+        isDone,
+        markDone,
+        begin,
+        checkStop,
+      });
+    } else {
+      term.say('server_setup.team.by_hand');
+    }
+
+    // Then `doctor` (read only, prints no secret).
     term.say('server_setup.doctor');
     const doctor = await deps.exec(
       'node',
@@ -449,11 +482,7 @@ export async function serverSetup(settings: ServerSettings, deps: SetupDeps): Pr
       credentials: progress.credentials,
       ...(progress.leftoverRoot ? { leftoverRoot: true as const } : {}),
     });
-    return {
-      outcome: 'done',
-      doctorOk: doctor.status === 0,
-      apiUrl: `http://127.0.0.1:${hostPort(envText, 'SDLC_API_HOST_PORT', 8090)}`,
-    };
+    return { outcome: 'done', doctorOk: doctor.status === 0, apiUrl };
   } catch (error) {
     const reason: StopReason =
       error instanceof SetupInterrupted || error instanceof PromptAborted

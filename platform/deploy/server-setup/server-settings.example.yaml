@@ -76,6 +76,29 @@ optional: []
 #   source_cidr: 10.203.0.1/32            # SDLC_RUNNER_SOURCE_CIDR; a VM: 10.66.0.2/32
 #   docker_host: unix:///run/user/1001/docker.sock   # a VM: ssh://sdlc-runner@10.66.0.2
 
+# Steps 8–13 (README "Fresh deployment" steps 8–13; D-08 V19). All four of tenant, admin,
+# project_file and sandbox_image, or none of them. The command bootstraps the tenant and its first
+# admin (the token is shown once, then the command logs you in with it), applies the project file
+# (`adlc admin project apply`: the project, the team, the agent and the configuration, with
+# sandbox_image as sandbox.image) after you check each GitHub ID, and writes the AI record on
+# behalf of Person A. It never approves the agent, never issues a team member's token and never
+# creates an intent: at the end it prints what stays with each person.
+# tenant:
+#   slug: acme                            # lower-case letters, digits and -
+#   name: Acme
+# admin:
+#   email: admin@acme.example
+#   name: Platform Admin
+# project_file: /srv/sdlc/project.yaml    # the V17 file (deploy/project.example.yaml), outside the repo
+# sandbox_image: ghcr.io/hoanghainh1188/sandbox-node24@sha256:<64 hex>  # step 10: pnpm images get SANDBOX_NODE24
+# The client's consent (handbook Ch.2 §2.5, template T7), recorded on behalf of Person A of the
+# project file (QUESTIONS #671). Without it, Person A writes it (step 13).
+# ai_record:
+#   ai_allowed: yes                       # no | yes | yes_with_conditions
+#   classes: [public, internal]           # the data classes the client allows
+#   prod_logs: no                         # no | yes_masked
+#   disclosure: standard_note             # standard_note | client_format
+
 # Only on a development machine: go on to step 3 with the throw-away certificate of compose:env.
 # On a server, leave it out: a new env file stops the command after step 2, so OpenBao's
 # certificate comes from the company CA first (runbook T11 §3c).
