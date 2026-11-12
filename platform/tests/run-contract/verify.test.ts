@@ -54,6 +54,6 @@ describe('verifyRunContract before the database (AC2)', () => {
   });
 
   it('has a catalog message for every reject reason', () => {
-    expect(Object.keys(RUN_CONTRACT_REJECT_MESSAGES)).toHaveLength(9);
+    expect(Object.keys(RUN_CONTRACT_REJECT_MESSAGES)).toHaveLength(10);
   });
 });

@@ -15,6 +15,7 @@ export {
 export { callKey, canonicalArguments, trailingEqual } from './loop.js';
 export { fileReadsOf, workspacePath } from './reads.js';
 export {
+  agentWorkingDir,
   buildTaskMessage,
   checkTask,
   CI_FAILED_INSTRUCTION,

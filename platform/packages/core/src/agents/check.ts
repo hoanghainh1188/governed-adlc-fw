@@ -26,6 +26,11 @@ export interface AgentRunCheck {
    * `instructionsSha256` (the path is `instructionsPath(agent)`), from outside the sandbox.
    */
   readonly instructionsSha256: string;
+  /**
+   * O06 (ADR-M31 §2.5 0.6): the SHA-256 of the agent's second pinned file at the base commit, or
+   * null when it is missing there. Ignored when the agent pins no second file.
+   */
+  readonly rootInstructionsSha256?: string | null;
   readonly now?: Date;
 }
 
@@ -48,6 +53,15 @@ export interface CheckedAgent {
 /** The path of an agent's instructions file in the repository (`AGENTS.md` for `AGENTS.md@v5`). */
 export function instructionsPath(agent: { readonly instructions_ref: string }): string {
   return parseInstructionsRef(agent.instructions_ref).path;
+}
+
+/** The path of an agent's second pinned file (O06), or null when it pins none. */
+export function rootInstructionsPath(agent: {
+  readonly root_instructions_ref: string | null;
+}): string | null {
+  return agent.root_instructions_ref === null
+    ? null
+    : parseInstructionsRef(agent.root_instructions_ref).path;
 }
 
 /**
@@ -84,7 +98,11 @@ export async function checkAgentForRun(
   if (!input.allowedModels.includes(modelRef)) {
     throw new AgentRegisterError('model_not_allowed', `agent ${key}'s model is not allowed`);
   }
-  if (input.instructionsSha256 !== agent.instructions_sha256) {
+  if (
+    input.instructionsSha256 !== agent.instructions_sha256 ||
+    (agent.root_instructions_sha256 !== null &&
+      input.rootInstructionsSha256 !== agent.root_instructions_sha256)
+  ) {
     throw new AgentRegisterError(
       'instructions_mismatch',
       `the instructions of agent ${key} differ from version ${agent.version}`,
@@ -102,6 +120,7 @@ export async function checkAgentForRun(
       key,
       version: agent.version,
       instructionsSha256: agent.instructions_sha256,
+      rootInstructionsSha256: agent.root_instructions_sha256,
       tools: [...agent.allowed_tools],
       adapter: agent.adapter,
       modelRef,

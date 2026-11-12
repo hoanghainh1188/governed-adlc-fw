@@ -34,6 +34,8 @@ describe('Run Contract schema (AC1)', () => {
       'instructions_sha256',
       'allowed_tools',
       'tool_grants',
+      'repo_path',
+      'root_instructions_sha256',
       'autonomy_level',
       'max_budget_usd',
       'max_iterations',
@@ -63,7 +65,7 @@ describe('Run Contract schema (AC1)', () => {
   it.each([
     // X03 (QUESTIONS #526): a contract of schema 1 has no adapter and is refused.
     ['schema_version', 1],
-    ['schema_version', 4],
+    ['schema_version', 5],
     ['agent_adapter', 'aider'],
     ['agent_adapter', undefined],
     ['run_id', 'RUN-1'],
@@ -134,5 +136,42 @@ describe('signature and envelope', () => {
     ]) {
       expect(parseRunContractEnvelope(bad)).toBeUndefined();
     }
+  });
+});
+
+describe('schema 4: the project folder (O06, ADR-M106 §2.4)', () => {
+  const folder = (extra: Record<string, unknown> = {}) =>
+    contract({
+      schema_version: 4,
+      tool_grants: [],
+      repo_path: 'packages/web',
+      root_instructions_sha256: 'e'.repeat(64),
+      ...extra,
+    });
+
+  it('accepts a folder with a second pinned file, an empty folder, and no second file', () => {
+    expect(fieldOf(folder())).toBe('ok');
+    expect(fieldOf(folder({ repo_path: '' }))).toBe('ok');
+    expect(fieldOf(folder({ root_instructions_sha256: null }))).toBe('ok');
+  });
+
+  it.each([
+    ['repo_path', '../web'],
+    ['repo_path', '/web'],
+    ['repo_path', undefined],
+    ['root_instructions_sha256', 'E'.repeat(64)],
+    ['root_instructions_sha256', undefined],
+  ])('refuses %s = %j', (field, value) => {
+    expect(fieldOf(folder({ [field]: value }))).toBe(field);
+  });
+
+  it.each([2, 3])('schema %i never carries the folder fields', (schema) => {
+    const grants = schema === 3 ? { tool_grants: [] } : {};
+    expect(fieldOf(contract({ schema_version: schema, ...grants, repo_path: 'web' }))).toBe(
+      'repo_path',
+    );
+    expect(
+      fieldOf(contract({ schema_version: schema, ...grants, root_instructions_sha256: null })),
+    ).toBe('root_instructions_sha256');
   });
 });

@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   AUTONOMY_LEVELS,
+  RUN_CONTRACT_SCHEMA_FOLDER,
   RUN_CONTRACT_SCHEMA_VERSION,
   signatureKeyVersion,
   type AgentAdapterCode,
@@ -36,6 +37,8 @@ export interface RunContractAgent {
   readonly tools: readonly string[];
   /** The adapter that drives the agent (X03, QUESTIONS #526). */
   readonly adapter: AgentAdapterCode;
+  /** O06 (ADR-M31 §2.5 0.6): the SHA-256 of the agent's second pinned file; null or absent: none. */
+  readonly rootInstructionsSha256?: string | null;
 }
 
 export interface IssueRunContract {
@@ -132,8 +135,12 @@ export async function issueRunContract(
 
   const issuedAt = deps.now ? deps.now() : new Date();
   const expiresAt = new Date(issuedAt.getTime() + config.run.contract_validity_minutes * 60_000);
+  // O06 (ADR-M106 §2.4): schema 4 only for a project with a folder or an agent with a second
+  // pinned file; every other contract stays schema 3.
+  const rootSha256 = input.agent.rootInstructionsSha256 ?? null;
+  const folder = project.repo_path !== '' || rootSha256 !== null;
   const draft: RunContract = {
-    schema_version: RUN_CONTRACT_SCHEMA_VERSION,
+    schema_version: folder ? RUN_CONTRACT_SCHEMA_FOLDER : RUN_CONTRACT_SCHEMA_VERSION,
     run_id: randomUUID(),
     intent_id: intent.id,
     tenant_id: scope.tenantId,
@@ -152,6 +159,7 @@ export async function issueRunContract(
     tool_grants: [...(input.toolGrants ?? [])].sort((a, b) =>
       a.tool_key < b.tool_key ? -1 : a.tool_key > b.tool_key ? 1 : 0,
     ),
+    ...(folder ? { repo_path: project.repo_path, root_instructions_sha256: rootSha256 } : {}),
     autonomy_level: input.autonomyLevel,
     max_budget_usd: input.maxBudgetUsd,
     max_iterations: input.maxIterations,

@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import { canonicalJson } from '@sdlc/config';
 import {
   GitHostError,
-  unpinnedInstructionPaths,
+  unpinnedInstructionPathsIn,
   type DataClass,
   type GitHostAdapter,
   type ValidatedProjectConfig,
@@ -25,7 +25,7 @@ import {
   type ToolGrant,
 } from '@sdlc/contracts';
 
-import { instructionsPath } from '../agents/check.js';
+import { instructionsPath, rootInstructionsPath } from '../agents/check.js';
 import { instructionsSha256 } from '../agents/rules.js';
 import type { Intent, Project } from '../db/schema.js';
 import type { TenantScope } from '../db/tenant-scope.js';
@@ -55,11 +55,18 @@ export interface G4Deps {
 export interface G4Facts {
   /** Head of the project's default branch when G4 was evaluated: the run's base commit. */
   readonly baseSha: string;
+  /** O06 (ADR-M106 §2.4): the project's folder in the repository; '' = the whole repository. */
+  readonly repoPath: string;
   /** The configured agent's ID and the SHA-256 of its instructions file at `baseSha`. */
   readonly instructions: {
     readonly agentId: string;
     /** Null when the file does not exist at `baseSha` (G4 fails with `instructions_mismatch`). */
     readonly sha256: string | null;
+    /**
+     * O06 (ADR-M31 §2.5 0.6): the agent's second pinned file at `baseSha`: null when the agent
+     * pins none; `sha256: null` when the file does not exist there (`instructions_missing`).
+     */
+    readonly root: { readonly sha256: string | null } | null;
     /**
      * Agent instruction files at `baseSha` besides the pinned one (C07, QUESTIONS #126):
      * `none`, `found` (with the SHA-256 of their sorted paths: a new file is a new failure; the
@@ -110,21 +117,19 @@ export async function gatherG4Facts(
   const agent = key === null ? undefined : await scope.agents.getByKey(key);
   let instructions: G4Facts['instructions'] = null;
   if (agent) {
-    let sha256: string | null;
-    try {
-      sha256 = instructionsSha256(
-        await deps.gitHost.getFileAtCommit(ref, instructionsPath(agent), baseSha),
-      );
-    } catch (error) {
-      if (!(error instanceof GitHostError) || !['not_found', 'not_a_file'].includes(error.code)) {
-        throw error;
-      }
-      sha256 = null;
-    }
+    const pinned = instructionsPath(agent);
+    const rootPath = rootInstructionsPath(agent);
     instructions = {
       agentId: agent.id,
-      sha256,
-      unpinned: await unpinnedInstructions(deps, ref, baseSha, instructionsPath(agent)),
+      sha256: await fileSha256(deps, ref, pinned, baseSha),
+      root: rootPath === null ? null : { sha256: await fileSha256(deps, ref, rootPath, baseSha) },
+      unpinned: await unpinnedInstructions(
+        deps,
+        ref,
+        baseSha,
+        project.repo_path,
+        rootPath === null ? [pinned] : [pinned, rootPath],
+      ),
     };
   }
   const allowedModels = await deps.allowedModels(config, intent.data_class);
@@ -133,18 +138,44 @@ export async function gatherG4Facts(
     : null;
   return {
     baseSha,
+    repoPath: project.repo_path,
     instructions,
     allowedModels: [...new Set(allowedModels)].sort(),
     tenantMonthlyBudgetUsd,
   };
 }
 
-/** The agent instruction files at `baseSha` other than the pinned one (QUESTIONS #126). */
+/**
+ * The SHA-256 of a file at `baseSha`, read outside the sandbox (ADR-M31 §2.5); null when the file
+ * does not exist there.
+ */
+async function fileSha256(
+  deps: G4Deps,
+  ref: RepoRef,
+  path: string,
+  baseSha: string,
+): Promise<string | null> {
+  try {
+    return instructionsSha256(await deps.gitHost.getFileAtCommit(ref, path, baseSha));
+  } catch (error) {
+    if (!(error instanceof GitHostError) || !['not_found', 'not_a_file'].includes(error.code)) {
+      throw error;
+    }
+    return null;
+  }
+}
+
+/**
+ * The agent instruction files at `baseSha` other than the pinned ones (QUESTIONS #126): with a
+ * folder (O06, ADR-M106 §2.4), only the files the agent reads from that folder and the repository
+ * root; files in other folders do not count.
+ */
 async function unpinnedInstructions(
   deps: G4Deps,
   ref: RepoRef,
   baseSha: string,
-  pinnedPath: string,
+  repoPath: string,
+  pinnedPaths: readonly string[],
 ): Promise<NonNullable<G4Facts['instructions']>['unpinned']> {
   let paths: string[];
   try {
@@ -155,7 +186,7 @@ async function unpinnedInstructions(
     }
     throw error;
   }
-  const found = unpinnedInstructionPaths(paths, pinnedPath);
+  const found = unpinnedInstructionPathsIn(paths, repoPath, pinnedPaths);
   if (found.length === 0) return { kind: 'none' };
   const pathsSha256 = createHash('sha256').update(canonicalJson([...found].sort()), 'utf8');
   return { kind: 'found', pathsSha256: pathsSha256.digest('hex') };
@@ -188,6 +219,10 @@ export interface RunProposal {
   readonly maxDurationMin: number;
   readonly baseSha: string;
   readonly dataClass: DataClass;
+  /** O06: the project's folder ('' = the whole repository). */
+  readonly repoPath: string;
+  /** O06: the SHA-256 of the agent's second pinned file, or null. */
+  readonly rootInstructionsSha256: string | null;
 }
 
 /** The G4 input hash: SHA-256 of the canonical JSON of the proposal (the agent key is its ID's). */
@@ -215,6 +250,11 @@ export function runProposalSha256(proposal: RunProposal): string {
         // X04: only when the run gets register tools, so the hash of every other proposal (and
         // the G4 approvals bound to it) stays the same.
         ...(proposal.toolGrants.length > 0 ? { tool_grants: [...proposal.toolGrants] } : {}),
+        // O06: the same way, only for a project with a folder or an agent with a second file.
+        ...(proposal.repoPath === '' ? {} : { repo_path: proposal.repoPath }),
+        ...(proposal.rootInstructionsSha256 === null
+          ? {}
+          : { root_instructions_sha256: proposal.rootInstructionsSha256 }),
       }),
       'utf8',
     )

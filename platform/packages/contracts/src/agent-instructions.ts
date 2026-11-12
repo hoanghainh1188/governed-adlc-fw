@@ -62,3 +62,45 @@ export function isAgentInstructionPath(path: string): boolean {
 export function unpinnedInstructionPaths(paths: readonly string[], pinnedPath: string): string[] {
   return paths.filter((p) => p !== pinnedPath && isAgentInstructionPath(p));
 }
+
+/**
+ * True when `path` (repository-relative) is a file at the repository root that the agent reads as
+ * instructions: a root file, or a file of a root skill folder. A nested `AGENTS.md` is not one.
+ */
+export function isRootLevelInstructionPath(path: string): boolean {
+  const segments = path
+    .split('/')
+    .filter((s) => s.length > 0 && s !== '.')
+    .map(fold);
+  if (segments.length === 1) return ROOT_FILES.has(segments[0]!);
+  return SKILL_FOLDERS.some(
+    (folder) => segments.length > folder.length && folder.every((part, i) => segments[i] === part),
+  );
+}
+
+/**
+ * True when the agent of a project whose folder is `repoPath` reads `path` as instructions (task
+ * O06, ADR-M106 §2.4; OpenHands 1.48.0 `load_project_skills` with `working_dir` =
+ * `<clone>/<repoPath>`): inside the folder, the usual rule applied to the path below the folder;
+ * outside it, only the files at the repository root (the clone keeps `.git`). An empty `repoPath`
+ * is the whole repository, the rule of `isAgentInstructionPath`.
+ */
+export function readsAsInstructions(path: string, repoPath: string): boolean {
+  if (repoPath === '') return isAgentInstructionPath(path);
+  if (path.startsWith(`${repoPath}/`)) {
+    return isAgentInstructionPath(path.slice(repoPath.length + 1));
+  }
+  return isRootLevelInstructionPath(path);
+}
+
+/**
+ * The instruction paths of `paths` that the agent of the folder `repoPath` reads, other than the
+ * pinned ones (G4, O06). Only the exact pinned paths are left out, as in `unpinnedInstructionPaths`.
+ */
+export function unpinnedInstructionPathsIn(
+  paths: readonly string[],
+  repoPath: string,
+  pinnedPaths: readonly string[],
+): string[] {
+  return paths.filter((p) => !pinnedPaths.includes(p) && readsAsInstructions(p, repoPath));
+}

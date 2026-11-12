@@ -95,6 +95,7 @@
   "run_contract.reject.expired": "The Run Contract has expired. G4 must issue a new one.",
   "run_contract.reject.revoked": "The Run Contract was revoked.",
   "run_contract.reject.run_not_startable": "The run of this Run Contract has already started or ended.",
+  "run_contract.reject.folder_not_enforceable": "The Run Contract names a project folder, and its agent adapter cannot work in one: only OpenHands can (handbook Ch.13 §13.10.2a).",
   "run_contract.reject.tool_not_enforceable": "This runner cannot enforce a register tool of the Run Contract (no MCP gateway, or call rules that differ from its own).",
   "cost.error.run_not_found": "The run, its Run Contract, intent, project or tenant was not found.",
   "cost.error.run_not_startable": "This run has already started or ended. A model key is issued only before the run starts.",

@@ -161,6 +161,8 @@ describe('the G4 proposal hash (FR-17)', () => {
     maxDurationMin: 60,
     baseSha: 'd'.repeat(40),
     dataClass: 'internal' as const,
+    repoPath: '',
+    rootInstructionsSha256: null,
   };
 
   // The hash of a proposal as it was before X04 added `toolGrants` (version 1 of the input).
@@ -196,5 +198,12 @@ describe('the G4 proposal hash (FR-17)', () => {
 
   it('changes with the tool grants', () => {
     expect(runProposalSha256({ ...proposal, toolGrants: [GRANT] })).not.toBe(before);
+  });
+
+  it('O06: changes with a folder or a second pinned file, never without them', () => {
+    expect(runProposalSha256({ ...proposal, repoPath: 'packages/web' })).not.toBe(before);
+    expect(runProposalSha256({ ...proposal, rootInstructionsSha256: 'e'.repeat(64) })).not.toBe(
+      before,
+    );
   });
 });

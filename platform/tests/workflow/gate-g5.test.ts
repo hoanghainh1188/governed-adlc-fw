@@ -20,7 +20,7 @@ const CONFIG: ValidatedProjectConfig = loaded.config;
 function facts(
   status: RunStatus,
   stopReason: string | null,
-  changes: { out?: number; instructions?: number } | null = {},
+  changes: { out?: number; instructions?: number; outside?: number } | null = {},
   spentUsd = '0',
   secrets: G5SecretScan | null = { result: 'clean', findings: 0 },
 ): G5Facts {
@@ -34,6 +34,7 @@ function facts(
             changedFiles: 3,
             outOfScope: changes.out ?? 0,
             instructionFiles: changes.instructions ?? 0,
+            outsideFolder: changes.outside ?? 0,
             pathsSha256: 'a'.repeat(64),
           },
     secrets,
@@ -53,6 +54,20 @@ const check = (f: G5Facts) => {
 describe('g5Breach: instruction files, then scope, then caps', () => {
   it('passes a succeeded run in scope within its cap', () => {
     expect(check(facts('succeeded', null))).toBeNull();
+  });
+
+  it('O06: a change outside the project folder fails like scope, after the instruction files', () => {
+    expect(check(facts('succeeded', null, { outside: 1 }))).toEqual([
+      'out_of_scope',
+      'outside_project_path',
+      null,
+    ]);
+    expect(check(facts('succeeded', null, { outside: 1, out: 2 }))?.[1]).toBe(
+      'outside_project_path',
+    );
+    expect(check(facts('succeeded', null, { outside: 1, instructions: 1 }))?.[1]).toBe(
+      'instructions_changed',
+    );
   });
 
   it('instruction files come first, even with files out of scope and a budget stop', () => {

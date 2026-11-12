@@ -18,7 +18,7 @@
 //   URL and key, and the agent's `max_input_tokens`. Without it the body has no condenser at all.
 // - The first user message: `buildTaskMessage` of `@sdlc/agent-kit` (the spec, the plan, the
 //   rules of the run and the delimited blocks) with the OpenHands last rule (`FINISH_RULE`).
-import { buildTaskMessage, checkTask, toolsOf } from '@sdlc/agent-kit';
+import { agentWorkingDir, buildTaskMessage, checkTask, toolsOf } from '@sdlc/agent-kit';
 import {
   AgentError,
   TOOL_GATEWAY_KEY_HEADER,
@@ -120,7 +120,8 @@ export function buildConversationRequest(input: ConversationRequestInput): Recor
         load_memory: false,
       },
     },
-    workspace: { kind: 'LocalWorkspace', working_dir: input.workingDir },
+    // O06 (ADR-M106 §2.4): OpenHands loads its skills from here and from the Git root.
+    workspace: { kind: 'LocalWorkspace', working_dir: agentWorkingDir(contract, input.workingDir) },
     initial_message: {
       role: 'user',
       content: [{ type: 'text', text: taskMessage(contract, input.task, input.workingDir) }],

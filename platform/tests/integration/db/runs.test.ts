@@ -374,6 +374,40 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
       });
     });
 
+    it('O06: a project folder gives schema 4; only OpenHands may run it (folder_not_enforceable)', async () => {
+      const s = await seed();
+      const intent = (await s.scope.intents.getById(s.intentId))!;
+      await s.scope.projects.update(intent.project_id, { repo_path: 'apps/web' });
+      const root = SHA('e');
+      const folder = (
+        await issue(s, { agent: { ...input(s).agent, rootInstructionsSha256: root } })
+      ).envelope;
+      expect(folder.contract).toMatchObject({
+        schema_version: 4,
+        repo_path: 'apps/web',
+        root_instructions_sha256: root,
+      });
+      expect(await verifyAt(folder, NOW)).toMatchObject({ ok: true });
+
+      const opencode = (await issue(s, { agent: { ...input(s).agent, adapter: 'opencode' } }))
+        .envelope;
+      expect(opencode.contract).toMatchObject({
+        schema_version: 4,
+        root_instructions_sha256: null,
+      });
+      expect(await verifyAt(opencode, NOW)).toMatchObject({
+        ok: false,
+        reason: 'folder_not_enforceable',
+      });
+    });
+
+    it('O06: without a folder or a second file the contract stays schema 3', async () => {
+      const s = await seed();
+      const { envelope } = await issue(s);
+      expect(envelope.contract.schema_version).toBe(3);
+      expect(envelope.contract).not.toHaveProperty('repo_path');
+    });
+
     it('still accepts a contract signed with an older key version after a rotation', async () => {
       const s = await seed();
       const before = (await issue(s)).envelope;

@@ -19,7 +19,11 @@ async function scopeFailures(scope: TenantScope, intentId: string): Promise<stri
   const events = await scope.audit.listForEntity(intentId, ['gate.g5_check_failed']);
   return events
     .map((e) => e.payload as { check?: unknown; run_id?: unknown })
-    .filter((p) => p.check === 'out_of_scope' && typeof p.run_id === 'string')
+    .filter(
+      (p) =>
+        (p.check === 'out_of_scope' || p.check === 'outside_project_path') &&
+        typeof p.run_id === 'string',
+    )
     .map((p) => p.run_id as string);
 }
 

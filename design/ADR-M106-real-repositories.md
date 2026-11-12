@@ -81,6 +81,12 @@ G5 fails a run that adds, changes or removes either pinned file, as today for th
 
 **One poll per repository.** The worker groups a tenant's pollable projects by repository and reads GitHub once per group, from the oldest cursor of the group. Each project then handles the events in its own transaction, with its own cursor compare-and-set (D-05 `git_event_cursors` stays per project). An event belongs to the project whose intent has that issue or pull request; the others ignore it as today (`intent_not_linked` outcomes are not written for an event another project of the group handled).
 
+**As built (version 1.2, O06 PR 2b).**
+
+- The Run Contract of a project with a folder or an agent with a second pinned file has `schema_version` 4 (`repo_path`, `root_instructions_sha256`); every other contract stays schema 3, byte for byte, and the G4 proposal hash changes only for such a run.
+- Only the OpenHands adapter sets its working folder per run (`working_dir` of the conversation). The OpenCode server works in the folder it was started in, so the runner refuses a contract with a folder for any other adapter (`folder_not_enforceable`, a new reject reason). Git commands and the report of the files the agent read keep the repository root.
+- The runner's change check counts the changed paths outside the folder (`changes_checked.outside_folder`, absent when 0) and the folder's own instruction files; G5 fails with the check `outside_project_path` and the reason `out_of_scope` (back to G3, a new plan needed, as for `out_of_scope`).
+
 **CI per project.** `verification.required_checks` names the project's own checks (for example `ci-web`); handbook Ch.14 §14.10.2 says how to name jobs per package. G6 does not change.
 
 **Out of scope.** The knowledge index (X04) and the evaluation task set (L07) keep reading the whole repository; a project's spec and plan paths stay relative to the repository root.
@@ -96,5 +102,6 @@ G5 fails a run that adds, changes or removes either pinned file, as today for th
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.2 | 2026-11-12 | Claude Code (task O06 PR 2b) | §2.4 "As built": schema 4, `folder_not_enforceable` for adapters other than OpenHands, `outside_folder` and `outside_project_path` |
 | 1.1 | 2026-11-12 | Claude Code (task O06), approved by Harry (QUESTIONS #677, #678) | §2.4: several projects on one repository, each with its folder; what OpenHands 1.48.0 reads from a sub-folder; two pinned files; G5 `outside_project_path`; one poll per repository |
 | 1.0 | 2026-11-12 | Claude (task O06 PR 1) | §2.1–§2.3 accepted with the O06 plan; §2.4 decided in principle (QUESTIONS #677), detail in 1.1 |

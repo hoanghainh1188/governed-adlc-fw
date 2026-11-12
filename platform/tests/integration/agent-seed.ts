@@ -14,6 +14,10 @@ export interface SeedAgentOptions {
   readonly adapter?: string;
   /** When the agent is activated (its first certification date). Default: now. */
   readonly activatedAt?: Date;
+  /** O06: the pinned file (`path@label`). Default `AGENTS.md@v1`. */
+  readonly instructionsRef?: string;
+  /** O06: the repository root's file, pinned too. */
+  readonly rootInstructions?: { readonly ref: string; readonly sha256: string };
 }
 
 export interface SeededAgent {
@@ -39,8 +43,11 @@ export async function seedAgent(
     version,
     ownerId,
     modelRef: options.model ?? 'gpt-oss-20b',
-    instructionsRef: 'AGENTS.md@v1',
+    instructionsRef: options.instructionsRef ?? 'AGENTS.md@v1',
     instructionsSha256,
+    ...(options.rootInstructions === undefined
+      ? {}
+      : { rootInstructions: options.rootInstructions }),
     allowedTools: tools,
     maxAutonomy: 'L2',
     approvedEnvironments: ['sandbox'],
