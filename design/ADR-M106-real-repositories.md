@@ -2,10 +2,10 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** for §2.1–§2.3 (Harry, 2026-11-12, in the O06 plan; QUESTIONS #676). §2.4 (monorepos) decided in principle (Harry, 2026-11-12, QUESTIONS #677); its detail and the D-05 change come in version 1.1 |
+| Status | **Accepted** for §2.1–§2.3 (Harry, 2026-11-12, in the O06 plan; QUESTIONS #676). §2.4 (monorepos) accepted in version 1.1 (Harry, 2026-11-12, QUESTIONS #677, #678) |
 | Date | 2026-11-12 |
 | Decided by | Harry (O06 plan, PR 1, approved on 2026-11-12) |
-| Related | D-08 O06 AC1–AC3; D-02 NFR-05; ADR-M34 §2.4 (instruction files); ADR-M38 §2.7 (how G6 reads CI); QUESTIONS #126, #159, #440, #676–#678; handbook Ch.13 §13.10.2a, Ch.14 §14.10.3 |
+| Related | D-08 O06 AC1–AC3; D-02 NFR-05; D-03 §6 (Run Contract); D-05 §6.1 (`projects`, `agents`); ADR-M31 §2.5; ADR-M34 §2.4 (instruction files); ADR-M38 §2.7 (how G6 reads CI); QUESTIONS #126, #159, #440, #676–#678; handbook Ch.13 §13.10.2a, Ch.14 §14.10.3 |
 
 ## 1. Context
 
@@ -49,18 +49,52 @@ A check that appears before the limit turns the state into `pending` or a result
 
 Handbook Ch.13 §13.10.2a lists what a repository needs before its first intent (`AGENTS.md` registered with the agent, no other instruction file, CI on pull requests), with the refusal each missing point causes. Ch.14 §14.10.3 gives the steps for a repository without CI.
 
-### 2.4. Monorepos (AC2): decided in principle
+### 2.4. Monorepos (AC2): several projects on one repository (version 1.1)
 
-Harry decided the approach on 2026-11-12 (QUESTIONS #677): several projects on one repository, each with its folder (`projects.repo_path`); the agent works in that folder; G4 checks the instruction files inside it; G5 fails a change outside it; one poll per repository. The agent register pins two files for such a project: the repository root's instruction file (if any) and `<repo_path>/AGENTS.md` (QUESTIONS #678; OpenHands 1.48.0 also reads the repository root's files from a sub-folder). The detail and the D-05 change come in a design PR (version 1.1 of this ADR), after a check of how OpenHands 1.48 loads its skills. Until O06 PR 2: one project per repository, and a nested `AGENTS.md` blocks G4 (ADR-M34 §2.4).
+Decided by Harry on 2026-11-12 (QUESTIONS #677, #678). Built by O06 PR 2.
+
+**The project's folder.** `projects.repo_path` (D-05 §6.1): the project's folder in the repository, empty for the whole repository. Rules:
+
+- a relative path with `/`, without `.`, `..`, empty parts or a trailing `/`;
+- unique per tenant, repository and folder; no active project's folder inside another's, and a project with an empty `repo_path` has its repository alone (the admin module checks it under a lock on the repository name);
+- changes only while the project has no open intent;
+- other tenants are never considered: two tenants on one repository stay apart, as today.
+
+**What OpenHands reads** (`load_project_skills`, tag `v1.48.0`, checked on 2026-11-12). With `working_dir` = `<clone>/<repo_path>`:
+
+| Source | Read |
+|---|---|
+| Root files (`AGENTS.md`, `agent.md`, `CLAUDE.md`, `GEMINI.md`, `.cursorrules`) and the skill folders (`.agents/skills/`, `.openhands/skills/`, `.openhands/microagents/`) of `working_dir` | yes |
+| The same names at the Git repository root (the clone keeps `.git`) | yes |
+| `AGENTS.md` in a folder below `working_dir` | yes |
+| `AGENTS.md` in any other folder (other packages) | no |
+
+**The agent works in the project's folder.** The Run Contract carries `repo_path` (D-03 §6); the runner gives the agent adapter `<clone>/<repo_path>` as its working folder. The whole repository stays in the sandbox (root build files, lock files), but G5 fails a run that adds, changes or removes a file outside `repo_path`, with the new check `outside_project_path` (no exception; a change to shared root files belongs to a project with an empty `repo_path`).
+
+**Two pinned files** (ADR-M31 §2.5 version 0.6). The agent of such a project pins `<repo_path>/AGENTS.md` (or another root-file name of the folder) as `instructions_ref`, and may pin the repository root's instruction file as `root_instructions_ref`. G4:
+
+- checks both against their registered SHA-256 (`instructions_mismatch`, `instructions_missing`);
+- refuses any other instruction file (`instructions_unpinned`) that OpenHands would read: the root files and skill folders of the folder and of the repository root, and every `AGENTS.md` below the folder. Files in other packages' folders do not count;
+- a project with an empty `repo_path` keeps today's rule (ADR-M34 §2.4).
+
+G5 fails a run that adds, changes or removes either pinned file, as today for the one file.
+
+**One poll per repository.** The worker groups a tenant's pollable projects by repository and reads GitHub once per group, from the oldest cursor of the group. Each project then handles the events in its own transaction, with its own cursor compare-and-set (D-05 `git_event_cursors` stays per project). An event belongs to the project whose intent has that issue or pull request; the others ignore it as today (`intent_not_linked` outcomes are not written for an event another project of the group handled).
+
+**CI per project.** `verification.required_checks` names the project's own checks (for example `ci-web`); handbook Ch.14 §14.10.2 says how to name jobs per package. G6 does not change.
+
+**Out of scope.** The knowledge index (X04) and the evaluation task set (L07) keep reading the whole repository; a project's spec and plan paths stay relative to the repository root.
 
 ## 3. Consequences
 
 - The default project configuration gains `verification.ci_missing_minutes`, so the default `config_hash` changes (upgrade note).
 - A large repository costs more GitHub API calls at G4 (at most `maxTreeRequests`); the rate limit is shared with the poller.
 - An intent on a repository without CI is paused after 15 minutes instead of 60, with a clear cause.
+- Version 1.1: a monorepo package needs its own project and its own agent entry (one `instructions_ref` per agent row); a new column on `projects` and two on `agents`; the Run Contract gets a new schema version for `repo_path`.
 
 ## Version history
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 1.1 | 2026-11-12 | Claude Code (task O06), approved by Harry (QUESTIONS #677, #678) | §2.4: several projects on one repository, each with its folder; what OpenHands 1.48.0 reads from a sub-folder; two pinned files; G5 `outside_project_path`; one poll per repository |
 | 1.0 | 2026-11-12 | Claude (task O06 PR 1) | §2.1–§2.3 accepted with the O06 plan; §2.4 decided in principle (QUESTIONS #677), detail in 1.1 |

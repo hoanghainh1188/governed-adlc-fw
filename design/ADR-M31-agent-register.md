@@ -64,6 +64,7 @@ Four points were open in the C10 plan:
 - Before each run, C06 reads that file at the run's `base_sha` through `GitHostAdapter.getFileAtCommit` (outside the sandbox), hashes it with `instructionsSha256`, and the check compares the hash with `instructions_sha256`.
 - **Every edit of `AGENTS.md` in the repository makes runs fail with `instructions_mismatch` until the agent gets a new version** with the new hash. This is on purpose: a change is a new version (Ch.20 §20.9).
 - In the MVP an agent row pins one file. A second project with a different `AGENTS.md` fails closed and needs its own agent entry. A per-project pin (a child table) is MVP+1.
+- Version 0.6 (O06 AC2, ADR-M106 §2.4, QUESTIONS #678): an agent for a project with a `repo_path` may pin a **second file**, the repository root's instruction file: `root_instructions_ref` and `root_instructions_sha256` (D-05 §6.1), because OpenHands 1.48.0 also reads the repository root's files when it works in a sub-folder. G4 checks it like the first file (`instructions_mismatch`, `instructions_missing`); G5 fails a run that adds, changes or removes it. A change is a new version. Each package of a monorepo still needs its own agent entry (one `instructions_ref` per row).
 
 ### 2.6. The check before a run (FR-36, for C06)
 
@@ -129,4 +130,5 @@ Four points were open in the C10 plan:
 | 0.2 | 2026-10-03 | Claude (task B13, PR 2) | Note: §2.2's known gap is closed by ADR-M37 §2.8: the register through the API with handbook Ch.20's approvals; the operator keeps `sdlc ops agent show|list|suspend|quarantine` |
 | 0.3 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
 | 0.4 | 2026-10-20 | Claude (task L08) | Note: ADR-M86 adds evaluation evidence to the approvals (§2.2 via ADR-M37 §2.8) and to the recertification (§2.7), built by L09 and L10; the check before a run (§2.6) does not change |
+| 0.6 | 2026-11-12 | Claude Code (task O06), approved by Harry (QUESTIONS #678) | §2.5: a second pinned file, the repository root's, for an agent of a project with a `repo_path` (ADR-M106 1.1 §2.4) |
 | 0.5 | 2026-10-22 | Claude (task X03, PR 1), approved by the repository owner in the X03 plan | §2.1: `agents.adapter`; §2.6: the check returns the adapter, the runner refuses an adapter or image it cannot run (ADR-M68 §7, ADR-M88, QUESTIONS #526) |
