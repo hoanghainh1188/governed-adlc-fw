@@ -11,8 +11,9 @@ import {
 } from '../../apps/worker/src/poller-loop.js';
 import { currentLogContext } from '../../packages/core/src/observability/index.js';
 
-/** The worker is typed against the built `@sdlc/core`; take its project type from the loop. */
-type PollableProject = Parameters<PollerLoopDeps['poll']>[0];
+/** The worker is typed against the built `@sdlc/core`; take its types from the loop. */
+type PollableProject = Awaited<ReturnType<PollerLoopDeps['listProjects']>>[number];
+type PollableRepository = Parameters<PollerLoopDeps['poll']>[0];
 
 const TENANT = '00000000-0000-4000-8000-000000000001' as PollableProject['tenantId'];
 const P1: PollableProject = { tenantId: TENANT, projectId: 'p1', repoFullName: 'acme/one' };
@@ -25,7 +26,7 @@ interface Harness {
   readonly intervals: Map<string, number>;
   projects: PollableProject[];
   clock: number;
-  pollImpl: (project: PollableProject) => Promise<unknown>;
+  pollImpl: (group: PollableRepository) => Promise<unknown>;
 }
 
 function harness(maxConcurrentPolls = 4): Harness {
@@ -49,9 +50,9 @@ function harness(maxConcurrentPolls = 4): Harness {
         ? Promise.reject(Object.assign(new Error('bad'), { code: 'config_invalid' }))
         : Promise.resolve(seconds);
     },
-    poll: (p) => {
-      h.polls.push(p.projectId);
-      return h.pollImpl(p);
+    poll: (g) => {
+      h.polls.push(g.projectIds.join('+'));
+      return h.pollImpl(g);
     },
     now: () => h.clock,
     logger: { log: (_level, event, fields) => h.logs.push({ event, fields: { ...fields } }) },
@@ -59,6 +60,9 @@ function harness(maxConcurrentPolls = 4): Harness {
   });
   return h;
 }
+
+/** Lets the started polls reach the Git host (they read the intervals first). */
+const settle = (): Promise<void> => new Promise((r) => setImmediate(r));
 
 async function tickAt(h: Harness, ms: number): Promise<void> {
   h.clock = ms;
@@ -100,11 +104,11 @@ describe('poller loop', () => {
     expect(h.polls.filter((p) => p === 'p1')).toHaveLength(3);
   });
 
-  it('never runs two polls of one project at once', async () => {
+  it('never runs two polls of one repository at once', async () => {
     const h = harness();
     let release!: () => void;
     h.pollImpl = (p) =>
-      p.projectId === 'p1' ? new Promise<void>((r) => (release = r)) : Promise.resolve();
+      p.projectIds.includes('p1') ? new Promise<void>((r) => (release = r)) : Promise.resolve();
     h.clock = 0;
     await h.loop.tick();
     h.clock = 120_000;
@@ -120,10 +124,12 @@ describe('poller loop', () => {
     let release!: () => void;
     h.pollImpl = () => new Promise<void>((r) => (release = r));
     await h.loop.tick();
+    await settle();
     expect(h.polls).toEqual(['p1']);
     release();
     await h.loop.idle();
     await h.loop.tick();
+    await settle();
     expect(h.polls).toEqual(['p1', 'p2']);
     release();
     await h.loop.idle();
@@ -201,5 +207,65 @@ describe('poller loop', () => {
     const count = h.polls.length;
     await new Promise((r) => setTimeout(r, 30));
     expect(h.polls.length).toBe(count);
+  });
+
+  describe('O06 PR 2c: one poll per repository (ADR-M106 §2.4)', () => {
+    const P1B: PollableProject = { ...P1, projectId: 'p1b' };
+    const OTHER_TENANT = '00000000-0000-4000-8000-000000000002' as PollableProject['tenantId'];
+
+    it('polls the projects of one tenant on one repository together', async () => {
+      const h = harness();
+      const seen: PollableRepository[] = [];
+      h.pollImpl = (g) => {
+        seen.push(g);
+        return Promise.resolve();
+      };
+      h.projects = [P1, P1B, P2, { ...P1, tenantId: OTHER_TENANT, projectId: 'p9' }];
+      h.intervals.set('p9', 30);
+      await tickAt(h, 0);
+      expect([...h.polls].sort()).toEqual(['p1+p1b', 'p2', 'p9']);
+      expect(seen.find((g) => g.projectIds.length === 2)).toEqual({
+        tenantId: TENANT,
+        repoFullName: 'acme/one',
+        projectIds: ['p1', 'p1b'],
+      });
+    });
+
+    it('uses the shortest interval of the group', async () => {
+      const h = harness();
+      h.projects = [P1, P1B];
+      h.intervals.set('p1b', 10);
+      await tickAt(h, 0);
+      await tickAt(h, 10_000);
+      expect(h.polls).toEqual(['p1+p1b', 'p1+p1b']);
+    });
+
+    it('a project whose configuration cannot be read does not stop the group', async () => {
+      const h = harness();
+      h.projects = [P1, P1B];
+      await tickAt(h, 0);
+      expect(h.polls).toEqual(['p1+p1b']);
+      expect(h.logs.find((l) => l.event === 'worker.poll_config_invalid')?.fields).toMatchObject({
+        project_id: 'p1b',
+      });
+      // No interval at all: the group waits.
+      h.intervals.delete('p1');
+      await tickAt(h, 30_000);
+      expect(h.polls).toEqual(['p1+p1b']);
+      h.intervals.set('p1', 30);
+      await tickAt(h, 30_000 + INVALID_CONFIG_RETRY_MS);
+      expect(h.polls).toEqual(['p1+p1b', 'p1+p1b']);
+    });
+
+    it('a project that leaves the repository gets its own poll', async () => {
+      const h = harness();
+      h.projects = [P1, P1B];
+      h.intervals.set('p1b', 30);
+      await tickAt(h, 0);
+      h.projects = [P1, { ...P1B, repoFullName: 'acme/moved' }];
+      await tickAt(h, 30_000);
+      expect(h.polls[0]).toBe('p1+p1b');
+      expect(h.polls.slice(1).sort()).toEqual(['p1', 'p1b']);
+    });
   });
 });

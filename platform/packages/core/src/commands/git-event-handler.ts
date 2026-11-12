@@ -199,6 +199,14 @@ async function wakeForPullRequest(
   return intent ? { outcome: 'not_handled', intentId: intent.id } : { outcome: 'not_handled' };
 }
 
+export interface HandleOptions {
+  /**
+   * O06 PR 2c (ADR-M106 §2.4): an open intent of another project on the same repository has the
+   * comment's issue or pull request too. One linked intent here is then `intent_ambiguous`.
+   */
+  readonly linkedElsewhere?: boolean;
+}
+
 /**
  * Handles one event in the scope's transaction (one is opened when the scope has none). Throws
  * only for errors that should stop the whole poll (for example a lost database connection), so
@@ -209,6 +217,7 @@ export function handleGitEvent(
   deps: GitEventHandlerDeps,
   project: GitEventProject,
   event: GitEvent,
+  options: HandleOptions = {},
 ): Promise<HandledGitEvent> {
   if (event.kind === 'check_completed') return wakeForCheck(scope, project, event);
   if (event.kind === 'review_submitted' || event.kind === 'pull_request_closed') {
@@ -258,7 +267,8 @@ export function handleGitEvent(
       kind: event.isPullRequest ? 'pull_request' : 'issue',
       number: event.issueNumber,
     });
-    if (intents.length !== 1) {
+    // O06 PR 2c: an open intent of another project on the same repository has this issue too.
+    if (intents.length !== 1 || options.linkedElsewhere === true) {
       const code = intents.length === 0 ? 'intent_not_linked' : 'intent_ambiguous';
       return record(code, { reply: { code, params: gate } });
     }

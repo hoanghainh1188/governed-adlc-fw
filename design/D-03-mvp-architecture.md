@@ -361,6 +361,7 @@ interface GitHostAdapter {
   getReviewFeedback(token: RedactedSecret, ref: RepoRef, pr: number, reviewId: string): Promise<ReviewFeedback>;
   getIssueComment(token: RedactedSecret, ref: RepoRef, commentId: string): Promise<IssueCommentText>;
   listEventsSince(ref: RepoRef, cursor: EventCursor): Promise<{ events: GitEvent[]; next: EventCursor }>; // v0.1: polling
+  oldestEventCursor(cursors: readonly EventCursor[]): EventCursor; // version 1.54: one read per repository
   verifyWebhook(headers: Record<string, string>, rawBody: Buffer): GitEvent; // enabled later
 }
 ```
@@ -368,11 +369,12 @@ v0.1: `GitHubAdapter` through a **GitHub App** (short-lived per-repo tokens), re
 
 - Polling and webhooks return the same `GitEvent` type → one handler for `/approve` commands, reviews and CI.
 - The `EventCursor` is stored per project in the database, so events are not processed twice after a restart.
-- The exact TypeScript interface is `GitHostAdapter` in `@sdlc/contracts` (`platform/packages/contracts/src/git-host.ts`, task B05, ADR-M23). Same twenty-two methods and parameters as above (version 1.43). Notes:
+- The exact TypeScript interface is `GitHostAdapter` in `@sdlc/contracts` (`platform/packages/contracts/src/git-host.ts`, task B05, ADR-M23). Same twenty-three methods and parameters as above (version 1.54). Notes:
   - `GitEvent` has four kinds: `comment_created`, `review_submitted`, `check_completed`, and (version 1.21) `pull_request_closed`. Each has a stable `id` (the same for polling and webhooks) and a `url` to store as a reference. Only a comment's `body` is free text; it is never stored in an append-only table.
   - Only **new** comments are events; an edited comment never is (QUESTIONS #43).
   - Actors carry the numeric account ID and `type: user | bot`. Users are mapped by the numeric ID only; bots never count as approvers (QUESTIONS #45).
   - `EventCursor` is opaque; the adapter returns `next` and the caller (B06) stores it. A new project starts from `INITIAL_EVENT_CURSOR` (no history).
+  - `oldestEventCursor` (version 1.54, task O06 PR 2c, ADR-M106 §2.4, QUESTIONS #679): a cursor never newer than any of the given ones, with no call to the host. The worker reads a repository once for all the projects of a tenant on it, from this cursor; each project stores the read's `next`. An event may come again to a project that handled it; the handler is idempotent by event ID.
   - `getChangedFiles` returns both paths of a renamed file and fails instead of returning a partial list. `getApprovals` returns each reviewer's latest decision, bound to the reviewed commit.
   - `getBranchHead` (version 1.11, task C06, QUESTIONS #109): the commit a branch points to now. G4 reads the head of the default branch as the run's `base_sha`.
   - `listPaths` (version 1.15, task C07, QUESTIONS #126): every path of a commit's tree that is not a directory, sorted. G4 reads it at `base_sha` and refuses a run when an agent instruction file other than the pinned one exists (`instructions_unpinned`, ADR-M34 §2.4). A tree the host lists only in part fails (`tree_truncated`) and G4 refuses the run: very large repositories cannot run an agent for now.
@@ -802,3 +804,4 @@ ADR-M09 (database/migration tool) and ADR-M10 (OpenHands PoC result) are written
 | 1.51 | 2026-10-26 | Claude (task H05), approved by Harry in the H05 plan | §6 G5: the review size limits (`run.review_limits`, `review_too_large`, `review_size_unknown`, the split at G3; ADR-M95, QUESTIONS #456, #601–#605) |
 | 1.52 | 2026-11-11 | Claude (task L01 PR 2), approved by Harry in the L01 PR 2 plan | §10: the containers `vllm-link`, `vllm-link-tls-init` in the optional profile `models-remote`, the network `models-link`; §10.1: vLLM may run on a separate GPU host, linked with mutual TLS (ADR-M71 1.1 §4, QUESTIONS #666–#669) |
 | 1.53 | 2026-11-12 | Claude Code (task O06), approved by Harry (QUESTIONS #677, #678) | §6 Run Contract: `repo_path` and `root_instructions_sha256`; the agent works in the project's folder; G4 checks the two pinned files, G5 fails a change outside the folder; one poll per repository (ADR-M106 1.1 §2.4) |
+| 1.54 | 2026-11-12 | Claude Code (task O06 PR 2c), approved by Harry (QUESTIONS #679) | §7.1: `oldestEventCursor` (twenty-three methods): one read of a repository for all the projects of a tenant on it (ADR-M106 1.3 §2.4) |

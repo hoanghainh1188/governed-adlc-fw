@@ -27,6 +27,7 @@ import type {
 import { GitHostError } from '@sdlc/contracts';
 
 import { AppAuth, checkScope } from './app-auth.js';
+import { oldestCursor } from './cursor.js';
 import { GitHubHttp } from './http.js';
 import {
   actor,
@@ -622,6 +623,10 @@ export class GitHubAdapter implements GitHostAdapter {
   ): Promise<{ events: GitEvent[]; next: EventCursor }> {
     const repo = checkRepo(ref);
     return this.#auth.withRepoAuth(repo, (auth) => this.#poller.poll(repo, cursor, auth));
+  }
+
+  oldestEventCursor(cursors: readonly EventCursor[]): EventCursor {
+    return oldestCursor(cursors);
   }
 
   verifyWebhook(headers: Record<string, string>, rawBody: Buffer): GitEvent {

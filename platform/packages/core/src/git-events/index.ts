@@ -1,6 +1,10 @@
-// GitHub poller (task B06, design/ADR-M27): one poll of one project, and the reply comments.
+// GitHub poller (task B06, design/ADR-M27): one poll of one repository (O06 PR 2c), and the reply
+// comments.
 export {
   pollProject,
+  pollRepository,
+  type PollableRepository,
+  type RepositoryPollResult,
   type PollDeps,
   type PollLogEvent,
   type PollLogger,

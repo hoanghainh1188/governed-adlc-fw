@@ -196,6 +196,7 @@ Check these points once per repository, before Person A creates the first intent
 - The agent pins the folder's `AGENTS.md` and, if there is one, the repository root's instruction file (Chapter 20). G4 checks both, and refuses any other instruction file in the folder or at the repository root (`instructions_unpinned`). An `AGENTS.md` in another package does not count.
 - G5 sends the intent back to G3 when the run changed a file outside the folder (§13.10.5 check 1d). Plan only files inside the folder.
 - Changes to files that all packages share (the root lock file, the CI workflow) belong to a project without a folder.
+- The platform reads the repository's comments once for all its projects. A command on an issue or pull request goes to the project whose open intent has it, so link each issue to one intent only: when open intents of two projects have the same issue, the platform records nothing and replies that more than one intent is linked (Chapter 19 §19.8b).
 
 ### 13.10.3. Approving G4 (High risk)
 
@@ -382,6 +383,7 @@ An approval without one of these codes is refused (`review_reason_required`) and
 | 0.11 | 2026-10-09 | Claude (docs review PR C2) | §13.10.2 check 6b: the one list of agent instruction files (only the exact pinned path is left out); §13.10.4: "The budgets", the one description with the default amounts (moved from ROLLOUT-GUIDE) |
 | 0.14 | 2026-10-24 | Claude (task X11) | §13.10.4: long runs and small models, context condensing (`run.context_condensing`, rule M35; ADR-M29 §2.10) |
 | 0.15 | 2026-10-24 | Claude (task H04) | §13.10.5: G5 checks the secret scan (`secret_in_diff`, `secret_scan_failed`); new §13.10.5a: the secret scan of the run's diff (ADR-M93, QUESTIONS #586–#590) |
+| 0.19 | 2026-11-12 | Claude (task O06, PR 2c) | §13.10.2a: one read of the comments for all the projects of a repository; an issue linked to open intents of two projects gets no decision (ADR-M106 1.3 §2.4) |
 | 0.18 | 2026-11-12 | Claude (task O06, PR 2b) | §13.10.2a: a project with a folder (the agent works in it, two pinned files, `folder_not_enforceable`); §13.10.5 check 1d: a change outside the folder (ADR-M106 §2.4) |
 | 0.17 | 2026-11-12 | Claude (task O06) | §13.10.2 check 6b: a very large tree is listed in parts; new §13.10.2a: before the first intent on a repository (`AGENTS.md`, other instruction files, CI, very large trees, monorepos; ADR-M106) |
 | 0.16 | 2026-10-26 | Claude (task H05) | §13.10.5: the size check after the other checks; new §13.10.5b: the size of the change a person must review (`run.review_limits`, `review_too_large`, `review_size_unknown`, the allowing reason codes, the split at G3; ADR-M95, QUESTIONS #601–#605) |

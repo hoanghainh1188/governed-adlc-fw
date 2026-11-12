@@ -127,3 +127,33 @@ export function advance(
   }
   return { t, seen };
 }
+
+/** True when the cursor's stream counts the item as handled: older than `t`, or seen. */
+const handledIn = (stream: StreamState, key: string, at: number): boolean =>
+  at < stream.t || stream.seen.some(([k]) => k === key);
+
+/**
+ * A cursor that is never newer than any of `cursors` (task O06 PR 2c, ADR-M106 §2.4): reading from
+ * it returns every item that a read from any of them would return; an item may come again to a
+ * project that handled it (the caller is idempotent by event ID). Per stream, the lower bound is the
+ * smallest one, and an item stays seen only when every cursor counts it as handled. The seen items
+ * all come from the cursor with the smallest bound, so the list stays within `MAX_SEEN`. A cursor
+ * of a project never polled (`''`) is left out; with no other cursor the result is `''`.
+ */
+export function oldestCursor(cursors: readonly EventCursor[]): EventCursor {
+  const states = cursors.map(decodeCursor).filter((s): s is CursorState => s !== null);
+  if (states.length === 0) return '' as EventCursor;
+  const merged = {} as Record<Stream, StreamState>;
+  for (const s of STREAMS) {
+    const streams = states.map((state) => state[s]);
+    const t = Math.min(...streams.map((stream) => stream.t));
+    const seen = new Map<string, number>();
+    for (const stream of streams) {
+      for (const [key, at] of stream.seen) {
+        if (at >= t && streams.every((other) => handledIn(other, key, at))) seen.set(key, at);
+      }
+    }
+    merged[s] = { t, seen: [...seen.entries()] };
+  }
+  return encodeCursor(merged);
+}

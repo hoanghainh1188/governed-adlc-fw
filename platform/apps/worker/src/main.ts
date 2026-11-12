@@ -21,7 +21,7 @@ import {
   runRetentionPass,
   gitHostErrorMessage,
   loadEffectiveConfig,
-  pollProject,
+  pollRepository,
   prepareEvaluationRun,
   prepareTaskCheck,
   advanceEvaluationPlan,
@@ -166,8 +166,8 @@ async function main(): Promise<void> {
       const { config } = await loadEffectiveConfig(scope.projectConfigs, project.projectId);
       return config.github.poll_interval_seconds;
     },
-    poll: (project) =>
-      pollProject(
+    poll: (group) =>
+      pollRepository(
         {
           db,
           gitHost,
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
           maxEventAttempts: settings.maxEventAttempts,
           intentSignals: signals,
         },
-        project,
+        group,
       ),
     now: () => Date.now(),
     logger,

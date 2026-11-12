@@ -375,6 +375,13 @@ export interface GitHostAdapter {
     ref: RepoRef,
     cursor: EventCursor,
   ): Promise<{ events: GitEvent[]; next: EventCursor }>;
+  /**
+   * O06 PR 2c (ADR-M106 §2.4): a cursor never newer than any of `cursors`, for one read of a
+   * repository that several projects poll. Pure: no call to the Git host. A read from it may return
+   * an event again to a project that handled it; the caller is idempotent by event ID. `''`
+   * (never polled) is left out; with no other cursor the result is `INITIAL_EVENT_CURSOR`.
+   */
+  oldestEventCursor(cursors: readonly EventCursor[]): EventCursor;
   /** Enabled later (ADR-M11). Throws `GitHostError` when the signature is wrong. */
   verifyWebhook(headers: Record<string, string>, rawBody: Buffer): GitEvent;
 }

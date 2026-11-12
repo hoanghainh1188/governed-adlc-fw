@@ -2,25 +2,27 @@
 // process, no Temporal (decision D1).
 //
 // - Every tick, it reads the list of pollable projects and starts the polls that are due.
+// - O06 PR 2c (ADR-M106 §2.4): the projects of one tenant on one repository are one group, polled
+//   together with one read of GitHub. The group's interval is the shortest of its projects.
 // - Each project has its own interval, read from its configuration before every poll
 //   (`github.poll_interval_seconds`), so a configuration change applies without a restart.
-// - One project never has two polls running at once in this process. Across processes, the
-//   cursor compare-and-set in `pollProject` rolls a second poll back.
-// - All state (cursor, receipts) is in PostgreSQL: after a restart, every project is polled once
-//   right away and continues from its stored cursor.
+// - One group never has two polls running at once in this process. Across processes, the
+//   cursor compare-and-set in `pollRepository` rolls a second poll back.
+// - All state (cursor, receipts) is in PostgreSQL: after a restart, every group is polled once
+//   right away and continues from its stored cursors.
 import { GitHostError } from '@sdlc/contracts';
-import { withLogContext, type PollableProject } from '@sdlc/core';
+import { withLogContext, type PollableProject, type PollableRepository } from '@sdlc/core';
 
 import type { WorkerLogger } from './logger.js';
 
-/** After a configuration that cannot be read, the project is tried again this much later. */
+/** After configurations that cannot be read, the group is tried again this much later. */
 export const INVALID_CONFIG_RETRY_MS = 60_000;
 
 export interface PollerLoopDeps {
   listProjects(): Promise<readonly PollableProject[]>;
   /** The project's `github.poll_interval_seconds`; throws when the configuration is invalid. */
   intervalSeconds(project: PollableProject): Promise<number>;
-  poll(project: PollableProject): Promise<unknown>;
+  poll(group: PollableRepository): Promise<unknown>;
   /** Milliseconds since the epoch. */
   now(): number;
   readonly logger: WorkerLogger;
@@ -54,21 +56,21 @@ export class PollerLoop {
 
   /** One scheduling pass: starts the due polls and returns without waiting for them. */
   async tick(): Promise<void> {
-    const projects = await this.#deps.listProjects();
-    const listed = new Set(projects.map(key));
+    const groups = groupByRepository(await this.#deps.listProjects());
+    const listed = new Set(groups.map(key));
     for (const known of [...this.#nextDue.keys()]) {
       if (!listed.has(known)) this.#nextDue.delete(known);
     }
-    // Longest-waiting first, so a project late in the list is never starved when more projects
-    // are due than `maxConcurrentPolls`.
+    // Longest-waiting first, so a group late in the list is never starved when more groups are
+    // due than `maxConcurrentPolls`.
     const now = this.#deps.now();
-    const due = projects
-      .filter((p) => !this.#running.has(key(p)) && now >= (this.#nextDue.get(key(p)) ?? 0))
+    const due = groups
+      .filter((g) => !this.#running.has(key(g)) && now >= (this.#nextDue.get(key(g)) ?? 0))
       .sort((a, b) => (this.#nextDue.get(key(a)) ?? 0) - (this.#nextDue.get(key(b)) ?? 0));
-    for (const project of due) {
+    for (const group of due) {
       if (this.#stopped || this.#running.size >= this.#deps.maxConcurrentPolls) break;
-      const id = key(project);
-      const run = this.#run(project).finally(() => this.#running.delete(id));
+      const id = key(group);
+      const run = this.#run(group).finally(() => this.#running.delete(id));
       this.#running.set(id, run);
     }
     this.#deps.heartbeat?.();
@@ -100,23 +102,44 @@ export class PollerLoop {
     await this.idle();
   }
 
-  async #run(project: PollableProject): Promise<void> {
-    const id = key(project);
-    const fields = { tenant_id: project.tenantId, project_id: project.projectId };
-    let intervalMs: number;
-    try {
-      intervalMs = (await this.#deps.intervalSeconds(project)) * 1000;
-    } catch (error) {
+  /** The shortest interval of the group's projects; undefined when none can be read. */
+  async #intervalMs(group: Group): Promise<number | undefined> {
+    let shortest: number | undefined;
+    for (const project of group.projects) {
+      try {
+        const ms = (await this.#deps.intervalSeconds(project)) * 1000;
+        shortest = shortest === undefined ? ms : Math.min(shortest, ms);
+      } catch (error) {
+        this.#deps.logger.log('error', 'worker.poll_config_invalid', {
+          tenant_id: project.tenantId,
+          project_id: project.projectId,
+          error: errorCode(error),
+        });
+      }
+    }
+    return shortest;
+  }
+
+  async #run(group: Group): Promise<void> {
+    const id = key(group);
+    const fields = {
+      tenant_id: group.tenantId,
+      project_id: group.projectIds[0] ?? '',
+      projects: group.projectIds.length,
+    };
+    const intervalMs = await this.#intervalMs(group);
+    if (intervalMs === undefined) {
       this.#nextDue.set(id, this.#deps.now() + INVALID_CONFIG_RETRY_MS);
-      this.#deps.logger.log('error', 'worker.poll_config_invalid', {
-        ...fields,
-        error: errorCode(error),
-      });
       return;
     }
+    const target: PollableRepository = {
+      tenantId: group.tenantId,
+      repoFullName: group.repoFullName,
+      projectIds: group.projectIds,
+    };
     try {
       // The GitHub adapter's and OpenBao's log lines of this poll carry the tenant (A08).
-      await withLogContext({ tenantId: project.tenantId }, () => this.#deps.poll(project));
+      await withLogContext({ tenantId: group.tenantId }, () => this.#deps.poll(target));
       this.#nextDue.set(id, this.#deps.now() + intervalMs);
     } catch (error) {
       let due = this.#deps.now() + intervalMs;
@@ -130,6 +153,27 @@ export class PollerLoop {
   }
 }
 
-function key(project: PollableProject): string {
-  return `${project.tenantId}/${project.projectId}`;
+interface Group extends PollableRepository {
+  readonly projects: readonly PollableProject[];
+}
+
+/** The projects of one tenant on one repository, in list order (ADR-M106 §2.4). */
+function groupByRepository(projects: readonly PollableProject[]): Group[] {
+  const groups = new Map<string, PollableProject[]>();
+  for (const project of projects) {
+    const id = `${project.tenantId}/${project.repoFullName}`;
+    const members = groups.get(id);
+    if (members) members.push(project);
+    else groups.set(id, [project]);
+  }
+  return [...groups.values()].map((members) => ({
+    tenantId: members[0]!.tenantId,
+    repoFullName: members[0]!.repoFullName,
+    projectIds: members.map((p) => p.projectId),
+    projects: members,
+  }));
+}
+
+function key(group: PollableRepository): string {
+  return `${group.tenantId}/${group.repoFullName}`;
 }
