@@ -1,5 +1,5 @@
 // Intent and gate endpoints (D-08 B03 AC3). Every handler works on the caller's tenant scope.
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Put, Query } from '@nestjs/common';
 
 import { SessionAction } from '../auth/auth.guard.js';
 import { CurrentPrincipal, type Principal } from '../auth/principal.js';
@@ -10,6 +10,7 @@ import type { IntentBody } from './present.js';
 import {
   createIntentSchema,
   decisionSchema,
+  effortEstimateSchema,
   gateSchema,
   intentRefSchema,
   listIntentsSchema,
@@ -37,6 +38,24 @@ export class IntentsController {
     @Param('intent') ref: string,
   ): Promise<Record<string, unknown>> {
     return this.intents.show(p, parseRequest(intentRefSchema, ref, 'path'));
+  }
+
+  /**
+   * V14 (ADR-M79 §2.6): records a person's estimate of the human effort. A token only: never a
+   * dashboard session write (R085).
+   */
+  @Put(':intent/effort-estimate')
+  @HttpCode(200)
+  estimate(
+    @CurrentPrincipal() p: Principal,
+    @Param('intent') ref: string,
+    @Body() body: unknown,
+  ): Promise<IntentBody> {
+    return this.intents.estimate(
+      p,
+      parseRequest(intentRefSchema, ref, 'path'),
+      parseRequest(effortEstimateSchema, body, 'body'),
+    );
   }
 
   @Post(':intent/gates/:gate/decisions')

@@ -63,6 +63,12 @@ export function presentAgentMetrics(m: AgentMetrics): Record<string, unknown> {
             avg_seconds: row.merged.leadTime.avgSeconds,
             max_seconds: row.merged.leadTime.maxSeconds,
           },
+          human_effort: {
+            count: row.merged.humanEffort.count,
+            estimate_hours_sum: row.merged.humanEffort.estimateHoursSum,
+            lead_time_seconds_sum: row.merged.humanEffort.leadTimeSecondsSum,
+            lead_to_estimate_percent: row.merged.humanEffort.leadToEstimatePercent,
+          },
         },
         scope_breaches: row.scopeBreaches,
         tokens: {

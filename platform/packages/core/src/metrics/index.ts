@@ -20,6 +20,7 @@ export {
   buildAgentMetrics,
   cacheShare,
   checkAgentMetricsRange,
+  leadToEstimatePercent,
   mergeAgentMetrics,
   resolveAgentMetricsRange,
   type AgentMetrics,

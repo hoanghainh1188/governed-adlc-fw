@@ -77,6 +77,12 @@ export const intentSchema = z.object({
   waiting_cause: code.nullable().optional(),
   waiting_since: time.nullable().optional(),
   waiting_until: time.nullable().optional(),
+  /** V14: a person's estimate of the human effort in hours (decimal string); null when none. */
+  human_effort_hours: z
+    .string()
+    .regex(/^[0-9]{1,5}(\.[0-9]{1,2})?$/)
+    .nullable()
+    .optional(),
   issue_number: z.number().int().nullable(),
   pr_number: z.number().int().nullable(),
   created_by: id,
@@ -307,6 +313,18 @@ export const agentMetricsSchema = z.object({
               avg_seconds: seconds.nullable(),
               max_seconds: seconds.nullable(),
             }),
+            /** V14 (ADR-M79 §2.6): lead time compared with the human-effort estimate. */
+            human_effort: z
+              .object({
+                count,
+                estimate_hours_sum: z
+                  .string()
+                  .regex(/^[0-9]{1,15}(\.[0-9]{1,2})?$/)
+                  .nullable(),
+                lead_time_seconds_sum: seconds.nullable(),
+                lead_to_estimate_percent: z.number().min(0).nullable(),
+              })
+              .optional(),
           }),
           scope_breaches: count,
           tokens: z.object({

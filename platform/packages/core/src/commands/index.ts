@@ -1,6 +1,7 @@
 // Shared command handlers for the API (B03), comment commands (B06) and the workflow (B07).
 export { projectAccess, type ProjectAccess } from './access.js';
 export { CommandError, type CommandErrorCode } from './errors.js';
+export { recordEffortEstimate, type EffortEstimateRequest } from './effort-estimate.js';
 export {
   COMMAND_DECISIONS,
   decideGate,

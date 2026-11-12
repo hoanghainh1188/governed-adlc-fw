@@ -339,3 +339,75 @@ describe('adlc gate', () => {
     expect(h.requests).toEqual([]);
   });
 });
+
+// V14 (D-08 V14 AC1, ADR-M79 §2.6): a person records the human-effort estimate of an intent.
+describe('adlc intent estimate (V14)', () => {
+  const PUT = 'PUT /v1/intents/INT-2026-0007/effort-estimate';
+
+  it('sends the hours as a number and prints the stored estimate', async () => {
+    const h = await harness({
+      routes: { [PUT]: { status: 200, body: intentBody({ human_effort_hours: '12.50' }) } },
+    });
+    expect(await h.run(['intent', 'estimate', 'int-2026-0007', '--hours', '12.5'])).toBe(EXIT.ok);
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0]?.method).toBe('PUT');
+    expect(h.requests[0]?.body).toEqual({ hours: 12.5 });
+    expect(h.out).toEqual([t('cli.intent.estimated', { code: 'INT-2026-0007', hours: '12.5' })]);
+  });
+
+  it('--json prints the intent body with the estimate', async () => {
+    const h = await harness({
+      routes: { [PUT]: { status: 200, body: intentBody({ human_effort_hours: '8.00' }) } },
+    });
+    expect(await h.run(['intent', 'estimate', 'INT-2026-0007', '--hours', '8', '--json'])).toBe(
+      EXIT.ok,
+    );
+    expect(JSON.parse(h.out.join('\n'))).toMatchObject({ human_effort_hours: '8' });
+  });
+
+  it.each([
+    [['intent', 'estimate', 'INT-2026-0007']],
+    [['intent', 'estimate', '--hours', '4']],
+    [['intent', 'estimate', 'nope', '--hours', '4']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', '0']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', '0.2']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', '10000.5']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', '1.255']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', '-3']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', 'four']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', '1e3']],
+    [['intent', 'estimate', 'INT-2026-0007', '--hours', '4', '--note', 'text']],
+  ])('refuses %j before any request (usage, exit 2)', async (args) => {
+    const h = await harness();
+    expect(await h.run(args)).toBe(EXIT.usage);
+    expect(h.requests).toEqual([]);
+  });
+
+  it.each([
+    [403, 'forbidden'],
+    [404, 'intent_not_found'],
+    [409, 'intent_finished'],
+  ])('shows the refusal %s %s with its code (exit 1)', async (status, code) => {
+    const h = await harness({ routes: { [PUT]: apiError(status, code) } });
+    expect(await h.run(['intent', 'estimate', 'INT-2026-0007', '--hours', '4'])).toBe(EXIT.failed);
+    expect(h.err.join('\n')).toContain(code);
+  });
+
+  it('intent show prints the estimate, and - without one', async () => {
+    const h = await harness({
+      routes: {
+        'GET /v1/intents/INT-2026-0007': {
+          status: 200,
+          body: { ...intentDetailBody(), human_effort_hours: '6.5' },
+        },
+      },
+    });
+    expect(await h.run(['intent', 'show', 'INT-2026-0007'])).toBe(EXIT.ok);
+    expect(h.out[0]).toContain('human effort estimate (hours): 6.5');
+    const none = await harness({
+      routes: { 'GET /v1/intents/INT-2026-0007': { status: 200, body: intentDetailBody() } },
+    });
+    expect(await none.run(['intent', 'show', 'INT-2026-0007'])).toBe(EXIT.ok);
+    expect(none.out[0]).toContain('human effort estimate (hours): -');
+  });
+});

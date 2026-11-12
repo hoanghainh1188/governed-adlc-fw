@@ -67,6 +67,18 @@ export const MAX_INTENT_PAGE = 100;
 
 const MONEY = /^\d{1,12}(\.\d{1,6})?$/;
 
+/** Lowest and highest human-effort estimate in hours (migration 0050's CHECK, V14). */
+export const MIN_EFFORT_HOURS = 0.25;
+export const MAX_EFFORT_HOURS = 10_000;
+const EFFORT_HOURS = /^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/;
+
+/** True for a decimal string of hours from 0.25 to 10000 with at most two decimals (V14). */
+export function isEffortHours(value: unknown): value is string {
+  if (typeof value !== 'string' || !EFFORT_HOURS.test(value)) return false;
+  const micros = toMicros(value);
+  return micros >= 250_000n && micros <= 10_000_000_000n;
+}
+
 /** The format of a waiting reason or cause (migration 0025's CHECK). */
 const WAITING_CODE = /^[a-z][a-z0-9_]{0,63}$/;
 
@@ -472,6 +484,50 @@ export class IntentRepository extends TenantRepository {
             budget_usd: budgetUsd,
             run_budget_usd: fromMicros(toMicros(raise.runBudgetUsd)),
           },
+        });
+        return intent;
+      }),
+    );
+  }
+
+  /**
+   * Records a person's estimate of the human effort in hours (task V14, ADR-M79 §2.6): `hours` is
+   * a decimal string from 0.25 to 10000 with at most two decimals. Appends
+   * `intent.effort_estimated` in the same transaction; the same value again changes nothing and
+   * writes no event. A finished intent or a value back to null is refused by the trigger (SDA29).
+   * Call under the intent lock; the caller checks who may write.
+   */
+  async recordEffortEstimate(
+    id: string,
+    estimate: { readonly hours: string; readonly actorId: string },
+  ): Promise<Intent> {
+    if (!isEffortHours(estimate.hours)) {
+      throw new DbError('invalid_value', 'hours must be 0.25 to 10000 with at most 2 decimals');
+    }
+    if (!isUuid(estimate.actorId)) throw new DbError('invalid_value', 'actorId');
+    const hours = fromMicros(toMicros(estimate.hours));
+    return this.run(
+      this.transactional(async (db) => {
+        const current = await new IntentRepository(db, this.tenantId).getById(id);
+        if (!current) throw new DbError('reference_not_found', `intent ${id} not found`);
+        const previous =
+          current.human_effort_hours === null
+            ? null
+            : fromMicros(toMicros(current.human_effort_hours));
+        if (previous === hours) return current;
+        const intent = await db
+          .updateTable('intents')
+          .set({ human_effort_hours: hours })
+          .where('tenant_id', '=', this.tenantId)
+          .where('id', '=', id)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+        await new AuditLogRepository(db, this.tenantId).append({
+          action: 'intent.effort_estimated',
+          actorType: 'human',
+          actorId: estimate.actorId,
+          entityId: id,
+          payload: { hours, ...(previous === null ? {} : { previous_hours: previous }) },
         });
         return intent;
       }),

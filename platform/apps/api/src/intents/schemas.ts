@@ -8,7 +8,14 @@ import {
   INTENT_STATUSES,
   RISK_TIERS,
 } from '@sdlc/contracts';
-import { COMMAND_DECISIONS, INTENT_CODE_PATTERN, MAX_INTENT_PAGE } from '@sdlc/core';
+import {
+  COMMAND_DECISIONS,
+  INTENT_CODE_PATTERN,
+  isEffortHours,
+  MAX_EFFORT_HOURS,
+  MAX_INTENT_PAGE,
+  MIN_EFFORT_HOURS,
+} from '@sdlc/core';
 import { z } from 'zod';
 
 import { stepUpAnswerSchema } from '../passkeys/schemas.js';
@@ -61,4 +68,16 @@ export const decisionSchema = z.strictObject({
   expected_input_sha256: sha256.optional(),
   /** U07: passkey answer when sent from a session. */
   step_up: stepUpAnswerSchema.optional(),
+});
+
+/**
+ * V14 (ADR-M79 §2.6): a person's estimate of the human effort, in hours. A JSON number from 0.25
+ * to 10000 with at most two decimals; never a text.
+ */
+export const effortEstimateSchema = z.strictObject({
+  hours: z
+    .number()
+    .min(MIN_EFFORT_HOURS)
+    .max(MAX_EFFORT_HOURS)
+    .refine((hours) => isEffortHours(String(hours)), { message: 'at most two decimals' }),
 });

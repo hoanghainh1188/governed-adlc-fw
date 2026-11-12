@@ -30,12 +30,18 @@ export interface IntentBody {
   readonly waiting_cause: string | null;
   readonly waiting_since: string | null;
   readonly waiting_until: string | null;
+  /** V14 (ADR-M79 §2.6): a person's estimate of the human effort in hours; null when none. */
+  readonly human_effort_hours: string | null;
   readonly issue_number: number | null;
   readonly pr_number: number | null;
   readonly created_by: string;
   readonly created_at: string;
   readonly updated_at: string;
 }
+
+/** PostgreSQL returns numeric(7,2) as `12.50`; the API sends `12.5`. */
+const formatHours = (value: string): string =>
+  value.includes('.') ? value.replace(/\.?0+$/, '') : value;
 
 export function presentIntent(
   intent: Intent,
@@ -58,6 +64,8 @@ export function presentIntent(
     waiting_cause: intent.waiting_cause,
     waiting_since: intent.waiting_since?.toISOString() ?? null,
     waiting_until: intent.waiting_until?.toISOString() ?? null,
+    human_effort_hours:
+      intent.human_effort_hours === null ? null : formatHours(intent.human_effort_hours),
     issue_number: intent.issue_number,
     pr_number: intent.pr_number,
     created_by: intent.created_by,

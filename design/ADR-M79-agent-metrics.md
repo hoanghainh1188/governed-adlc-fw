@@ -5,7 +5,7 @@
 | Status | **Accepted** (Harry, 2026-10-16; built by task V13) |
 | Date | 2026-10-12 |
 | Decided by | Harry (plan approved 2026-10-12, with answers to QUESTIONS #430–#433) |
-| Related | D-08 task V13; D-02 FR-12, FR-53; D-05 §6.3–§6.5; D-07 §5; ADR-M45 (cost report); ADR-M47 (gate metrics); ADR-M42 (kill switch, stop reasons); ADR-M26 §2.5; QUESTIONS #422, #430–#433 |
+| Related | D-08 tasks V13, V14; D-02 FR-12, FR-53; D-05 §6.2 (1.70), §6.3–§6.5; D-07 §5; ADR-M45 (cost report); ADR-M47 (gate metrics); ADR-M42 (kill switch, stop reasons); ADR-M26 §2.5; QUESTIONS #422, #430–#433, #691–#693 |
 
 ## 1. Context
 
@@ -48,10 +48,18 @@ A measure with no data is null, never 0. Runs still in progress are counted apar
 
 `@sdlc/core` `metrics/agents.ts` (rules) and `AgentMetricsRepository` (queries, `TenantScope.agentMetrics`); `apps/api/src/metrics/`; the response schema in `@sdlc/api-schemas`; the CLI in `apps/cli/src/commands/metrics.ts` with catalog keys `cli.metrics.agents.*`.
 
+### 2.6. The human-effort baseline (task V14, QUESTIONS #691–#693)
+
+- A person records an estimate of the hours the work of an intent would take without an agent: `PUT /v1/intents/:intent/effort-estimate` with `{ "hours": <number> }`, and `adlc intent estimate <intent> --hours <n>`. A number from 0.25 to 10000 with at most two decimals; never a text. Empty by default. The intent body (`GET /v1/intents/:intent`) shows `human_effort_hours`.
+- Who (QUESTIONS #693): a role in `access.intent_create_roles` or a tenant admin; never `viewer` (rule M16). A read role only → 403 `forbidden`; no role on the project → 404 `intent_not_found`. No new config key. The dashboard has no write path for it (R085).
+- When (QUESTIONS #692): while the intent is open. A finished intent keeps its estimate (409 `intent_finished`); an estimate never goes back to empty. The trigger `SDA29` of migration `0050-intent-effort-estimate` enforces both (D-05 1.70).
+- Audit: `intent.effort_estimated` with `hours` and `previous_hours`, numbers only; the same value again writes nothing.
+- The report (QUESTIONS #691): each row's `merged.human_effort` holds the merged intents with both a lead time and an estimate (`count`), the sum of their estimates (`estimate_hours_sum`, a decimal string), the sum of their lead times (`lead_time_seconds_sum`) and the lead time as a percentage of the estimate (`lead_to_estimate_percent`, one decimal, half up). All null without such an intent, never 0. `adlc metrics agents` shows it in the column "Lead / estimate" as `<percent>% (<count>)`. The lead time is calendar time, not working hours; the note under the tables says so.
+
 ## 3. Consequences
 
 - No migration. The query plan is checked with `EXPLAIN ANALYZE` on a large seeded database, as E06 did; an index is a separate decision.
-- The human-effort baseline (V13 AC4) moves to task V14 in Later (QUESTIONS #431), because it needs a write path and a column.
+- The human-effort baseline (V13 AC4) moves to task V14 in Later (QUESTIONS #431), because it needs a write path and a column. V14 adds them (§2.6, migration `0050-intent-effort-estimate`).
 - The measures describe real work, not quality in a controlled test. Controlled comparison is L02 (ADR-M78).
 
 ## 4. Alternatives not chosen
@@ -72,3 +80,4 @@ A measure with no data is null, never 0. Runs still in progress are counted apar
 | 0.1 | 2026-10-12 | Claude (task V13) | First version |
 | 0.2 | 2026-10-13 | Claude (task V13), approved by Harry | §2.3: a run's model from the run event `model_selected`, the cost records as the fallback (QUESTIONS #434, option C) |
 | 0.3 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
+| 0.4 | 2026-11-12 | Claude Code (task V14), approved by Harry in the V14 plan | §2.6: the human-effort baseline: an estimate per intent, written by `access.intent_create_roles` or a tenant admin while the intent is open, compared with the merged intents' lead time (QUESTIONS #691–#693; D-05 1.70) |

@@ -9,6 +9,8 @@
 // - Counts, seconds and amounts only; never a person or a text. Money is a decimal string with 6
 //   decimals and token sums are digit strings (D-05 D6).
 // - A measure without data is null, never 0. Runs still in progress are counted apart.
+// - V14 (ADR-M79 §2.6): the merged intents' lead time compared with a person's estimate of the
+//   human effort, when the intents have one.
 import type { RunStatus } from '@sdlc/contracts';
 
 import { isTenantAdmin } from '../admin/actor.js';
@@ -20,7 +22,7 @@ import {
   formatUsd6,
   type CostReportRangeIssue,
 } from '../cost/report.js';
-import type { AgentRowKey } from '../db/repositories/agent-metrics.js';
+import type { AgentRowKey, MergedRow } from '../db/repositories/agent-metrics.js';
 import type { TenantScope } from '../db/tenant-scope.js';
 import { loadEffectiveConfig } from '../registry/effective-config.js';
 import { checkGateMetricsRange, resolveGateMetricsRange, type GateMetricsRange } from './gates.js';
@@ -69,6 +71,17 @@ export interface AgentMetricsRow {
       readonly avgSeconds: number | null;
       readonly maxSeconds: number | null;
     };
+    /**
+     * V14 (ADR-M79 §2.6, QUESTIONS #691): the merged intents with a lead time and a person's
+     * estimate of the human effort; their sums, and the lead time as a percentage of the estimate
+     * (one decimal). Null sums and percentage without such an intent.
+     */
+    readonly humanEffort: {
+      readonly count: number;
+      readonly estimateHoursSum: string | null;
+      readonly leadTimeSecondsSum: number | null;
+      readonly leadToEstimatePercent: number | null;
+    };
   };
   readonly scopeBreaches: number;
   readonly tokens: {
@@ -110,6 +123,40 @@ export function cacheShare(cached: string, input: string): number | null {
   if (base === 0n) return null;
   // Rounded half up to one decimal.
   return Number((BigInt(cached) * 2000n + base) / (2n * base)) / 10;
+}
+
+/**
+ * The lead time as a percentage of the estimated hours, one decimal, rounded half up (exported
+ * for tests). Null when the estimate is 0 hours.
+ */
+export function leadToEstimatePercent(leadSeconds: string, estimateHours: string): number | null {
+  // Hours in micro-hours; seconds per micro-hour = 3600 / 1e6.
+  const microHours = toMicros(estimateHours);
+  if (microHours <= 0n) return null;
+  // percent × 10 = lead × 1000 / (hours × 3600) = lead × 1e6 × 1000 / (microHours × 3600)
+  const numerator = BigInt(leadSeconds) * 1_000_000_000n;
+  const denominator = microHours * 3600n;
+  return Number((numerator * 2n + denominator) / (2n * denominator)) / 10;
+}
+
+function humanEffort(merged: MergedRow | undefined): AgentMetricsRow['merged']['humanEffort'] {
+  if (!merged || merged.estimatedCount === 0) {
+    return {
+      count: 0,
+      estimateHoursSum: null,
+      leadTimeSecondsSum: null,
+      leadToEstimatePercent: null,
+    };
+  }
+  return {
+    count: merged.estimatedCount,
+    estimateHoursSum: fromMicros(toMicros(merged.estimatedHoursSum)),
+    leadTimeSecondsSum: Number(merged.estimatedLeadSumSeconds),
+    leadToEstimatePercent: leadToEstimatePercent(
+      merged.estimatedLeadSumSeconds,
+      merged.estimatedHoursSum,
+    ),
+  };
 }
 
 /** Merges the groupings into one row per key, sorted by project, agent, version and model. */
@@ -163,6 +210,7 @@ export function mergeAgentMetrics(parts: {
               : null,
           maxSeconds: merged?.leadTimeMaxSeconds ?? null,
         },
+        humanEffort: humanEffort(merged),
       },
       scopeBreaches: parts.breaches.find((b) => rowKey(b) === k)?.count ?? 0,
       tokens: {

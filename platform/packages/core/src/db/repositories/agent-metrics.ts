@@ -8,6 +8,8 @@
 //   the most cost in its cost records; without cost records either, the model is `unknown`.
 // - Intent measures (CI on the first try, merged, cost per merged intent, lead time) count under
 //   the run that made the event (the first `ci_checked`, the last `pr_merged`; QUESTIONS #433).
+// - V14 (ADR-M79 §2.6): the human-effort estimate (`intents.human_effort_hours`) is compared with
+//   the lead time of the merged intents that have both.
 // - Sums are made in SQL; money and token sums come back as strings (D-05 D6).
 import type { RunStatus } from '@sdlc/contracts';
 import { sql, type Kysely } from 'kysely';
@@ -64,6 +66,12 @@ export interface MergedRow extends AgentRowKey {
   readonly leadTimeCount: number;
   readonly leadTimeSumSeconds: string;
   readonly leadTimeMaxSeconds: number | null;
+  /** V14: merged intents with both a lead time and a human-effort estimate. */
+  readonly estimatedCount: number;
+  /** Their estimates' sum in hours, as a decimal string. */
+  readonly estimatedHoursSum: string;
+  /** Their lead times' sum in seconds, as a digit string. */
+  readonly estimatedLeadSumSeconds: string;
 }
 
 export interface ScopeBreachRow extends AgentRowKey {
@@ -245,6 +253,12 @@ export class AgentMetricsRepository extends TenantRepository {
                 .where('a.action', '=', 'intent.closed')
                 .whereRef('a.entity_id', '=', 'r.intent_id')
                 .as('lead'),
+              eb
+                .selectFrom('intents as i')
+                .select('i.human_effort_hours')
+                .where('i.tenant_id', '=', tenantId)
+                .whereRef('i.id', '=', 'r.intent_id')
+                .as('estimate'),
             ]),
         )
         .selectFrom('rr')
@@ -261,6 +275,15 @@ export class AgentMetricsRepository extends TenantRepository {
           sql<string>`count(mg.lead)`.as('lead_count'),
           sql<string>`coalesce(sum(mg.lead), 0)::text`.as('lead_sum'),
           sql<string | null>`max(mg.lead)::text`.as('lead_max'),
+          sql<string>`count(*) filter (where mg.estimate is not null and mg.lead is not null)`.as(
+            'est_count',
+          ),
+          sql<string>`coalesce(sum(mg.estimate) filter (where mg.lead is not null), 0)::text`.as(
+            'est_hours',
+          ),
+          sql<string>`coalesce(sum(mg.lead) filter (where mg.estimate is not null), 0)::text`.as(
+            'est_lead',
+          ),
         ])
         .groupBy(['rr.project', 'rr.agent_key', 'rr.agent_version', 'rr.model'])
         .execute(),
@@ -273,6 +296,9 @@ export class AgentMetricsRepository extends TenantRepository {
       leadTimeCount: Number(row.lead_count),
       leadTimeSumSeconds: row.lead_sum,
       leadTimeMaxSeconds: row.lead_max === null ? null : Number(row.lead_max),
+      estimatedCount: Number(row.est_count),
+      estimatedHoursSum: row.est_hours,
+      estimatedLeadSumSeconds: row.est_lead,
     }));
   }
 
