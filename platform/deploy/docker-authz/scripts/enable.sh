@@ -134,8 +134,11 @@ if [ "$uid" -eq 0 ]; then
   mkdir -p "$(dirname "$discovery_spec")"
   cp "$config_plugins/sdlc-authz.spec" "$discovery_spec"
 else
-  # Rootless: dockerd only scans /etc/docker/plugins (copy-up from the host).
-  if [ -w /etc/docker/plugins ] 2>/dev/null || mkdir -p /etc/docker/plugins 2>/dev/null; then
+  # Rootless: dockerd only scans /etc/docker/plugins (copy-up from the host). runner-host-setup.sh
+  # (V18) writes the spec as root first, so a runner user without sudo finds it in place.
+  if cmp -s "$config_plugins/sdlc-authz.spec" "$discovery_spec"; then
+    :
+  elif [ -w /etc/docker/plugins ] 2>/dev/null || mkdir -p /etc/docker/plugins 2>/dev/null; then
     cp "$config_plugins/sdlc-authz.spec" "$discovery_spec"
   elif command -v sudo >/dev/null; then
     sudo mkdir -p /etc/docker/plugins
