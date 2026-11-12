@@ -104,7 +104,7 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **X08** Knowledge for people and the G8 learning loop (design first)
 - **X10** An adapter for a second Git host
 - **X13** Agent memory
-- **O06** Real repositories: very large trees, monorepos, repositories without CI or AGENTS.md
+- **O06** Real repositories: very large trees, monorepos, repositories without CI or AGENTS.md (done, v0.13.0)
 - **O07** Load test: many intents and tenants at once
 
 Also later, not yet planned as tasks: webhooks instead of polling, a full policy engine (OPA or Cedar), an incident module, break-glass access, automatic rollback, the recertification workflow, client reports, SSO and Kubernetes, several agents in one intent, the deferred approval queue, PQC metrics (D-02 §4.2); PostgreSQL row-level security (D-03 §9, D-05 §8); a support policy for older CLI versions against a newer server (QUESTIONS #440).
