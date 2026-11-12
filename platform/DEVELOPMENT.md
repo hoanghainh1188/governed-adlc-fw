@@ -103,7 +103,7 @@ The test App is `harryforge-sdlc-dev` (Client ID `Iv23liQtMQBwNyVYZuJt`), instal
 |---|---|
 | `integration/throwaway-compose.ts` | Throw-away Compose projects; `baoClientArgs` and `openbaoCaMount` reach OpenBao over TLS; from the host network use `--add-host openbao:<ip>` |
 | `platform/deploy/scripts/test-db.sh` | The throw-away PostgreSQL behind `test:db`, `test:runner`, `test:agent`. On a rootless AuthZ Engine (H07), set `SDLC_TEST_DB_DOCKER_HOST` to another Engine (CI: the machine's Docker); sandboxes keep using `DOCKER_HOST` |
-| `platform/deploy/scripts/test-rootless-docker.sh` | CI only (job `runner-rootless`): a rootless Docker Engine next to the machine's own one, with the server's steps (subordinate IDs, AppArmor profile for RootlessKit, cgroup delegation, systemd user service); sets `DOCKER_HOST` (ADR-M91 §2.4) |
+| `platform/deploy/scripts/test-rootless-docker.sh` | CI only (job `runner-rootless`): a rootless Docker Engine next to the machine's own one, with the server's steps from the step code of `runner-host-setup.sh` (`rootless-engine.sh`, V18, ADR-M107: subordinate IDs, AppArmor profile for RootlessKit, cgroup delegation, systemd user service, the AuthZ plugin); sets `DOCKER_HOST` (ADR-M91 §2.4) |
 | `platform/deploy/scripts/temporal-test-server.sh` | The Temporal test server: the sdk-java release pinned by version and SHA-256, the cached archive checked again on every run; never the SDK's own download |
 | `integration/g4-harness.ts` | Shared set-up for G4 and the run after it |
 | `integration/g7-world.ts` | Shared world for the G7 request-for-changes tests |

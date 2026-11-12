@@ -507,7 +507,7 @@ The runner (service `sdlc-runner`, task C04) creates one hardened sandbox per ag
 
 The socket proxy limits method and path, not the body of `containers/create` or `networks/create`. On the **runner's own Engine**, install the AuthZ plugin so a compromised runner still cannot create a privileged container, host namespace, device, capability, bind mount or non-internal network.
 
-**Install (rootless runner Engine):**
+**Install (rootless runner Engine):** `sudo platform/deploy/scripts/runner-host-setup.sh --user <user> --mode same-server|vm` does steps 2–4 with the rest of the runner host (deploy README "The runner on its own Docker Engine", step 1; task V18, ADR-M107): it writes `/etc/docker/plugins/sdlc-authz.spec` as root, then runs the install script as the Engine's user, and does nothing when `docker info` already lists `sdlc-authz`. Build the plugin first (step 1). By hand:
 
 1. Build once from the repo: `pnpm exec tsc -b platform/deploy/docker-authz` (or `pnpm build`).
 2. As the Engine's user: `platform/deploy/docker-authz/scripts/install-rootless.sh`
@@ -1143,6 +1143,7 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 | 0.49 | 2026-11-11 | Claude Code (task L01, PR 2) | New section 5d.2: the certificates of the mutual TLS link to vLLM on a separate GPU host (profile `models-remote`, ADR-M71 §4): issue, company CA, renewal, an exposed key |
 | 0.50 | 2026-11-11 | Claude Code (task H07) | Section 5g-1 step 3: the operator key and the header `X-Sdlc-Operator` in the Docker configuration (ADR-M105 §2.6, QUESTIONS #661) |
 | 0.51 | 2026-11-11 | Claude Code (task V20) | Sections 3.2 and 3d: the settings' `runner_link` and `access` sections of `pnpm server:setup` (the runner host's address before `configure`, the proxy's certificate import) |
+| 0.52 | 2026-11-12 | Claude Code (task V18) | Section 5g-1: `runner-host-setup.sh` does the install of the AuthZ plugin with the rest of the runner host (ADR-M107) |
 | 0.44 | 2026-10-24 | Claude Code (task O01, PR 2) | Section 5g step 3: the runner on its own Docker Engine (`SDLC_RUNNER_DOCKER_HOST`, `SDLC_RUNNER_SOURCE_CIDR`, `runner-host.sh restart`; ADR-M91) |
 | 0.39 | 2026-10-12 | Claude Code (task V08) | New section 3.1b: the trial stack's key file (the two shares encrypted with a passphrase, `pnpm trial:start`, its limits; never on a server; QUESTIONS #356, #415–#419, ADR-M76) |
 | 0.38 | 2026-10-12 | Claude Code (task V09, PR 2) | New section 3d: the team access proxy's certificate (company CA `import`, internal CA `server`, throw-away `dev`, `check`, renewal with `reload` without a restart, the 30-day reminder). Tested with throw-away certificates (`pnpm test:access`, `access-static.test.ts`) |
