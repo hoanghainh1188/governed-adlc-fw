@@ -19,6 +19,7 @@ import {
 import { NO_INTENT_SIGNALS } from '@sdlc/workflow-client';
 
 import { AdminAgentsController } from './admin/agents.controller.js';
+import { AdminStepUp } from './admin/step-up.js';
 import { AdminToolsController } from './admin/tools.controller.js';
 import { AdminAuditController } from './admin/audit.controller.js';
 import { AdminProjectsController } from './admin/projects.controller.js';
@@ -92,6 +93,7 @@ import {
   REGISTRY,
   SETTINGS,
   PASSKEYS,
+  ADMIN_STEP_UP,
   SIGN_IN,
   SPECS,
   EVALUATIONS,
@@ -228,6 +230,8 @@ class ApiModule {
         { provide: CLOCK, useValue: now },
         { provide: SIGN_IN, useValue: signIn },
         { provide: PASSKEYS, useValue: passkeys },
+        // U09 (ADR-M73 §2.4b): the passkey step-up of an administration change from a session.
+        { provide: ADMIN_STEP_UP, useValue: new AdminStepUp(passkeys.service, now) },
         {
           provide: REGISTRY,
           useValue: new Registry({

@@ -36,6 +36,21 @@ export const MAX_OPEN_CHALLENGES = 5;
  * The actions a step-up may be bound to. U07 uses the first two; U09 adds the admin changes.
  * A kill and an acknowledgement never take a step-up (ADR-M73 §2.4).
  */
+export const ADMIN_STEP_UP_ACTIONS = [
+  'admin.project',
+  'admin.user',
+  'admin.tenant_admin',
+  'admin.agent',
+  'admin.ai_record',
+  'admin.evidence_hold',
+  'admin.passkey',
+] as const;
+export type AdminStepUpAction = (typeof ADMIN_STEP_UP_ACTIONS)[number];
+
+export function isAdminStepUpAction(value: unknown): value is AdminStepUpAction {
+  return typeof value === 'string' && (ADMIN_STEP_UP_ACTIONS as readonly string[]).includes(value);
+}
+
 export const STEP_UP_ACTIONS = [
   'gate.decide',
   'escalation.decide',
@@ -43,6 +58,9 @@ export const STEP_UP_ACTIONS = [
   'eval_plan.create',
   'eval_plan.change',
   'eval_plan.run',
+  // U09 (ADR-M73 §2.4b, QUESTIONS #681, #685): every administration change from a dashboard
+  // session, one code per area; the decision names the change (`create`, `role_grant`, ...).
+  ...ADMIN_STEP_UP_ACTIONS,
 ] as const;
 export type StepUpAction = (typeof STEP_UP_ACTIONS)[number];
 
@@ -127,7 +145,14 @@ export function assertStepUpBinding(binding: StepUpBinding): void {
     bad('expected_input_sha256');
   }
   if (binding.decision === null || !CODE.test(binding.decision)) bad('decision');
-  if (binding.action.startsWith('eval_plan.')) {
+  if (isAdminStepUpAction(binding.action)) {
+    // An administration change binds no intent or escalation: the path it writes to and its body
+    // are in the request's SHA-256; the decision names the change (U09, QUESTIONS #685).
+    if (binding.intentId !== null || binding.escalationId !== null || binding.gate !== null) {
+      bad('intent');
+    }
+    if (binding.expectedInputSha256 !== null) bad('expected_input_sha256');
+  } else if (binding.action.startsWith('eval_plan.')) {
     // An evaluation plan action binds no intent or escalation: the plan and its body are in the
     // request's SHA-256; the decision is the action's own name (`create`, `change`, `run`).
     if (binding.intentId !== null || binding.escalationId !== null || binding.gate !== null) {

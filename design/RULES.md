@@ -221,7 +221,7 @@ This register lists every rule of the root `CLAUDE.md` and the check that enforc
 | R084d | api/worker import telemetry first | test | tests/observability/load-order.test.ts:23 | full | pointer-only | CLAUDE.md |
 | R084e | otel-collector rules | test | tests/deploy/observability-static.test.ts:31 | full | pointer-only | CLAUDE.md |
 | R085a | Dashboard writes only via writes.ts | test+lint | tests/dashboard/static.test.ts:36 | full | pointer-only | platform/apps/dashboard/CLAUDE.md |
-| R085b | `@SessionAction` only on the listed routes (L05, U07, U08) | test | tests/integration/db/web-sessions.test.ts:449; tests/api/session-actions.test.ts (the marked routes, by file); tests/integration/db/dashboard-decisions.test.ts (the step-up); tests/integration/db/dashboard-intake.test.ts (U08, no step-up) | full | pointer-only | platform/apps/dashboard/CLAUDE.md |
+| R085b | `@SessionAction` only on the listed routes (L05, U07, U08, U09) | test | tests/integration/db/web-sessions.test.ts:449; tests/api/session-actions.test.ts (the marked routes, by file; every U09 change takes the step-up); tests/integration/db/dashboard-decisions.test.ts (the step-up); tests/integration/db/dashboard-intake.test.ts (U08, no step-up); tests/integration/db/dashboard-admin.test.ts (U09, the admin step-up) | full | pointer-only | platform/apps/dashboard/CLAUDE.md |
 | R085c–e | Passkey step-up, bearer XOR cookie, CSRF | test | tests/integration/db/web-sessions.test.ts:440 | full | pointer-only | platform/apps/dashboard/CLAUDE.md |
 | R086a–e,g | Cookie, token, no inline/innerHTML/storage, reads.ts, sign-in nav | lint+test | eslint.config.mjs:89; tests/dashboard/static.test.ts | full | pointer-only | platform/apps/dashboard/CLAUDE.md |
 | R086f | Server text via cleanText | lint+test | tests/dashboard/static.test.ts:138 | partial | move:platform/apps/dashboard | platform/apps/dashboard/CLAUDE.md |
@@ -293,3 +293,4 @@ Some rows group several rules with the same check (for example R082a–f).
 | 0.22 | 2026-11-11 | Claude (task L01, PR 2) | New row R148 (vLLM on a separate GPU host, `platform/deploy/CLAUDE.md`); R137: `vllm-link` of `models-remote` may be on `models` instead of `vllm` |
 | 0.23 | 2026-11-11 | Claude (task H07) | R147: the operator header skips the denylist, never the runner (QUESTIONS #661) |
 | 0.24 | 2026-11-12 | Claude (task V18) | New row R149 (the runner host set-up, `platform/deploy/CLAUDE.md`); the hook refuses `runner-host-setup.sh` |
+| 0.25 | 2026-11-12 | Claude (task U09, PR 1) | R085, R085b: the administration changes of U09 take a session write, always with the passkey step-up; the U09 database test |

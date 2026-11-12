@@ -18,3 +18,4 @@ export const SIGN_IN = Symbol('SignInEndpoints');
 export const PASSKEYS = Symbol('PasskeyEndpoints');
 export const EVALUATIONS = Symbol('EvaluationsService');
 export const EVAL_TASKS = Symbol('EvaluationTasksService');
+export const ADMIN_STEP_UP = Symbol('AdminStepUp');

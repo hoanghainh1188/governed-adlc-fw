@@ -69,6 +69,9 @@ export const saveConfigSchema = z.strictObject({
 });
 
 /** `?include_revoked=true` (roles, tenant admins) or `?include_unlinked=true` (identities). */
+/** A change with no body; a session's `step_up` is taken out before (U09). */
+export const emptyBodySchema = z.strictObject({});
+
 export const historyQuerySchema = z.strictObject({
   include_revoked: z.enum(['true', 'false']).optional(),
   include_unlinked: z.enum(['true', 'false']).optional(),

@@ -413,7 +413,8 @@ describeDb('U06: CSRF, the actions switch, passkeys and the step-up', () => {
       const s = await open('alice');
       for (const [method, url] of [
         ['POST', '/v1/me/tokens'],
-        ['DELETE', `/v1/admin/users/${people.bob!.id}/passkeys/${people.bob!.id}`],
+        // U09 opened the admin passkey removal to sessions, with a step-up; tokens stay closed.
+        ['POST', `/v1/admin/users/${people.bob!.id}/tokens`],
       ] as const) {
         expectError(
           await inject(app, method, url, page(s), { decision: 'approve' }),
