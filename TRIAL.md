@@ -7,7 +7,7 @@ The platform is built and tested, but no team has used it on a project yet. **We
 - **What it costs:** your time (about one day to set up, half a day per task, mostly waiting) and, with an API model, a few US dollars of tokens. The platform caps the spend of each task.
 - **No real data.** The sample project is fictional. Never use client code or real personal data in the trial.
 
-> **Status (2026-10-31):** the latest release is **v0.11.0** ([CHANGELOG](CHANGELOG.md)). Start the trial from the latest release. The trial does not turn on the dashboard's GitHub sign-in and actions; without them the dashboard only reads, and you decide gates with comments and the CLI. To add them later: [Fresh deployment, step 7](platform/deploy/README.md#7-start-the-platform), the optional dashboard sign-in with GitHub and the dashboard actions.
+> **Status (2026-11-12):** the latest release is **v0.12.0** ([CHANGELOG](CHANGELOG.md)). Start the trial from the latest release. The trial does not turn on the dashboard's GitHub sign-in and actions; without them the dashboard only reads, and you decide gates with comments and the CLI. To add them later: [Fresh deployment, step 7](platform/deploy/README.md#7-start-the-platform), the optional dashboard sign-in with GitHub and the dashboard actions.
 
 The full plan behind this page, with every measure and rule: [`design/M-E-TRIAL-PLAN.md`](design/M-E-TRIAL-PLAN.md).
 
@@ -47,7 +47,7 @@ Best: two people. If you are alone, you may use a second GitHub account for Pers
 
 ### 3.2. The platform
 
-1. Clone this repository and check out the latest release (`git checkout v0.11.0`; the [CHANGELOG](CHANGELOG.md) names the latest one). Then `corepack enable` and `pnpm install`. Every release since v0.1.1 publishes its images on GHCR, so a release checkout pulls the platform images and the sandbox image, pinned by digest, instead of building them: faster, and the images you run are the scanned and signed ones ([Verify the published images](platform/deploy/README.md#verify-the-published-images)). Keep the checkout unchanged, or the images are built locally again (`pnpm images mode` says which).
+1. Clone this repository and check out the latest release (`git checkout v0.12.0`; the [CHANGELOG](CHANGELOG.md) names the latest one). Then `corepack enable` and `pnpm install`. Every release since v0.1.1 publishes its images on GHCR, so a release checkout pulls the platform images and the sandbox image, pinned by digest, instead of building them: faster, and the images you run are the scanned and signed ones ([Verify the published images](platform/deploy/README.md#verify-the-published-images)). Keep the checkout unchanged, or the images are built locally again (`pnpm images mode` says which).
 2. Create **your own GitHub App** and install it on your fork only. In a terminal, run `pnpm github-app:create --out ~/secrets/sdlc-trial-app.private-key.pem`, open the local page it prints, press the button and confirm on GitHub; it saves the private key (mode 600) and prints the client ID and the install link ([Create the GitHub App](platform/deploy/README.md#create-the-github-app-operator), option A). By hand instead: option B there. Keep the private key in a file outside every repository, readable only by you (`chmod 600 <file>`).
 3. Clone **your fork** somewhere on the machine (the agent's instructions are read from `AGENTS.md` on its `main` branch).
 4. Choose a model (section 4). For the local model: `ollama pull gpt-oss:20b` first. For an API model: put the key alone in a file, `chmod 600`.

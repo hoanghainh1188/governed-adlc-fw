@@ -75,17 +75,17 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **A10** Resource measurement + backup / restore drill + internal CA / TLS
 - **V15** Release on the tag: one workflow builds the images, the lock file is a release asset (done, v0.7.0)
 - **V16** `pnpm server:setup`: a guided fresh deployment on a server (steps 2–7) (done, v0.8.0)
-- **V18** One command to set up the runner host
-- **V19** `pnpm server:setup` runs steps 8–13
-- **V20** Team access and the runner link in the `server:setup` settings
+- **V18** One command to set up the runner host (done, v0.12.0)
+- **V19** `pnpm server:setup` runs steps 8–13 (done, v0.12.0)
+- **V20** Team access and the runner link in the `server:setup` settings (done, v0.12.0)
 - **H02** Dependencies an agent adds: licence, known vulnerabilities, name checks (done, v0.8.0)
 - **H03** Design: deleting a client's data on request (done, v0.8.0)
-- **H03a** Client data deletion 1: tenant states and the anonymization of people
-- **H03b** Client data deletion 2: the worker's purge of files, traces and indexes
-- **H03c** Client data deletion 3: the request, the approval and the status commands
+- **H03a** Client data deletion 1: tenant states and the anonymization of people (done, v0.12.0)
+- **H03b** Client data deletion 2: the worker's purge of files, traces and indexes (done, v0.12.0)
+- **H03c** Client data deletion 3: the request, the approval and the status commands (done, v0.12.0)
 - **H04** A secret scan of a run's diff before G5 (done, v0.7.0)
 - **H05** A size bound for a change a person must review (done, v0.7.0)
-- **H07** A Docker authorization plugin that checks the body of container requests
+- **H07** A Docker authorization plugin that checks the body of container requests (done, v0.12.0)
 - **O01** The runner in its own VM or with rootless Docker (done, v0.7.0)
 - **O02** A tested upgrade between two releases (done, v0.7.0)
 - **O03** Operational alerts (done, v0.10.0)

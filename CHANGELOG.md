@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-12
+
+**Client data deletion, the Docker AuthZ plugin on the runner Engine, vLLM on a separate GPU host, and fewer manual steps for a server deployment.**
+
 ### Upgrade notes
 - **On a running stack:** (1) `pnpm install`; (2) `pnpm compose:env --add-missing`: it appends `SDLC_CLIENT_DELETION_GRACE_DAYS` (default 14) when missing; (3) `pnpm db:migrate`: migrations `0047-client-data-deletion` and `0048-client-purge` (tenant states; `web_sessions.end_reason` gains `client_purged`; `langfuse_purges.cause` gains `client_deletion`). No credentials command to run again.
 - **On the company server's runner Engine (H07):** after this change, install the Docker AuthZ plugin before the next real agent run: `pnpm exec tsc -b platform/deploy/docker-authz` then `platform/deploy/docker-authz/scripts/install-rootless.sh` as the Engine user (runbook T11 §5g-1). `pnpm doctor` warns when it is missing. The script also adds the operator header to that user's Docker configuration; if `openbao:bootstrap runner-credentials` runs on the platform host with `SDLC_RUNNER_DOCKER_HOST=ssh://…`, add the same header to the Docker configuration of the user there (T11 §5g-1, in your own terminal).
