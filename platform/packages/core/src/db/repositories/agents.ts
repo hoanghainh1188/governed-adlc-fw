@@ -19,6 +19,14 @@ export interface NewAgent {
   readonly approvedEnvironments: readonly AgentEnvironment[];
   /** X03: default `openhands` (the column default). */
   readonly adapter?: AgentAdapterCode;
+  /** O06 (ADR-M31 §2.5 0.6): the repository root's file, pinned too. Absent: none. */
+  readonly rootInstructions?: RootInstructions | null;
+}
+
+/** The second pinned file of an agent (O06): `ref` as `instructions_ref`, and its SHA-256. */
+export interface RootInstructions {
+  readonly ref: string;
+  readonly sha256: string;
 }
 
 /** Columns a change may set. Left out: unchanged. The trigger decides what is allowed. */
@@ -33,6 +41,8 @@ export interface AgentUpdate {
   readonly maxAutonomy?: AutonomyLevel;
   readonly approvedEnvironments?: readonly AgentEnvironment[];
   readonly adapter?: AgentAdapterCode;
+  /** O06: null removes the second pinned file. */
+  readonly rootInstructions?: RootInstructions | null;
   /** `YYYY-MM-DD`. */
   readonly lastRecertifiedAt?: string;
 }
@@ -58,6 +68,7 @@ export class AgentRepository extends TenantRepository {
           max_autonomy: input.maxAutonomy,
           approved_environments: [...input.approvedEnvironments],
           ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
+          ...rootColumns(input.rootInstructions),
         })
         .returningAll()
         .executeTakeFirstOrThrow(),
@@ -125,6 +136,7 @@ export class AgentRepository extends TenantRepository {
         ? {}
         : { approved_environments: [...update.approvedEnvironments] }),
       ...(update.adapter === undefined ? {} : { adapter: update.adapter }),
+      ...rootColumns(update.rootInstructions),
       ...(update.lastRecertifiedAt === undefined
         ? {}
         : { last_recertified_at: update.lastRecertifiedAt }),
@@ -139,4 +151,16 @@ export class AgentRepository extends TenantRepository {
         .executeTakeFirstOrThrow(),
     );
   }
+}
+
+/** The two columns of the second pinned file; nothing when `root` is undefined (unchanged). */
+function rootColumns(root: RootInstructions | null | undefined): {
+  root_instructions_ref?: string | null;
+  root_instructions_sha256?: string | null;
+} {
+  if (root === undefined) return {};
+  return {
+    root_instructions_ref: root?.ref ?? null,
+    root_instructions_sha256: root?.sha256 ?? null,
+  };
 }

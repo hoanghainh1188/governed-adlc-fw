@@ -1,5 +1,7 @@
 // Shapes of the values an admin enters (task B13, ADR-M37 §2.3). The API checks them with zod too;
 // these checks are the ones that hold for every caller (API and operator commands).
+import { isRepoPath } from '@sdlc/contracts';
+
 import { AdminError } from './errors.js';
 
 /** Project slugs: the same shape the API accepts in paths (ADR-M26). */
@@ -32,6 +34,12 @@ export function checkEmail(value: string): string {
 
 export function checkPattern(field: string, value: string, pattern: RegExp): string {
   if (!pattern.test(value)) throw invalid(field);
+  return value;
+}
+
+/** A project's folder in its repository (O06, ADR-M106 §2.4): '' or plain segments. */
+export function checkRepoPath(value: string): string {
+  if (!isRepoPath(value)) throw invalid('repo_path');
   return value;
 }
 

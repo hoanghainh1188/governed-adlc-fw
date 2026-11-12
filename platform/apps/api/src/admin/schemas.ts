@@ -22,11 +22,14 @@ const name = z.string().min(1).max(MAX_NAME_LENGTH);
 const email = z.string().min(3).max(MAX_EMAIL_LENGTH);
 const repoFullName = z.string().min(3).max(140);
 const branch = z.string().min(1).max(100);
+// O06 (ADR-M106 §2.4): the core checks the shape (`checkRepoPath`).
+const repoPath = z.string().max(200);
 
 export const createProjectSchema = z.strictObject({
   slug: projectSlugSchema,
   name,
   repo_full_name: repoFullName,
+  repo_path: repoPath.optional(),
   default_branch: branch.optional(),
   git_provider: z.enum(['github']).optional(),
 });
@@ -34,6 +37,7 @@ export const createProjectSchema = z.strictObject({
 export const updateProjectSchema = z.strictObject({
   name: name.optional(),
   repo_full_name: repoFullName.optional(),
+  repo_path: repoPath.optional(),
   default_branch: branch.optional(),
 });
 
@@ -83,30 +87,52 @@ const environments = z.array(z.enum(['sandbox', 'staging', 'production'])).max(3
 const autonomy = z.enum(['L0', 'L1', 'L2']);
 const sha256 = z.string().regex(/^[0-9a-f]{64}$/);
 
-export const registerAgentSchema = z.strictObject({
-  key: agentKeySchema,
-  version: z.string().max(64),
-  owner_id: idSchema,
-  model_ref: z.string().max(128).nullable().optional(),
-  instructions_ref: z.string().max(300),
-  instructions_sha256: sha256,
-  allowed_tools: tools.default([]),
-  max_autonomy: autonomy,
-  approved_environments: environments.default(['sandbox']),
-  // X03 (ADR-M68 §7): the register checks the code (`checkAdapter`).
-  adapter: z.string().max(32).optional(),
-});
+export const registerAgentSchema = z
+  .strictObject({
+    key: agentKeySchema,
+    version: z.string().max(64),
+    owner_id: idSchema,
+    model_ref: z.string().max(128).nullable().optional(),
+    instructions_ref: z.string().max(300),
+    instructions_sha256: sha256,
+    allowed_tools: tools.default([]),
+    max_autonomy: autonomy,
+    approved_environments: environments.default(['sandbox']),
+    // X03 (ADR-M68 §7): the register checks the code (`checkAdapter`).
+    adapter: z.string().max(32).optional(),
+    // O06 (ADR-M31 §2.5 0.6): the repository root's file, pinned too; both or neither.
+    root_instructions_ref: z.string().max(300).optional(),
+    root_instructions_sha256: sha256.optional(),
+  })
+  .refine(bothOrNeither, { path: ['root_instructions_sha256'] });
 
-export const updateAgentSchema = z.strictObject({
-  version: z.string().max(64),
-  model_ref: z.string().max(128).nullable().optional(),
-  instructions_ref: z.string().max(300).optional(),
-  instructions_sha256: sha256.optional(),
-  allowed_tools: tools.optional(),
-  max_autonomy: autonomy.optional(),
-  approved_environments: environments.optional(),
-  adapter: z.string().max(32).optional(),
-});
+/**
+ * The second pinned file: a ref with its hash, or neither. In an update, a `null` ref removes it
+ * (and takes no hash).
+ */
+function bothOrNeither(input: {
+  root_instructions_ref?: string | null | undefined;
+  root_instructions_sha256?: string | undefined;
+}): boolean {
+  const ref = input.root_instructions_ref;
+  const hash = input.root_instructions_sha256;
+  return typeof ref === 'string' ? hash !== undefined : hash === undefined;
+}
+
+export const updateAgentSchema = z
+  .strictObject({
+    version: z.string().max(64),
+    model_ref: z.string().max(128).nullable().optional(),
+    instructions_ref: z.string().max(300).optional(),
+    instructions_sha256: sha256.optional(),
+    allowed_tools: tools.optional(),
+    max_autonomy: autonomy.optional(),
+    approved_environments: environments.optional(),
+    adapter: z.string().max(32).optional(),
+    root_instructions_ref: z.string().max(300).nullable().optional(),
+    root_instructions_sha256: sha256.optional(),
+  })
+  .refine(bothOrNeither, { path: ['root_instructions_sha256'] });
 
 // The tool register (X04, ADR-M69 §2.2). The core rules (`tools/rules.ts`) check the formats again.
 export const toolKeySchema = z.string().regex(TOOL_KEY_PATTERN);

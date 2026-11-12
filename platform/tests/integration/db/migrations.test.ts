@@ -32,7 +32,8 @@ const TABLES = Object.keys(TABLE_COLUMNS).sort();
 // tenant_id and created_at, is fixed once inserted.
 const UPDATABLE: Record<string, readonly string[]> = {
   tenants: ['name', 'monthly_budget_usd', 'status'],
-  projects: ['name', 'repo_full_name', 'default_branch', 'status'],
+  // O06 (migration 0049): the folder, changed only while no intent is open (admin module).
+  projects: ['name', 'repo_full_name', 'default_branch', 'status', 'repo_path'],
   // B13: the hash of the stored YAML (QUESTIONS #95).
   project_configs: ['version', 'config_yaml', 'config_hash', 'updated_by', 'override_sha256'],
   project_ai_records: [
@@ -144,6 +145,9 @@ const UPDATABLE: Record<string, readonly string[]> = {
     'updated_at',
     // X03 (migration 0037): configuration, changed only with a new version (trigger SDA09).
     'adapter',
+    // O06 (migration 0049): the second pinned file, configuration too.
+    'root_instructions_ref',
+    'root_instructions_sha256',
   ],
   // B07: the status comments; only the delivery moves (trigger: final once posted or abandoned).
   intent_notices: ['attempts', 'posted_at', 'abandoned_at'],

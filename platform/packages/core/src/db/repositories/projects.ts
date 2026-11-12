@@ -2,10 +2,11 @@ import type { Project, TenantInsert } from '../schema.js';
 import type { ProjectStatus } from '../vocabulary.js';
 import { TenantRepository } from './base.js';
 
-/** Fields an admin may change (B13). The slug, Git host and tenant never change. */
+/** Fields an admin may change (B13; `repo_path`: O06). The slug, Git host and tenant never change. */
 export interface ProjectUpdate {
   readonly name?: string;
   readonly repo_full_name?: string;
+  readonly repo_path?: string;
   readonly default_branch?: string;
 }
 

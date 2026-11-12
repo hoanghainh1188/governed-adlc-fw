@@ -61,7 +61,7 @@ export const AUDIT_ACTIONS = {
   },
   /** A project was created (B13). Never its slug, name or repository. */
   'project.created': { entityType: 'project', fields: { git_provider: 'code' } },
-  /** A project's name, repository or default branch changed (B13). Never the values. */
+  /** A project's name, repository, folder (O06) or default branch changed (B13). Never the values. */
   'project.updated': { entityType: 'project', fields: {} },
   /**
    * A project was archived (B13). Its evidence files are purged after the archive grace period by
@@ -426,12 +426,26 @@ export const AUDIT_ACTIONS = {
    */
   'agent.registered': {
     entityType: 'agent',
-    fields: { agent_key: 'code', version: 'code', instructions_sha256: 'sha256', adapter: 'code' },
+    fields: {
+      agent_key: 'code',
+      version: 'code',
+      instructions_sha256: 'sha256',
+      adapter: 'code',
+      // O06 (ADR-M31 §2.5 0.6): the second pinned file's hash, when the agent has one.
+      root_instructions_sha256: 'sha256?',
+    },
   },
   /** An agent got a new version: model, instructions, tools, autonomy or environments (Ch.20 §20.9). */
   'agent.updated': {
     entityType: 'agent',
-    fields: { agent_key: 'code', version: 'code', instructions_sha256: 'sha256', adapter: 'code' },
+    fields: {
+      agent_key: 'code',
+      version: 'code',
+      instructions_sha256: 'sha256',
+      adapter: 'code',
+      // O06 (ADR-M31 §2.5 0.6): the second pinned file's hash, when the agent has one.
+      root_instructions_sha256: 'sha256?',
+    },
   },
   /** An agent's status changed. `reason_code` is set for suspend, quarantine and retire. */
   'agent.status_changed': {

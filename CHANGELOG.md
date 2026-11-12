@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Upgrade notes
+- **Database (O06 PR 2a):** `pnpm db:migrate` runs migration `0049-project-repo-path` (`projects.repo_path`, empty for every existing project; `agents.root_instructions_ref`, `root_instructions_sha256`, null). Existing projects are not checked: two active projects on one repository stay as they are until one of them changes, and then the folder rule applies.
+
+### Added
+- **Monorepos, part 1: data and administration** (task O06 PR 2a, ADR-M106 §2.4, QUESTIONS #677, #678). A project can be one folder of a repository: `adlc admin project create|update --folder <path>`, `folder:` in the project file, `repo_path` in the admin API. The folders of a tenant's active projects on one repository never overlap (a trigger with a lock; `repo_path_overlap`), and the repository and folder change only while the project has no open intent. An agent can pin a second file, the repository root's instruction file: `adlc admin agent register|update --root-instructions <path@label> --root-instructions-file <file>` (`none` removes it); a change is a new version. Runs do not use the folder yet: that is O06 PR 2b.
+
+### Upgrade notes
 - **Project configuration (O06):** the default configuration gains `verification.ci_missing_minutes` (15), so the default `config_hash` changes. Nothing to do; a project that sets its own `verification` section needs no change (the default fills the new key).
 
 ### Added

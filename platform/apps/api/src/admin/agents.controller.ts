@@ -112,6 +112,7 @@ export class AdminAgentsController {
           maxAutonomy: input.max_autonomy,
           approvedEnvironments: input.approved_environments,
           ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
+          ...rootOf(input),
           now: this.now(),
         }),
       ),
@@ -145,6 +146,7 @@ export class AdminAgentsController {
             ? {}
             : { approvedEnvironments: input.approved_environments }),
           ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
+          ...rootOf(input),
         }),
       ),
     );
@@ -251,4 +253,18 @@ export class AdminAgentsController {
       throw error instanceof AgentRegisterError ? agentApiError(error, agentKey) : error;
     }
   }
+}
+
+/**
+ * The second pinned file of the request (O06, ADR-M31 §2.5 0.6): set (ref and hash), removed
+ * (`null` ref), or left out. The schema already checked that the two fields go together.
+ */
+function rootOf(input: {
+  root_instructions_ref?: string | null | undefined;
+  root_instructions_sha256?: string | undefined;
+}): { rootInstructions?: { ref: string; sha256: string } | null } {
+  const ref = input.root_instructions_ref;
+  if (ref === undefined) return {};
+  if (ref === null) return { rootInstructions: null };
+  return { rootInstructions: { ref, sha256: input.root_instructions_sha256 ?? '' } };
 }

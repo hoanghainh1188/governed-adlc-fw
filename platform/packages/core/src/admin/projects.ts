@@ -1,6 +1,9 @@
 // Projects (task B13 AC2, ADR-M37 §2.3). Tenant admins create, change and archive projects. The
 // slug and the Git host never change. Archiving only sets the status: purging the project's
-// evidence and client data is E05 (FR-44).
+// evidence and client data is E05 (FR-44). O06 (ADR-M106 §2.4): a project may be one folder of a
+// repository (`repo_path`); the folders of the active projects of one repository never overlap
+// (trigger of migration 0049, `repo_path_overlap`), and a folder changes only while the project
+// has no open intent.
 import { DbError } from '../db/errors.js';
 import type { ProjectUpdate } from '../db/repositories/projects.js';
 import type { Project } from '../db/schema.js';
@@ -11,6 +14,7 @@ import {
   checkBranch,
   checkName,
   checkPattern,
+  checkRepoPath,
   PROJECT_SLUG_PATTERN,
   REPO_FULL_NAME_PATTERN,
 } from './validation.js';
@@ -22,6 +26,8 @@ export interface NewProject {
   readonly slug: string;
   readonly name: string;
   readonly repoFullName: string;
+  /** O06: the project's folder in the repository; '' or absent = the whole repository. */
+  readonly repoPath?: string;
   readonly defaultBranch?: string;
   readonly gitProvider?: (typeof SUPPORTED_GIT_PROVIDERS)[number];
 }
@@ -35,6 +41,7 @@ export async function createProject(
     slug: checkPattern('slug', input.slug, PROJECT_SLUG_PATTERN),
     name: checkName('name', input.name),
     repo_full_name: checkPattern('repo_full_name', input.repoFullName, REPO_FULL_NAME_PATTERN),
+    repo_path: checkRepoPath(input.repoPath ?? ''),
     default_branch: checkBranch(input.defaultBranch ?? 'main'),
     git_provider: input.gitProvider ?? 'github',
   };
@@ -57,6 +64,7 @@ export async function createProject(
 export interface ProjectChanges {
   readonly name?: string;
   readonly repoFullName?: string;
+  readonly repoPath?: string;
   readonly defaultBranch?: string;
 }
 
@@ -75,6 +83,7 @@ export async function updateProject(
       REPO_FULL_NAME_PATTERN,
     );
   }
+  if (changes.repoPath !== undefined) update.repo_path = checkRepoPath(changes.repoPath);
   if (changes.defaultBranch !== undefined) {
     update.default_branch = checkBranch(changes.defaultBranch);
   }
@@ -84,7 +93,15 @@ export async function updateProject(
   return scope.transaction(async (tx) => {
     await assertTenantAdmin(tx, actor);
     const project = await activeProject(tx, slug);
-    const updated = await tx.projects.update(project.id, update);
+    // O06 (ADR-M106 §2.4): a run's folder and pinned files come from the project; a change of the
+    // repository or the folder waits until no intent is open.
+    const moves =
+      (update.repo_path !== undefined && update.repo_path !== project.repo_path) ||
+      (update.repo_full_name !== undefined && update.repo_full_name !== project.repo_full_name);
+    if (moves && (await tx.intents.hasOpenInProject(project.id))) {
+      throw new AdminError('project_has_open_intents', `project ${slug} has open intents`);
+    }
+    const updated = await tx.projects.update(project.id, update).catch(alreadyExists);
     if (!updated) throw new AdminError('project_not_found', `project ${slug} not found`);
     await tx.audit.append({
       action: 'project.updated',
@@ -151,9 +168,13 @@ export async function activeProject(scope: TenantScope, slug: string): Promise<P
   return project;
 }
 
-/** Maps a unique violation to `already_exists`. */
+/** Maps a unique violation to `already_exists`, an overlapping folder to `repo_path_overlap`. */
 export function alreadyExists(error: unknown): never {
-  throw error instanceof DbError && error.code === 'conflict'
-    ? new AdminError('already_exists', 'the value is already taken')
-    : error;
+  if (error instanceof DbError && error.code === 'conflict') {
+    const sqlState = (error.cause as { code?: unknown } | undefined)?.code;
+    throw sqlState === 'SDA28'
+      ? new AdminError('repo_path_overlap', 'the folder overlaps another project of the repository')
+      : new AdminError('already_exists', 'the value is already taken');
+  }
+  throw error;
 }

@@ -7,6 +7,7 @@ project:
   slug: pilot
   name: Pilot
   repository: harryforge/pilot-order-inventory # owner/name on GitHub
+  # folder: packages/web # optional: the project's folder in a monorepo (handbook Ch.19 §19.8d)
   # default_branch: main
 # One entry per person. The command looks up each login's numeric GitHub ID and shows it for you to
 # check: people are matched by that ID only. Person A and Person B are never the same person.

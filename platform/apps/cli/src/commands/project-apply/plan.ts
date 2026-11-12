@@ -168,12 +168,14 @@ function projectWrites(checked: CheckedFile, state: CurrentState): Write[] {
   const body: Record<string, string> = {
     name: wanted.name,
     repo_full_name: wanted.repository,
+    ...(wanted.folder === undefined ? {} : { repo_path: wanted.folder }),
     ...(wanted.default_branch === undefined ? {} : { default_branch: wanted.default_branch }),
   };
   if (!state.project) return [{ kind: 'project_create', body: { slug: wanted.slug, ...body } }];
   const current: Record<string, string> = {
     name: state.project.name,
     repo_full_name: state.project.repo_full_name,
+    repo_path: state.project.repo_path ?? '',
     default_branch: state.project.default_branch,
   };
   const diffs = Object.entries(body)

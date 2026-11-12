@@ -407,7 +407,8 @@ Before anyone can approve a gate, an admin sets up the project and the team: the
 
 **Set up a new project, step by step** (all commands take `--json`):
 
-1. Create the project: `adlc admin project create --slug <slug> --name <name> --repo <owner/name> [--default-branch <branch>]`.
+1. Create the project: `adlc admin project create --slug <slug> --name <name> --repo <owner/name> [--folder <path>] [--default-branch <branch>]`.
+   - `--folder` is for a monorepo: the project is one folder of the repository, for example `packages/web` (Chapter 13 §13.10.2a). Several projects can share one repository when their folders do not overlap; a project without a folder has the repository alone. The platform refuses an overlap (`repo_path_overlap`). The repository and the folder change only while the project has no open intent.
 2. Add each person: `adlc admin user create --email <email> --name <name>`.
 3. Link each person's GitHub account: `adlc admin identity link --user <email> --github-id <numeric ID> --github-login <login>`. Without it, the person's `/approve` comments are refused.
 4. Give the roles: `adlc admin role grant --project <slug> --user <email> --role <role>`, for example `person_a`, `person_b`, `second_approver`, `pm_brse`, `governance`, `admin` or `viewer` (Chapter 5).
@@ -424,6 +425,7 @@ project:
   slug: pilot
   name: Pilot
   repository: owner/name
+  folder: packages/web            # optional: one folder of a monorepo
   default_branch: main            # optional
 team:
   - email: ana@example.com
@@ -651,6 +653,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | 0.48 | 2026-10-29 | Claude (task U08) | §19.8e: create an intent and link its spec, submit the plan, build an Evidence Pack in the dashboard; a refused link keeps the intent; the L1 proposal command (ADR-M73) |
 | 0.49 | 2026-10-29 | Claude (docs, newcomer review) | §19.8d: a link to the commented example `platform/deploy/project.example.yaml` |
 | 0.50 | 2026-10-30 | Claude (v0.10.0, ADR-M100) | §19.8c: the old command `sdlc` is removed in v0.10.0; `adlc` still reads its login |
+| 0.52 | 2026-11-12 | Claude (task O06, PR 2a) | §19.8d: a project can be one folder of a monorepo (`--folder`, `folder:` in the project file, `repo_path_overlap`; ADR-M106 §2.4) |
 | 0.51 | 2026-11-12 | Claude (task V19) | §19.8d: `pnpm server:setup` can run `adlc admin project apply` with the file of its settings; what stays with people is the same |
 | 0.26 | 2026-10-09 | Claude (docs review E2) | §19.8d points to the set-up order of the deployment guide |
 | 0.25 | 2026-10-09 | Claude (docs review fixes) | §19.8b: what reject and request-changes do at G5–G7; the HOTL gates with a block window besides G2 and G3 |

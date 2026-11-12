@@ -62,6 +62,66 @@ describe('adlc admin (through the API)', () => {
     ]);
   });
 
+  it('O06: creates a project on a folder of a monorepo and shows it', async () => {
+    const h = await harness({
+      routes: {
+        'POST /v1/admin/projects': {
+          status: 201,
+          body: projectBody({ repo_path: 'packages/web' }),
+        },
+        'PATCH /v1/admin/projects/pilot': {
+          status: 200,
+          body: projectBody({ repo_path: 'packages/api' }),
+        },
+      },
+    });
+    expect(
+      await h.run([
+        'admin',
+        'project',
+        'create',
+        '--slug',
+        'pilot',
+        '--name',
+        'Pilot',
+        '--repo',
+        'harryforge/pilot-order-inventory',
+        '--folder',
+        'packages/web',
+      ]),
+    ).toBe(EXIT.ok);
+    expect(h.requests[0]?.body).toMatchObject({ repo_path: 'packages/web' });
+    expect(h.out[0]).toContain('harryforge/pilot-order-inventory:packages/web');
+    expect(
+      await h.run(['admin', 'project', 'update', '--project', 'pilot', '--folder', 'packages/api']),
+    ).toBe(EXIT.ok);
+    expect(h.requests[1]?.body).toEqual({ repo_path: 'packages/api' });
+  });
+
+  it('O06: shows the API refusal of an overlapping folder (exit 1)', async () => {
+    const h = await harness({
+      routes: {
+        'POST /v1/admin/projects': apiError(409, 'repo_path_overlap'),
+      },
+    });
+    expect(
+      await h.run([
+        'admin',
+        'project',
+        'create',
+        '--slug',
+        'web',
+        '--name',
+        'Web',
+        '--repo',
+        'harryforge/pilot-order-inventory',
+        '--folder',
+        'packages',
+      ]),
+    ).toBe(EXIT.failed);
+    expect(h.err.join('\n')).toContain(t('api.error.repo_path_overlap'));
+  });
+
   it('updates only the given fields and archives', async () => {
     const h = await harness({
       routes: {

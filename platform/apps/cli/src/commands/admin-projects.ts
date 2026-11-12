@@ -39,15 +39,19 @@ export const PROJECT_COMMANDS: Readonly<Record<string, AdminApiCommand>> = {
       slug: { type: 'string' },
       name: { type: 'string' },
       repo: { type: 'string' },
+      // O06 (ADR-M106 §2.4): the project's folder in a monorepo.
+      folder: { type: 'string' },
       'default-branch': { type: 'string' },
     },
     required: ['slug', 'name', 'repo'],
     run: async (call) => {
       const branch = opt(call.values, 'default-branch');
+      const folder = opt(call.values, 'folder');
       const created = await call.client.post('/v1/admin/projects', adminProjectSchema, {
         slug: str(call.values, 'slug'),
         name: str(call.values, 'name'),
         repo_full_name: str(call.values, 'repo'),
+        ...(folder === undefined ? {} : { repo_path: folder }),
         ...(branch === undefined ? {} : { default_branch: branch }),
       });
       return output(call, created, () => sayProject(call, created));
@@ -77,6 +81,7 @@ export const PROJECT_COMMANDS: Readonly<Record<string, AdminApiCommand>> = {
       ...project,
       name: { type: 'string' },
       repo: { type: 'string' },
+      folder: { type: 'string' },
       'default-branch': { type: 'string' },
     },
     required: ['project'],
@@ -84,6 +89,7 @@ export const PROJECT_COMMANDS: Readonly<Record<string, AdminApiCommand>> = {
       const changes = {
         name: opt(call.values, 'name'),
         repo_full_name: opt(call.values, 'repo'),
+        repo_path: opt(call.values, 'folder'),
         default_branch: opt(call.values, 'default-branch'),
       };
       const updated = await call.client.patch(
@@ -196,7 +202,7 @@ function projectParams(item: AdminProjectView): Record<string, string> {
     slug: item.slug,
     name: item.name,
     provider: item.git_provider,
-    repo: item.repo_full_name,
+    repo: item.repo_path ? `${item.repo_full_name}:${item.repo_path}` : item.repo_full_name,
     branch: item.default_branch,
     status: item.status,
   };

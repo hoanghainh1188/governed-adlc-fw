@@ -22,6 +22,11 @@ export type AdminErrorCode =
    * an archived project never meets an intent that could still change.
    */
   | 'project_has_open_intents'
+  /**
+   * O06 (ADR-M106 §2.4): the project's folder equals, contains or is inside the folder of another
+   * active project on the same repository (an empty folder is the whole repository).
+   */
+  | 'repo_path_overlap'
   /** The user is disabled: no new roles, tokens or identities. */
   | 'user_not_active'
   /** A person tried to grant a role to themselves, or to disable themselves (QUESTIONS #151). */

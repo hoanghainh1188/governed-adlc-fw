@@ -76,6 +76,7 @@ const PG_ERROR_CODES: Record<string, DbErrorCode> = {
   SDA25: 'immutable', // a tool status move not allowed, a retired tool, or a config change (0038)
   SDA26: 'immutable', // a knowledge index's fixed columns, or a purge set twice (0039)
   SDA27: 'immutable', // a session or challenge removed before its floor (0046)
+  SDA28: 'conflict', // a project folder that overlaps another project of the same repository (0049)
 };
 
 /** Maps a PostgreSQL error to a DbError; anything else is rethrown unchanged. */
