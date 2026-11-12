@@ -27,6 +27,8 @@ export class ApiError extends Error {
       readonly issue: string;
       readonly message?: string | undefined;
     }[],
+    /** U09: the API's sentence for `reason` (an agent register refusal names the agent). */
+    readonly reasonMessage?: string,
   ) {
     super(code);
   }
@@ -172,9 +174,10 @@ async function request(
     const code = envelope.success ? envelope.data.error.code : 'unexpected';
     const reason = envelope.success ? envelope.data.error.reason : undefined;
     const details = envelope.success ? envelope.data.error.details : undefined;
+    const reasonMessage = envelope.success ? envelope.data.error.reason_message : undefined;
     // An expired or revoked token or session ends the tab's sign-in; the person signs in again.
     if (response.status === 401 && endsCurrentSignIn(credential)) session.signOut();
-    throw new ApiError(response.status, code, reason, details);
+    throw new ApiError(response.status, code, reason, details, reasonMessage);
   }
   return body;
 }

@@ -18,12 +18,17 @@ export type Route =
   | { readonly name: 'admin'; readonly query: URLSearchParams }
   | { readonly name: 'admin-project'; readonly slug: string; readonly query: URLSearchParams }
   | { readonly name: 'admin-config'; readonly slug: string; readonly query: URLSearchParams }
-  | { readonly name: 'admin-user'; readonly id: string; readonly query: URLSearchParams };
+  | { readonly name: 'admin-user'; readonly id: string; readonly query: URLSearchParams }
+  // U09 PR 3: the agent register, one agent, the evidence holds of one intent.
+  | { readonly name: 'admin-agents'; readonly query: URLSearchParams }
+  | { readonly name: 'admin-agent'; readonly key: string; readonly query: URLSearchParams }
+  | { readonly name: 'admin-hold'; readonly code: string; readonly query: URLSearchParams };
 
 const INTENT_CODE = /^INT-[0-9]{4}-[0-9]{4,}$/;
 const EVAL_CODE = /^EVAL-[0-9]{4}-[0-9]{4,9}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const PROJECT_SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const AGENT_KEY = /^[a-z][a-z0-9-]{0,62}[a-z0-9]$/;
 
 export function parseRoute(hash: string): Route {
   const raw = hash.replace(/^#/, '');
@@ -46,6 +51,14 @@ export function parseRoute(hash: string): Route {
     }
     if (parts[1] === 'users' && parts[2] !== undefined && UUID.test(parts[2])) {
       return { name: 'admin-user', id: parts[2], query };
+    }
+    if (parts[1] === 'agents') {
+      return parts[2] !== undefined && AGENT_KEY.test(parts[2])
+        ? { name: 'admin-agent', key: parts[2], query }
+        : { name: 'admin-agents', query };
+    }
+    if (parts[1] === 'holds' && parts[2] !== undefined && INTENT_CODE.test(parts[2])) {
+      return { name: 'admin-hold', code: parts[2], query };
     }
     return { name: 'admin', query };
   }
@@ -95,4 +108,13 @@ export function adminProjectHref(slug: string, config = false): string {
 
 export function adminUserHref(id: string): string {
   return UUID.test(id) ? `#/admin/users/${id}` : '#/admin';
+}
+
+/** U09 PR 3: the route of one agent, or of the evidence holds of one intent. */
+export function adminAgentHref(key: string): string {
+  return AGENT_KEY.test(key) ? `#/admin/agents/${key}` : '#/admin/agents';
+}
+
+export function adminHoldHref(code: string): string {
+  return INTENT_CODE.test(code) ? `#/admin/holds/${code}` : '#/admin';
 }

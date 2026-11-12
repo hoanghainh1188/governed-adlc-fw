@@ -9,13 +9,23 @@ import {
   adminRoleSchema,
   adminTenantRoleSchema,
   adminUserSchema,
+  agentRecertifiedSchema,
+  agentRoundSchema,
+  agentSchema,
+  aiRecordSchema,
   endedSessionsSchema,
+  evidenceHoldChangeSchema,
+  passkeySchema,
   type AdminConfigView,
   type AdminIdentityView,
   type AdminProjectView,
   type AdminRoleView,
   type AdminTenantRoleView,
   type AdminUserView,
+  type AgentRoundView,
+  type AgentView,
+  type AiRecordView,
+  type PasskeyView,
 } from '@sdlc/api-schemas';
 
 import type {
@@ -244,6 +254,198 @@ export async function revokeTenantAdmin(
     apiPath(`/v1/admin/tenant-admins/${segment(id)}`),
     'DELETE',
     adminTenantRoleSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+// U09 PR 3: project archive, the AI record, evidence holds, a person's passkey, the agent register.
+
+/** Archives a project (final): its open intents must be finished first. */
+export async function archiveProject(
+  slug: string,
+  confirm: ConfirmChange,
+): Promise<AdminProjectView> {
+  const target = `/v1/admin/projects/${segment(slug)}/archive`;
+  const signedBody = await signed(confirm, 'admin.project', 'archive', target);
+  const answer = await send(
+    apiPath(`/v1/admin/projects/${segment(slug)}/archive`),
+    'POST',
+    adminProjectSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+/** A new version of the project AI record (`expected_version`: the version read; 0 creates it). */
+export async function saveAiRecord(
+  slug: string,
+  body: Readonly<Record<string, unknown>>,
+  confirm: ConfirmChange,
+): Promise<AiRecordView> {
+  const target = `/v1/projects/${segment(slug)}/ai-record`;
+  const signedBody = await signed(confirm, 'admin.ai_record', 'save', target, body);
+  const answer = await send(
+    apiPath(`/v1/projects/${segment(slug)}/ai-record`),
+    'PUT',
+    aiRecordSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+/** Holds an intent's evidence from the purge, with an optional `https://` link. */
+export async function holdEvidence(
+  intent: string,
+  body: Readonly<Record<string, string>>,
+  confirm: ConfirmChange,
+): Promise<void> {
+  const target = `/v1/intents/${segment(intent)}/evidence-hold`;
+  const signedBody = await signed(confirm, 'admin.evidence_hold', 'hold', target, body);
+  await send(
+    apiPath(`/v1/intents/${segment(intent)}/evidence-hold`),
+    'PUT',
+    evidenceHoldChangeSchema,
+    signedBody,
+  );
+}
+
+export async function releaseEvidence(intent: string, confirm: ConfirmChange): Promise<void> {
+  const target = `/v1/intents/${segment(intent)}/evidence-hold`;
+  const signedBody = await signed(confirm, 'admin.evidence_hold', 'release', target);
+  await send(
+    apiPath(`/v1/intents/${segment(intent)}/evidence-hold`),
+    'DELETE',
+    evidenceHoldChangeSchema,
+    signedBody,
+  );
+}
+
+/** A tenant admin removes a person's passkey (a lost device). */
+export async function revokeUserPasskey(
+  user: string,
+  id: string,
+  confirm: ConfirmChange,
+): Promise<PasskeyView> {
+  const target = `/v1/admin/users/${segment(user)}/passkeys/${segment(id)}`;
+  const signedBody = await signed(confirm, 'admin.passkey', 'revoke', target);
+  const answer = await send(
+    apiPath(`/v1/admin/users/${segment(user)}/passkeys/${segment(id)}`),
+    'DELETE',
+    passkeySchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+export async function registerAgent(
+  body: Readonly<Record<string, unknown>>,
+  confirm: ConfirmChange,
+): Promise<AgentView> {
+  const target = '/v1/admin/agents';
+  const signedBody = await signed(confirm, 'admin.agent', 'register', target, body);
+  const answer = await send(apiPath('/v1/admin/agents'), 'POST', agentSchema, signedBody);
+  return answer!;
+}
+
+export async function updateAgent(
+  key: string,
+  body: Readonly<Record<string, unknown>>,
+  confirm: ConfirmChange,
+): Promise<AgentView> {
+  const target = `/v1/admin/agents/${segment(key)}`;
+  const signedBody = await signed(confirm, 'admin.agent', 'update', target, body);
+  const answer = await send(
+    apiPath(`/v1/admin/agents/${segment(key)}`),
+    'PATCH',
+    agentSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+/** One approval of an activation or a retirement; the last one changes the status. */
+export async function approveAgent(
+  key: string,
+  body: Readonly<Record<string, string>>,
+  confirm: ConfirmChange,
+): Promise<AgentRoundView> {
+  const target = `/v1/admin/agents/${segment(key)}/approvals`;
+  const signedBody = await signed(confirm, 'admin.agent', 'approve', target, body);
+  const answer = await send(
+    apiPath(`/v1/admin/agents/${segment(key)}/approvals`),
+    'POST',
+    agentRoundSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+/** Containment: suspend an agent, with a reason code (QUESTIONS #681: a passkey too). */
+export async function suspendAgent(
+  key: string,
+  reason: string,
+  confirm: ConfirmChange,
+): Promise<AgentView> {
+  const target = `/v1/admin/agents/${segment(key)}/suspend`;
+  const signedBody = await signed(confirm, 'admin.agent', 'suspend', target, {
+    reason_code: reason,
+  });
+  const answer = await send(
+    apiPath(`/v1/admin/agents/${segment(key)}/suspend`),
+    'POST',
+    agentSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+export async function quarantineAgent(
+  key: string,
+  reason: string,
+  confirm: ConfirmChange,
+): Promise<AgentView> {
+  const target = `/v1/admin/agents/${segment(key)}/quarantine`;
+  const signedBody = await signed(confirm, 'admin.agent', 'quarantine', target, {
+    reason_code: reason,
+  });
+  const answer = await send(
+    apiPath(`/v1/admin/agents/${segment(key)}/quarantine`),
+    'POST',
+    agentSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+export async function changeAgentOwner(
+  key: string,
+  owner: string,
+  confirm: ConfirmChange,
+): Promise<AgentView> {
+  const target = `/v1/admin/agents/${segment(key)}/owner`;
+  const signedBody = await signed(confirm, 'admin.agent', 'owner', target, { owner_id: owner });
+  const answer = await send(
+    apiPath(`/v1/admin/agents/${segment(key)}/owner`),
+    'PUT',
+    agentSchema,
+    signedBody,
+  );
+  return answer!;
+}
+
+/** Records a recertification; an evaluation code when the project's mode asks for one. */
+export async function recertifyAgent(
+  key: string,
+  body: Readonly<Record<string, string>>,
+  confirm: ConfirmChange,
+): Promise<AgentView> {
+  const target = `/v1/admin/agents/${segment(key)}/recertify`;
+  const signedBody = await signed(confirm, 'admin.agent', 'recertify', target, body);
+  const answer = await send(
+    apiPath(`/v1/admin/agents/${segment(key)}/recertify`),
+    'POST',
+    agentRecertifiedSchema,
     signedBody,
   );
   return answer!;

@@ -388,7 +388,7 @@ The plan file holds codes, numbers and amounts only: `code`, `data_class`, `task
 
 > **Platform usage section, owned by Claude Code** (CLAUDE.md "Documentation rules"). Written with task B13, 2026-10-03, and kept in line with the platform code (`design/ADR-M37-admin-onboarding.md`).
 
-Before anyone can approve a gate, an admin sets up the project and the team: the project, the people, their GitHub accounts and their roles. The commands in the order of a first set-up, with the sandbox image, the agent, the configuration and the AI record: `platform/deploy/README.md`, Fresh deployment steps 9–13.
+Before anyone can approve a gate, an admin sets up the project and the team: the project, the people, their GitHub accounts and their roles. The commands in the order of a first set-up, with the sandbox image, the agent, the configuration and the AI record: `platform/deploy/README.md`, Fresh deployment steps 9–13. The dashboard's **Admin** screen does the same changes, each confirmed with your passkey (§19.8e, task U09); API tokens stay in the CLI.
 
 **Who is an admin.**
 
@@ -501,7 +501,7 @@ At the end it prints, per person, the commands that are still theirs: first toke
 
 > **Platform usage section, owned by Claude Code** (CLAUDE.md "Documentation rules"). Written with task U01, 2026-10-07, and kept in line with the platform code (`design/ADR-M54-read-only-dashboard.md`).
 
-The dashboard shows in one page what the CLI shows one command at a time. With a GitHub sign-in and actions on, you can also decide a gate, stop a run, and acknowledge and decide an escalation there (task U07, below), create an intent with its spec, submit its plan, build an Evidence Pack (task U08), and act on evaluation plans. Comments, reviews and the CLI still work as before (§19.8b, §19.8c). **G7 is never decided in the dashboard**: it is the review and the merge on GitHub.
+The dashboard shows in one page what the CLI shows one command at a time. With a GitHub sign-in and actions on, you can also decide a gate, stop a run, and acknowledge and decide an escalation there (task U07, below), create an intent with its spec, submit its plan, build an Evidence Pack (task U08), act on evaluation plans, and administer projects, people, agents, AI records and evidence holds (task U09). Comments, reviews and the CLI still work as before (§19.8b, §19.8c). **G7 is never decided in the dashboard**: it is the review and the merge on GitHub.
 
 **Open it.** With team access (task V09), open the team address the operator gives you, for example `https://sdlc.example.internal:8443/dashboard/`, from your own machine; your browser must trust the company's certificate authority. Without it, open `http://127.0.0.1:8090/dashboard/` on the machine that runs the platform (the API's own address; no other port); with GitHub sign-in on there, open `http://localhost:8090/dashboard/` instead: the sign-in works on `localhost`, not on `127.0.0.1`. With team access, the GitHub sign-in works on the team address only. Then sign in one of two ways.
 
@@ -555,6 +555,28 @@ With the API token the dashboard only reads: it changes nothing but your own sig
 8. The proposal of a High-risk (L1) run is never downloaded in the browser: the page shows the command, for example `adlc evidence proposal INT-2026-0010 --run <run ID> --output <file>`. The CLI checks the file's SHA-256 and writes it with mode 600.
 9. Who may do each action comes from the project's roles, the same as for the CLI (by default only Person A creates intents, links specs and submits plans; Person A, Person B, PM / BrSE, governance and admin build packs; never a viewer). A refusal says which role list decides, for example `access.plan_submit_roles`.
 
+**Administration** (task U09, ADR-M73). Open **Admin**. It needs a GitHub sign-in and actions on to change anything; with an API token it only reads. **Every change asks for your passkey**, including the fast ones (suspend an agent, disable a person): the CLI with your token stays the quickest way to contain a problem. The platform applies the same rules as the CLI and shows its refusals in the same words.
+
+| Action | Where | Who (the platform decides) | Same as |
+|---|---|---|---|
+| Create a project, change its details, **Archive** it (refused while it has an open intent) | **Admin**, then a project | Tenant admins | `adlc admin project create\|update\|archive` |
+| **Give a role**, **Revoke** a role | A project, under **Project roles** | Tenant admins, the project's `admin` | `adlc admin role grant\|revoke` |
+| Upload a project configuration | A project, **Configuration** | Tenant admins, the project's `admin` | `adlc admin config set` |
+| **Add a person**, change their name or address, **Disable**, **Enable**, **Sign out everywhere** | **Admin**, then a person | Tenant admins | `adlc admin user create\|update\|disable\|enable\|sign-out` |
+| **Link a GitHub account** (by its numeric ID), **Unlink** | A person, under **GitHub accounts** | Tenant admins | `adlc admin identity link\|unlink` |
+| **Remove** a person's passkey (a lost device) | A person, under **Passkeys** | Tenant admins | `adlc admin passkey revoke` |
+| **Make a tenant admin**, **Remove** one | **Admin**, under **Tenant admins** | Tenant admins | `adlc admin tenant-admin grant\|revoke` |
+| **Register an agent**, **New version**, **Approve**, **Suspend**, **Quarantine**, **Change owner**, **Recertify** | **Admin**, **Agents** | The approvers of Chapter 20 (owner, Person A, Person B, governance); tenant admins register | `adlc admin agent …` |
+| Create or change the project **AI record** | A project, under **AI record** | `access.ai_record_write_roles` (by default Person A and PM / BrSE) | `adlc ai-record set` |
+| **Hold the evidence** of an intent, **Release** it | An intent, **Evidence hold** (or **Admin**, by the intent's code) | Tenant admins, `access.evidence_hold_roles` | `adlc admin evidence hold\|release` |
+
+1. Nobody gives a role to themselves or disables themselves, a person never holds two roles that conflict on a project (for example Person A and Person B), and the last tenant admin is never removed. The page shows the platform's sentence, for example "Nobody grants a role to themselves or disables themselves".
+2. A GitHub account is linked by its **numeric account ID**, never by the login alone: `https://api.github.com/users/<login>` shows it as `id`. The page refuses a login in the ID field before it asks for your passkey.
+3. **Configuration:** the page shows the stored YAML and its version. Choose a file: the page reads it in your browser and shows the **line difference** to the stored version (removed lines with −, added lines with +). Nothing is sent until you choose **Save this version** and confirm with your passkey. If someone saved a newer version in between, the platform refuses: reload and look again. A file the platform refuses shows each problem in its words.
+4. **Agents:** to register an agent or make a new version, choose its instruction file: the page computes the file's SHA-256 in your browser and sends only the hash, like `--instructions-file` in the CLI. A new version runs only after its activation approvals. Each approval of a round comes from a different person in a different capacity; a second approval by the same person is refused. The platform never suspends or quarantines an agent by itself: a person decides (Chapter 20 §20.9).
+5. **AI record** and **evidence holds** hold codes, dates and one `https://` link only: write the words where they can be edited or deleted (the human record of template T7, a ticket) and give the link.
+6. API tokens are never shown or created in the browser: use `adlc token create` or `adlc admin token issue`.
+
 Never publish the API's port 8090 to other machines. People on other machines use team access, the operator's TLS proxy on one LAN port (`platform/deploy/README.md`, "Team access").
 
 **What you see.** The same access rules as the CLI apply: you see the projects you have a role on, and a section your role cannot read says so.
@@ -567,6 +589,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | **Cost and gate times** | Per project (or the whole tenant, for tenant admins): how long each gate waits for people (average, 90th percentile, longest, waiting now), and the model cost by intent, model or run status, with the wasted part | `adlc metrics gates`, `adlc cost report` |
 | **Audit check** | Tenant admins only: checks the tenant's audit chain, on request | `adlc audit verify` |
 | **Passkeys** | With a GitHub sign-in and actions on: your passkeys; add and remove them | `adlc admin passkey list` (tenant admins, for a person) |
+| **Admin** | Projects, their roles, configuration and AI record; people, their GitHub accounts and passkeys; tenant admins; the agent register; evidence holds. What you see follows your roles | `adlc admin …`, `adlc ai-record show` |
 
 **"Who decides this gate" and "what holds it".** "Who decides this gate" names the people (or the platform) that decide the gate. **What holds it** shows why the platform keeps the intent where it is, as the workflow recorded it the last time it looked: a failed G4 check and which one, a plan to submit again, a spec that cannot be read, a frozen intent, CI still running, a HOTL block window and when it closes. The board shows it on the card as **held**. A plain wait for a person's decision is not a hold. The same reason is printed by `adlc intent show`.
 
@@ -654,6 +677,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | 0.49 | 2026-10-29 | Claude (docs, newcomer review) | §19.8d: a link to the commented example `platform/deploy/project.example.yaml` |
 | 0.50 | 2026-10-30 | Claude (v0.10.0, ADR-M100) | §19.8c: the old command `sdlc` is removed in v0.10.0; `adlc` still reads its login |
 | 0.52 | 2026-11-12 | Claude (task O06, PR 2a) | §19.8d: a project can be one folder of a monorepo (`--folder`, `folder:` in the project file, `repo_path_overlap`; ADR-M106 §2.4) |
+| 0.53 | 2026-11-12 | Claude (task U09) | §19.8d, §19.8e: the dashboard's **Admin** screen: projects, roles, configuration with its line difference, people and GitHub accounts, passkeys, tenant admins, the agent register, the AI record and evidence holds, each change with a passkey (ADR-M73 1.9) |
 | 0.51 | 2026-11-12 | Claude (task V19) | §19.8d: `pnpm server:setup` can run `adlc admin project apply` with the file of its settings; what stays with people is the same |
 | 0.26 | 2026-10-09 | Claude (docs review E2) | §19.8d points to the set-up order of the deployment guide |
 | 0.25 | 2026-10-09 | Claude (docs review fixes) | §19.8b: what reject and request-changes do at G5–G7; the HOTL gates with a block window besides G2 and G3 |

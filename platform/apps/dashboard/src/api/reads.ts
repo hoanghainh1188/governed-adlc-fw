@@ -8,6 +8,9 @@ import {
   adminTenantRoleListSchema,
   adminUserListSchema,
   adminUserSchema,
+  agentDetailSchema,
+  agentListSchema,
+  aiRecordSchema,
   authConfigSchema,
   chainSchema,
   costReportSchema,
@@ -18,6 +21,7 @@ import {
   evaluationReportSchema,
   evaluationSchema,
   evidenceFileSchema,
+  evidenceHoldListSchema,
   evidenceListSchema,
   gateMetricsSchema,
   intentDetailSchema,
@@ -201,3 +205,23 @@ export const readIdentities = (id: string, history: boolean, o: Signal = {}) =>
 
 export const readTenantAdmins = (o: Signal = {}) =>
   getJson(apiPath('/v1/admin/tenant-admins'), adminTenantRoleListSchema, o);
+
+// U09 PR 3: the agent register, the AI record, evidence holds, a person's passkeys.
+
+export const readAgents = (o: Signal = {}) =>
+  getJson(apiPath('/v1/admin/agents'), agentListSchema, o);
+
+/** One agent with its activation and retirement rounds and its latest evaluation. */
+export const readAgent = (key: string, o: Signal = {}) =>
+  getJson(apiPath(`/v1/admin/agents/${segment(key)}`), agentDetailSchema, o);
+
+/** The project AI record; 404 `ai_record_not_found` when the project has none yet. */
+export const readAiRecord = (slug: string, o: Signal = {}) =>
+  getJson(apiPath(`/v1/projects/${segment(slug)}/ai-record`), aiRecordSchema, o);
+
+export const readEvidenceHolds = (intent: string, o: Signal = {}) =>
+  getJson(apiPath(`/v1/intents/${segment(intent)}/evidence-hold`), evidenceHoldListSchema, o);
+
+/** A person's passkeys, for a tenant admin. */
+export const readUserPasskeys = (id: string, o: Signal = {}) =>
+  getJson(apiPath(`/v1/admin/users/${segment(id)}/passkeys`), passkeyListSchema, o);

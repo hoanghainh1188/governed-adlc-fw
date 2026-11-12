@@ -103,6 +103,19 @@ describe('the dashboard writes only its own session and passkeys (AC1; U05, U06)
         'DELETE /v1/admin/users/X/sessions',
         'POST /v1/admin/tenant-admins',
         'DELETE /v1/admin/tenant-admins/X',
+        // U09 PR 3: project archive, the AI record, evidence holds, a person's passkey, agents.
+        'POST /v1/admin/projects/X/archive',
+        'PUT /v1/projects/X/ai-record',
+        'PUT /v1/intents/X/evidence-hold',
+        'DELETE /v1/intents/X/evidence-hold',
+        'DELETE /v1/admin/users/X/passkeys/X',
+        'POST /v1/admin/agents',
+        'PATCH /v1/admin/agents/X',
+        'POST /v1/admin/agents/X/approvals',
+        'POST /v1/admin/agents/X/suspend',
+        'POST /v1/admin/agents/X/quarantine',
+        'PUT /v1/admin/agents/X/owner',
+        'POST /v1/admin/agents/X/recertify',
       ].sort(),
     );
     expect([...writes.matchAll(/\bsend\(/g)]).toHaveLength(calls.length);
@@ -116,7 +129,7 @@ describe('the dashboard writes only its own session and passkeys (AC1; U05, U06)
         /const target = ([`'][^`']+[`']);\s*const signedBody = await signed\(\s*confirm,\s*'(admin\.[a-z_]+)',\s*'([a-z_]+)',\s*target[\s\S]*?send\(\s*apiPath\(([`'][^`']+[`'])\)/g,
       ),
     ];
-    expect(changes).toHaveLength(14);
+    expect(changes).toHaveLength(26);
     for (const [, target, area, decision, sent] of changes) {
       expect(sent, `${area} ${decision}`).toBe(target);
     }

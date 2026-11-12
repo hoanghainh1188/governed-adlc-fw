@@ -10,6 +10,12 @@
   - People: add one, change their name or address, link or unlink a GitHub account by its numeric ID, disable or enable them, sign them out everywhere.
   - Tenant admins: make one, remove one.
   Every change asks for a passkey. With a token sign-in the screens are read only. The screens load as a chunk of their own, so the first load stays under 80 kB of JavaScript.
+- **Dashboard administration, part 3: agents, AI records, evidence holds** (task U09 PR 3, ADR-M73 1.9). **Admin** now also has:
+  - The agent register: register an agent or a new version (the instruction file is hashed in your browser, only the SHA-256 is sent), approve an activation or a retirement, suspend, quarantine, change the owner, recertify.
+  - On a project: its AI record (create, new version) and **Archive**.
+  - On a person: their passkeys, which a tenant admin can remove.
+  - On an intent: **Evidence hold** (hold with an `https://` link, release).
+  The Admin menu is there for every signed-in person: agent approvers and the AI record and hold roles are not only admins. The platform still decides every change. Handbook Ch.19 §19.8e describes the Admin screen.
 
 ## [0.13.0] - 2026-11-12
 

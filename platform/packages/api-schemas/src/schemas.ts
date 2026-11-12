@@ -584,6 +584,7 @@ export const agentDetailSchema = agentSchema.extend({
   rounds: z.array(agentRoundSchema).max(2),
   evaluation: agentEvaluationSchema.nullable().optional(),
 });
+export type AgentDetailView = z.infer<typeof agentDetailSchema>;
 
 // The tool register (task X04, ADR-M69 §2.2).
 export const toolSchema = z.object({
