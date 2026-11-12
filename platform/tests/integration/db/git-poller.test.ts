@@ -21,7 +21,12 @@ import type { Intent } from '../../../packages/core/src/db/schema.js';
 import type { PollableProject } from '../../../packages/core/src/db/system-scope.js';
 import { parseTenantId, type TenantId } from '../../../packages/core/src/db/tenant-id.js';
 import type { TenantScope } from '../../../packages/core/src/db/tenant-scope.js';
-import { pollProject, type PollDeps } from '../../../packages/core/src/git-events/poll-project.js';
+import {
+  pollProject,
+  pollRepository,
+  type PollableRepository,
+  type PollDeps,
+} from '../../../packages/core/src/git-events/poll-project.js';
 import { Registry } from '../../../packages/core/src/registry/registry.js';
 import { startHarness, type Harness } from '../../git-github/helpers.js';
 import { comment, user } from '../../git-github/stub-github.js';
@@ -700,6 +705,149 @@ describeDb('B06: GitHub poller and comment commands on PostgreSQL', () => {
         /check/,
       );
       await expect(insert('some text', '{}')).rejects.toThrow(/check/);
+    });
+  });
+
+  describe('O06 PR 2c: one poll per repository (ADR-M106 §2.4, QUESTIONS #679)', () => {
+    let group: PollableRepository;
+    let second: string;
+
+    const pollGroup = () => pollRepository(deps(), group);
+
+    const commentReads = (): number =>
+      h.stub.requestsTo('GET', '/repos/acme/shop/issues/comments').length;
+
+    async function receiptProjects(commentId: number): Promise<string[]> {
+      return (
+        await sql<{ project_id: string }>`SELECT project_id FROM git_event_receipts
+          WHERE event_id = ${`github:comment:${String(commentId)}`}`.execute(db.owner)
+      ).rows.map((r) => r.project_id);
+    }
+
+    async function intentIn(projectId: string, issue: number): Promise<Intent> {
+      const intent = await registry.createIntent(seeded.scope, {
+        projectId,
+        title: `Intent on issue ${String(issue)}`,
+        createdBy: seeded.users.a,
+        riskTier: 'low',
+        dataClass: 'internal',
+        issueNumber: issue,
+      });
+      return seeded.scope.intents.updateState(intent.id, {
+        status: 'in_gate',
+        currentGate: 'G1',
+        actorType: 'system',
+        actorId: null,
+      });
+    }
+
+    beforeAll(async () => {
+      // Two packages of one repository: each project has its folder (migration 0049).
+      await seeded.scope.projects.update(seeded.target.projectId, { repo_path: 'apps/shop' });
+      const admin = await seeded.scope.projects.create({
+        slug: 'admin',
+        name: 'Admin',
+        git_provider: 'github',
+        repo_full_name: 'acme/shop',
+        repo_path: 'apps/admin',
+      });
+      second = admin.id;
+      await seeded.scope.roleBindings.grant({
+        user_id: seeded.users.a,
+        project_id: second,
+        role: 'person_a',
+      });
+      for (const issue of [20, 21, 22, 23, 24]) {
+        h.stub.on('POST', `/repos/acme/shop/issues/${String(issue)}/comments`, {
+          status: 201,
+          body: { id: 1 },
+        });
+      }
+      group = {
+        tenantId: seeded.tenantId,
+        repoFullName: 'acme/shop',
+        projectIds: [seeded.target.projectId, second],
+      };
+      // The new project was never polled: the group reads from the first project's cursor.
+      comments.length = 0;
+      await pollGroup();
+    });
+
+    it('the worker lists both projects; one read of GitHub serves the group', async () => {
+      const listed = await db.app.system.listPollableProjects();
+      expect(listed.map((p) => p.projectId).sort()).toEqual([...group.projectIds].sort());
+      const before = commentReads();
+      const result = await pollGroup();
+      expect(commentReads() - before).toBe(1);
+      expect(result.projects.map((p) => p.result.status)).toEqual(['polled', 'polled']);
+      const cursors = await Promise.all(
+        group.projectIds.map((id) => seeded.scope.gitEventCursors.get(id)),
+      );
+      expect(cursors[0]?.cursor).toBe(cursors[1]?.cursor);
+    });
+
+    it('a command goes to the project whose intent has the issue', async () => {
+      const intent = await intentIn(second, 20);
+      const id = post(20, '/approve G1');
+      const result = await pollGroup();
+      expect(result.projects.find((p) => p.projectId === second)?.result.outcomes).toEqual({
+        decided: 1,
+      });
+      expect(
+        result.projects.find((p) => p.projectId === seeded.target.projectId)?.result.outcomes,
+      ).toEqual({});
+      expect((await decisions()).filter((d) => d.intent_id === intent.id)).toHaveLength(1);
+      expect(await receiptProjects(id)).toEqual([second]);
+      expect(replies(20)).toEqual([]);
+    });
+
+    it('a command no project knows is answered once, by the first project of the group', async () => {
+      const id = post(21, '/approve G1');
+      await pollGroup();
+      const lead = [...group.projectIds].sort()[0]!;
+      expect(await receiptProjects(id)).toEqual([lead]);
+      expect(replies(21)).toEqual([
+        expect.stringContaining(t('comment.reply.intent_not_linked', { gate: 'G1' })),
+      ]);
+    });
+
+    it('open intents of two projects on one issue: intent_ambiguous, no decision', async () => {
+      const first = await intentIn(seeded.target.projectId, 22);
+      const other = await intentIn(second, 22);
+      const id = post(22, '/approve G1');
+      await pollGroup();
+      expect(await receiptProjects(id)).toHaveLength(1);
+      expect(
+        (await decisions()).filter((d) => d.intent_id === first.id || d.intent_id === other.id),
+      ).toEqual([]);
+      expect(replies(22)).toEqual([
+        expect.stringContaining(t('comment.reply.intent_ambiguous', { gate: 'G1' })),
+      ]);
+    });
+
+    it('reads from the oldest cursor: a project left behind misses nothing, the other skips by receipt', async () => {
+      const intent = await intentIn(seeded.target.projectId, 23);
+      const behind = (await seeded.scope.gitEventCursors.get(seeded.target.projectId))!.cursor;
+      const late = await intentIn(second, 24);
+      const early = post(24, '/approve G1');
+      await pollGroup();
+      // The first project's cursor goes back, as after a failed batch.
+      await tamper(db.name, `UPDATE git_event_cursors SET cursor = $1 WHERE project_id = $2`, [
+        behind,
+        seeded.target.projectId,
+      ]);
+      const id = post(23, '/approve G1');
+      const before = commentReads();
+      const result = await pollGroup();
+      expect(commentReads() - before).toBe(1);
+      expect((await decisions()).filter((d) => d.intent_id === intent.id)).toHaveLength(1);
+      // The earlier comment came again to the second project: its receipt makes it a duplicate.
+      expect(result.projects.find((p) => p.projectId === second)?.result.outcomes).toEqual({
+        duplicate: 1,
+      });
+      expect((await decisions()).filter((d) => d.intent_id === late.id)).toHaveLength(1);
+      expect(await receiptProjects(early)).toEqual([second]);
+      expect(await receiptProjects(id)).toEqual([seeded.target.projectId]);
     });
   });
 });

@@ -1,7 +1,10 @@
-// One poll of one project (D-08 B06 AC1, design/ADR-M27 section 2.1). The worker's loop calls it
-// on the project's interval (`github.poll_interval_seconds`).
+// One poll of one repository (D-08 B06 AC1, design/ADR-M27 section 2.1; task O06 PR 2c,
+// ADR-M106 §2.4). The worker's loop calls it for the active projects of a tenant on one repository,
+// on the shortest interval of the group (`github.poll_interval_seconds`).
 //
-// 1. Read the cursor and ask the Git host for the events since it (outside any transaction).
+// 1. Read the projects' cursors and ask the Git host once for the events since the oldest one
+//    (outside any transaction). Comment commands go to one project of the group (`routeCommands`).
+//    Then, for each project:
 // 2. In ONE transaction: move the cursor with compare-and-set, then handle every event (gate
 //    decisions, receipts). A crash before the commit applies nothing; a second poller that read
 //    the same cursor finds it moved and rolls back. The receipts make the handler idempotent by
@@ -118,35 +121,190 @@ function repoRef(fullName: string): RepoRef | undefined {
   return match ? { owner: match[1]!, name: match[2]! } : undefined;
 }
 
+/**
+ * O06 PR 2c (ADR-M106 §2.4): the active projects of one tenant on one repository. The worker
+ * polls them together: one read of the Git host, then each project in its own transaction.
+ */
+export interface PollableRepository {
+  readonly tenantId: TenantId;
+  readonly repoFullName: string;
+  readonly projectIds: readonly string[];
+}
+
+export interface RepositoryPollResult {
+  /** One result per project of the group, in the group's order. */
+  readonly projects: readonly { readonly projectId: string; readonly result: PollResult }[];
+}
+
+const SKIPPED: PollResult = {
+  status: 'skipped',
+  events: 0,
+  outcomes: {},
+  repliesPosted: 0,
+  repliesFailed: 0,
+  noticesPosted: 0,
+  noticesFailed: 0,
+  statusPosted: 0,
+  statusFailed: 0,
+};
+
+/** One poll of one project: a group of one. */
 export async function pollProject(deps: PollDeps, target: PollableProject): Promise<PollResult> {
+  const { projects } = await pollRepository(deps, {
+    tenantId: target.tenantId,
+    repoFullName: target.repoFullName,
+    projectIds: [target.projectId],
+  });
+  return projects[0]?.result ?? SKIPPED;
+}
+
+interface Member {
+  readonly id: string;
+  /** The project's stored cursor; null when never polled. */
+  readonly expected: string | null;
+}
+
+/**
+ * Where the comment commands of a read go (ADR-M106 §2.4). A command belongs to the project with
+ * an open intent on its issue or pull request; with none, to the first project of the group, so
+ * a reply is posted once. Other events (checks, reviews, closed pull requests, plain comments) go
+ * to every project: they only wake that project's own intents.
+ */
+interface Routes {
+  /** Event ID → the one project that handles it. */
+  readonly handler: ReadonlyMap<string, string>;
+  /** Events linked to open intents of more than one project: `intent_ambiguous`. */
+  readonly ambiguous: ReadonlySet<string>;
+}
+
+async function routeCommands(
+  scope: TenantScope,
+  projectIds: readonly string[],
+  events: readonly GitEvent[],
+): Promise<Routes> {
+  const handler = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const event of events) {
+    if (event.kind !== 'comment_created') continue;
+    if (parseCommentCommand(event.body).kind === 'none') continue;
+    const owners: string[] = [];
+    for (const projectId of projectIds) {
+      const intents = await scope.intents.findOpenByGitNumber(projectId, {
+        kind: event.isPullRequest ? 'pull_request' : 'issue',
+        number: event.issueNumber,
+      });
+      if (intents.length > 0) owners.push(projectId);
+    }
+    handler.set(event.id, owners[0] ?? projectIds[0]!);
+    if (owners.length > 1) ambiguous.add(event.id);
+  }
+  return { handler, ambiguous };
+}
+
+/**
+ * One poll of a repository (O06 PR 2c, ADR-M106 §2.4): one read of the Git host from the oldest
+ * cursor of the group, then each project handles its events in its own transaction, with its own
+ * cursor compare-and-set, and stores the read's next cursor. A project whose handling fails keeps
+ * its cursor; the others go on, and the first error is thrown at the end.
+ */
+export async function pollRepository(
+  deps: PollDeps,
+  group: PollableRepository,
+): Promise<RepositoryPollResult> {
   const now = deps.now ?? (() => new Date());
   const log = deps.logger ?? { log: () => undefined };
-  const ids = { tenant_id: target.tenantId, project_id: target.projectId };
-  const scope = deps.db.forTenant(target.tenantId);
+  const scope = deps.db.forTenant(group.tenantId);
+  const projectIds = [...new Set(group.projectIds)].sort();
 
-  const project = await scope.projects.getById(target.projectId);
-  const ref = project ? repoRef(project.repo_full_name) : undefined;
-  if (!project || project.status !== 'active' || project.git_provider !== 'github' || !ref) {
-    log.log('warn', 'poll.project_skipped', ids);
-    return {
-      status: 'skipped',
-      events: 0,
-      outcomes: {},
-      repliesPosted: 0,
-      repliesFailed: 0,
-      noticesPosted: 0,
-      noticesFailed: 0,
-      statusPosted: 0,
-      statusFailed: 0,
-    };
+  const members: Member[] = [];
+  let ref: RepoRef | undefined;
+  let repoName: string | undefined;
+  for (const projectId of projectIds) {
+    const project = await scope.projects.getById(projectId);
+    const projectRef = project ? repoRef(project.repo_full_name) : undefined;
+    if (
+      !project ||
+      project.status !== 'active' ||
+      project.git_provider !== 'github' ||
+      !projectRef ||
+      // The repository changed since the list was read: the next list puts it in its own group.
+      (repoName !== undefined && project.repo_full_name !== repoName)
+    ) {
+      log.log('warn', 'poll.project_skipped', { tenant_id: group.tenantId, project_id: projectId });
+      continue;
+    }
+    repoName ??= project.repo_full_name;
+    ref ??= projectRef;
+    const stored = await scope.gitEventCursors.get(project.id);
+    members.push({ id: project.id, expected: stored?.cursor ?? null });
   }
 
-  const stored = await scope.gitEventCursors.get(project.id);
-  const expected = stored?.cursor ?? null;
-  const { events, next } = await deps.gitHost.listEventsSince(
-    ref,
-    (expected ?? INITIAL_EVENT_CURSOR) as EventCursor,
-  );
+  const results = new Map<string, PollResult>();
+  if (ref !== undefined && members.length > 0) {
+    const cursors = members.map((m) => (m.expected ?? INITIAL_EVENT_CURSOR) as EventCursor);
+    const from = cursors.every((c) => c === cursors[0])
+      ? cursors[0]!
+      : deps.gitHost.oldestEventCursor(cursors);
+    const { events, next } = await deps.gitHost.listEventsSince(ref, from);
+    const routes =
+      members.length > 1
+        ? await routeCommands(
+            scope,
+            members.map((m) => m.id),
+            events,
+          )
+        : undefined;
+    let failure: { readonly error: unknown } | undefined;
+    for (const member of members) {
+      const own = routes
+        ? events.filter((e) => (routes.handler.get(e.id) ?? member.id) === member.id)
+        : events;
+      try {
+        results.set(
+          member.id,
+          await pollMember(deps, scope, member, {
+            ref,
+            events: own,
+            next,
+            now,
+            ambiguous: routes?.ambiguous ?? new Set(),
+            ids: { tenant_id: group.tenantId, project_id: member.id },
+          }),
+        );
+      } catch (error) {
+        failure ??= { error };
+      }
+    }
+    if (failure) throw failure.error;
+  }
+  return {
+    projects: group.projectIds.map((projectId) => ({
+      projectId,
+      result: results.get(projectId) ?? SKIPPED,
+    })),
+  };
+}
+
+interface MemberRead {
+  readonly ref: RepoRef;
+  readonly events: readonly GitEvent[];
+  readonly next: EventCursor;
+  readonly now: () => Date;
+  readonly ambiguous: ReadonlySet<string>;
+  readonly ids: Readonly<Record<string, string>>;
+}
+
+/** The events of one project of the read, its cursor, then its replies and notices. */
+async function pollMember(
+  deps: PollDeps,
+  scope: TenantScope,
+  member: Member,
+  read: MemberRead,
+): Promise<PollResult> {
+  const log = deps.logger ?? { log: () => undefined };
+  const { ref, events, next, now, ids } = read;
+  const expected = member.expected;
+  const projectId = member.id;
 
   let outcomes: Partial<Record<GitEventOutcome, number>> = {};
   let woken: readonly string[] = [];
@@ -161,11 +319,12 @@ export async function pollProject(deps: PollDeps, target: PollableProject): Prom
         counts: outcomes,
         intentIds: woken,
         killIntentIds: killed,
-      } = await runBatch(deps, scope, project.id, events, {
+      } = await runBatch(deps, scope, projectId, events, {
         expected,
         next,
         now,
         ids,
+        ambiguous: read.ambiguous,
       }));
       break;
     } catch (error) {
@@ -175,7 +334,7 @@ export async function pollProject(deps: PollDeps, target: PollableProject): Prom
         break;
       }
       if (!(error instanceof EventFailed)) throw error;
-      const final = await countFailure(deps, scope, project.id, error, ids);
+      const final = await countFailure(deps, scope, projectId, error, ids);
       if (!final) throw error.cause;
       givenUp += 1;
     }
@@ -185,12 +344,12 @@ export async function pollProject(deps: PollDeps, target: PollableProject): Prom
   }
 
   // The workflows see the decisions only after the commit (B07, ADR-M30 §2.3).
-  if (status === 'polled') await wakeIntents(deps, target, woken, killed);
+  if (status === 'polled') await wakeIntents(deps, scope.tenantId, projectId, woken, killed);
 
   // The poller that lost the cursor race leaves the replies to the winner, which is flushing them.
   const replies =
     status === 'polled'
-      ? await flushReplies(deps, scope, project.id, ref, now)
+      ? await flushReplies(deps, scope, projectId, ref, now)
       : { posted: 0, failed: 0 };
   // Escalation notices (B11, ADR-M28 §2.5): same project, same Git host, same delivery rules.
   const notices =
@@ -204,7 +363,7 @@ export async function pollProject(deps: PollDeps, target: PollableProject): Prom
             log: (level, event, fields) => log.log(level, event, fields),
           },
           scope,
-          project.id,
+          projectId,
           ref,
         )
       : { posted: 0, failed: 0 };
@@ -220,7 +379,7 @@ export async function pollProject(deps: PollDeps, target: PollableProject): Prom
             log: (level, event, fields) => log.log(level, event, fields),
           },
           scope,
-          project.id,
+          projectId,
           ref,
         )
       : { posted: 0, failed: 0 };
@@ -250,7 +409,8 @@ export async function pollProject(deps: PollDeps, target: PollableProject): Prom
 
 async function wakeIntents(
   deps: PollDeps,
-  target: PollableProject,
+  tenantId: TenantId,
+  projectId: string,
   intentIds: readonly string[],
   killIntentIds: readonly string[],
 ): Promise<void> {
@@ -258,22 +418,22 @@ async function wakeIntents(
   // C11: the kill signal first, so a run waiting in Temporal is cancelled before the wake.
   for (const intentId of new Set(killIntentIds)) {
     try {
-      await deps.intentSignals.kill({ tenantId: target.tenantId, intentId });
+      await deps.intentSignals.kill({ tenantId, intentId });
     } catch {
       deps.logger?.log('warn', 'poll.kill_signal_failed', {
-        tenant_id: target.tenantId,
-        project_id: target.projectId,
+        tenant_id: tenantId,
+        project_id: projectId,
         intent_id: intentId,
       });
     }
   }
   for (const intentId of new Set(intentIds)) {
     try {
-      await deps.intentSignals.wake({ tenantId: target.tenantId, intentId });
+      await deps.intentSignals.wake({ tenantId, intentId });
     } catch {
       deps.logger?.log('warn', 'poll.wake_failed', {
-        tenant_id: target.tenantId,
-        project_id: target.projectId,
+        tenant_id: tenantId,
+        project_id: projectId,
         intent_id: intentId,
       });
     }
@@ -285,6 +445,8 @@ interface BatchContext {
   readonly next: EventCursor;
   readonly now: () => Date;
   readonly ids: Readonly<Record<string, string>>;
+  /** O06 PR 2c: comment events linked to open intents of more than one project. */
+  readonly ambiguous: ReadonlySet<string>;
 }
 
 /** The cursor compare-and-set and every event, in one transaction. */
@@ -314,6 +476,7 @@ function runBatch(
           { registry: deps.registry, now: ctx.now },
           { id: projectId, provider: 'github' },
           event,
+          { linkedElsewhere: ctx.ambiguous.has(event.id) },
         ));
       } catch (error) {
         throw new EventFailed(event, error);
