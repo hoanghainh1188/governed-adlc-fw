@@ -12,6 +12,7 @@ import {
   isDecidableGate,
   PasskeyError,
   projectAccess,
+  recordEffortEstimate,
   RegistryError,
   stepUpRequestSha256,
   type Intent,
@@ -35,7 +36,12 @@ import {
   presentWaitingFor,
   type IntentBody,
 } from './present.js';
-import type { createIntentSchema, decisionSchema, listIntentsSchema } from './schemas.js';
+import type {
+  createIntentSchema,
+  decisionSchema,
+  effortEstimateSchema,
+  listIntentsSchema,
+} from './schemas.js';
 
 export interface IntentPage {
   readonly items: readonly IntentBody[];
@@ -190,6 +196,26 @@ export class IntentsService {
       this.logger,
     );
     return presentDecision(row);
+  }
+
+  /**
+   * V14 (ADR-M79 §2.6, QUESTIONS #692, #693): records the human-effort estimate. A role in
+   * `access.intent_create_roles` or a tenant admin; a finished intent → 409 `intent_finished`.
+   */
+  async estimate(
+    p: Principal,
+    ref: string,
+    body: z.infer<typeof effortEstimateSchema>,
+  ): Promise<IntentBody> {
+    const intent = await findIntent(p.scope, ref);
+    const project = intent ? await p.scope.projects.getById(intent.project_id) : undefined;
+    if (!intent || !project) throw new CommandError('intent_not_found', `intent ${ref} not found`);
+    const stored = await recordEffortEstimate(p.scope, {
+      intent,
+      hours: String(body.hours),
+      actorId: p.userId,
+    });
+    return presentIntent(stored, project);
   }
 
   /** U01 (QUESTIONS #261): the workflow's resolution of the current gate, read only. */

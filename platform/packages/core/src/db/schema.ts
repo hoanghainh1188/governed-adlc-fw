@@ -307,6 +307,12 @@ export interface IntentsTable {
   waiting_since: ColumnType<Date | null, never, Date | null>;
   /** When the wait ends by itself, if the step knows: the HOTL block window's close. */
   waiting_until: ColumnType<Date | null, never, Date | null>;
+  /**
+   * A person's estimate of the human effort in hours (migration 0050, V14, ADR-M79 §2.6): a
+   * decimal string with two decimals, 0.25 to 10000; null without an estimate. Never changes on a
+   * finished intent and never goes back to null (trigger SDA29).
+   */
+  human_effort_hours: ColumnType<string | null, never, string | null>;
 }
 
 /** A spec linked to an intent: path, commit and content hash, one row per version (FR-02). */
@@ -1280,6 +1286,8 @@ export const TABLE_COLUMNS = {
     'waiting_cause',
     'waiting_since',
     'waiting_until',
+    // Migration 0050 (V14).
+    'human_effort_hours',
   ]),
   spec_refs: columns<SpecRefsTable>()([
     'id',

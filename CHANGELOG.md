@@ -16,6 +16,10 @@
   - On a person: their passkeys, which a tenant admin can remove.
   - On an intent: **Evidence hold** (hold with an `https://` link, release).
   The Admin menu is there for every signed-in person: agent approvers and the AI record and hold roles are not only admins. The platform still decides every change. Handbook Ch.19 §19.8e describes the Admin screen.
+- **Human-effort baseline in the agent report** (task V14, ADR-M79 §2.6, QUESTIONS #691–#693). Person A (a role in `access.intent_create_roles`) or a tenant admin can record how many hours an intent would take without an agent: `adlc intent estimate <INT-…> --hours <n>` (`PUT /v1/intents/:intent/effort-estimate`), 0.25 to 10000 hours, a number only. It can change while the intent is open, never after it is finished, and it cannot be removed. `adlc intent show` and the intent body show it. `adlc metrics agents` has a new column **Lead / estimate**: the merged intents' lead time as a percentage of their estimate, with how many intents had one (`--json`: `merged.human_effort`). The dashboard does not write it.
+
+### Upgrade notes
+- **Database (V14):** `pnpm db:migrate` applies migration `0050-intent-effort-estimate` (`intents.human_effort_hours`, empty for every existing intent; the trigger `SDA29`). No changed setting. An older CLI ignores the new report field; a newer CLI shows `-` against an older server.
 
 ## [0.13.0] - 2026-11-12
 

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   cacheShare,
+  leadToEstimatePercent,
   checkAgentMetricsRange,
   mergeAgentMetrics,
   resolveAgentMetricsRange,
@@ -98,6 +99,12 @@ describe('mergeAgentMetrics', () => {
   it('keeps measures without data null, never 0', () => {
     const [row] = mergeAgentMetrics({ ...NONE, counts: [count('unknown', 'queued', 1)] });
     expect(row!.merged.leadTime).toEqual({ count: 0, avgSeconds: null, maxSeconds: null });
+    expect(row!.merged.humanEffort).toEqual({
+      count: 0,
+      estimateHoursSum: null,
+      leadTimeSecondsSum: null,
+      leadToEstimatePercent: null,
+    });
     expect(row!.tokens.cacheSharePercent).toBeNull();
     expect(row!.cost).toEqual({
       totalUsd: '0.000000',
@@ -130,6 +137,9 @@ describe('mergeAgentMetrics', () => {
           leadTimeCount: 2,
           leadTimeSumSeconds: '301',
           leadTimeMaxSeconds: 300,
+          estimatedCount: 0,
+          estimatedHoursSum: '0',
+          estimatedLeadSumSeconds: '0',
         },
       ],
     });
@@ -144,6 +154,12 @@ describe('mergeAgentMetrics', () => {
       intents: 3,
       withoutChangesRequested: 1,
       leadTime: { count: 2, avgSeconds: 150, maxSeconds: 300 },
+      humanEffort: {
+        count: 0,
+        estimateHoursSum: null,
+        leadTimeSecondsSum: null,
+        leadToEstimatePercent: null,
+      },
     });
   });
 
@@ -163,5 +179,73 @@ describe('mergeAgentMetrics', () => {
       ['shop', '1.9.0', 'a'],
       ['shop', '1.10.0', 'a'],
     ]);
+  });
+});
+
+// V14 (ADR-M79 §2.6, AC2): the merged intents' lead time compared with the human-effort estimate.
+describe('human-effort baseline (V14)', () => {
+  const merged = (extra: Record<string, unknown>) => ({
+    ...key('m'),
+    merged: 3,
+    withoutChanges: 3,
+    costUsd: '0',
+    leadTimeCount: 3,
+    leadTimeSumSeconds: '30000',
+    leadTimeMaxSeconds: 18000,
+    estimatedCount: 0,
+    estimatedHoursSum: '0',
+    estimatedLeadSumSeconds: '0',
+    ...extra,
+  });
+
+  it('gives the lead time as a percentage of the estimate, one decimal, half up', () => {
+    // 2 hours of lead time against an estimate of 8 hours.
+    expect(leadToEstimatePercent('7200', '8')).toBe(25);
+    // 1 hour against 3 hours = 33.33… %.
+    expect(leadToEstimatePercent('3600', '3')).toBe(33.3);
+    // 1 second against 0.25 hours (900 s) = 0.111… %; 5 s = 0.555… % → 0.6.
+    expect(leadToEstimatePercent('1', '0.25')).toBe(0.1);
+    expect(leadToEstimatePercent('5', '0.25')).toBe(0.6);
+    // Longer than the estimate: above 100 %.
+    expect(leadToEstimatePercent('90000', '12.5')).toBe(200);
+    expect(leadToEstimatePercent('0', '1')).toBe(0);
+  });
+
+  it('is null for an estimate of 0 hours (never divides by zero)', () => {
+    expect(leadToEstimatePercent('3600', '0')).toBeNull();
+    expect(leadToEstimatePercent('3600', '0.00')).toBeNull();
+  });
+
+  it('shows the count, the sums and the percentage when merged intents have an estimate', () => {
+    const [row] = mergeAgentMetrics({
+      ...NONE,
+      counts: [count('m', 'succeeded', 3)],
+      merged: [
+        merged({ estimatedCount: 2, estimatedHoursSum: '20.50', estimatedLeadSumSeconds: '36900' }),
+      ],
+    });
+    // 36900 s = 10.25 h against 20.5 h = 50 %.
+    expect(row!.merged.humanEffort).toEqual({
+      count: 2,
+      estimateHoursSum: '20.5',
+      leadTimeSecondsSum: 36900,
+      leadToEstimatePercent: 50,
+    });
+    // The lead time of all merged intents stays as it was.
+    expect(row!.merged.leadTime).toEqual({ count: 3, avgSeconds: 10000, maxSeconds: 18000 });
+  });
+
+  it('stays null, never 0, when no merged intent has an estimate', () => {
+    const [row] = mergeAgentMetrics({
+      ...NONE,
+      counts: [count('m', 'succeeded', 3)],
+      merged: [merged({})],
+    });
+    expect(row!.merged.humanEffort).toEqual({
+      count: 0,
+      estimateHoursSum: null,
+      leadTimeSecondsSum: null,
+      leadToEstimatePercent: null,
+    });
   });
 });

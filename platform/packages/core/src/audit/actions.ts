@@ -185,6 +185,15 @@ export const AUDIT_ACTIONS = {
     },
   },
   /**
+   * A person recorded or changed the human-effort estimate of an intent (V14, ADR-M79 §2.6): the
+   * hours as a decimal string with two decimals, and the earlier hours when there were some.
+   * Numbers only, never a text. The actor is the person.
+   */
+  'intent.effort_estimated': {
+    entityType: 'intent',
+    fields: { hours: 'decimal', previous_hours: 'decimal?' },
+  },
+  /**
    * A spec was linked to an intent (FR-02). Never the path or the content. B08 (ADR-M39): the
    * linked commit and the `cause`: `linked` (a person) or `head_changed` (the platform linked the
    * spec at the head of the default branch because its content changed there). S01 (ADR-M61):

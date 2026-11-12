@@ -1836,7 +1836,7 @@ flowchart LR
 - [ ] AC1: A person with a write role may record an estimate of the human effort for an intent (hours, a number; codes and numbers only, no text); empty by default
 - [ ] AC2: `sdlc metrics agents` shows the time compared with the estimate when one exists; D-05 and a migration in the same task
 
-> Note: QUESTIONS #431 (Harry, 2026-10-12): split out of V13 AC4 so that V13 stays read-only with no migration
+> Note: QUESTIONS #431 (Harry, 2026-10-12): split out of V13 AC4 so that V13 stays read-only with no migration. Done 2026-11-12 in one PR: `intents.human_effort_hours` (migration 0050, D-05 1.70), `adlc intent estimate`, and the column "Lead / estimate" of `adlc metrics agents`: the merged intents' lead time against the estimate (ADR-M79 0.4 §2.6, QUESTIONS #691–#693)
 
 #### H06. An optional stronger sandbox runtime (gVisor or Kata)
 
@@ -2061,6 +2061,7 @@ If a doc is missing or contradictory: add the question to design/QUESTIONS.md an
 | 1.69 | 2026-10-31 | Claude, approved by Harry | Release v0.11.0 with O04 and O05 |
 | 1.70 | 2026-11-11 | Claude, approved by Harry | New tasks V18 (the runner host set-up), V19 (`server:setup` steps 8–13) and V20 (team access and the runner link in the settings), milestone Server; order V20, V19, V18 (QUESTIONS #671–#673) |
 | 1.71 | 2026-11-12 | Claude Code (task U09), approved by Harry | U09 done: the dashboard's administration in three PRs (QUESTIONS #681–#686) |
+| 1.72 | 2026-11-12 | Claude Code (task V14), approved by Harry | V14 done: the human-effort baseline of the agent report in one PR (QUESTIONS #691–#693) |
 | 1.48 | 2026-10-13 | Claude (task L02, PR 4), approved by Harry | L02 note: the first result table is in D-07 §9; the evaluation was stopped at 53 of 80 runs (QUESTIONS #447) |
 | 1.28 | 2026-10-09 | Claude (task A10), approved by Harry | A10 note: ClickHouse access management done (`sdlc_admin`, ADR-M63 §6, QUESTIONS #330) |
 | 1.27 | 2026-10-09 | Claude (task A10, PR 1), approved by Harry | A10 note: three PRs (TLS everywhere, backups and the drill, the server with the operator; ADR-M63, QUESTIONS #325–#327); code area `openbao/tls.sh` |

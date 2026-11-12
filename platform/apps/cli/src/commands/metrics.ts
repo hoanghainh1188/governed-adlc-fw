@@ -92,6 +92,17 @@ export function formatShare(part: number, whole: number): string {
 
 const OK_STATUSES = ['succeeded', 'succeeded_proposal_only'];
 
+/**
+ * V14 (ADR-M79 §2.6): the merged intents' lead time as a percentage of the human-effort estimate,
+ * with how many intents had one (`-` without an estimate or from an older server).
+ */
+export function formatEstimate(
+  effort: AgentMetricsView['rows'][number]['merged']['human_effort'],
+): string {
+  if (!effort || effort.count === 0 || effort.lead_to_estimate_percent === null) return '-';
+  return `${effort.lead_to_estimate_percent.toFixed(1)}% (${effort.count})`;
+}
+
 /** One line per (project, agent version, model): the run measures (exported for tests). */
 export function agentRunTable(metrics: AgentMetricsView): string[] {
   const body = metrics.rows.map((row) => {
@@ -109,6 +120,7 @@ export function agentRunTable(metrics: AgentMetricsView): string[] {
       formatShare(row.merged.without_changes_requested, row.merged.intents),
       String(row.scope_breaches),
       formatDuration(row.merged.lead_time.avg_seconds),
+      formatEstimate(row.merged.human_effort),
     ];
   });
   if (body.length === 0) return [];
@@ -124,6 +136,7 @@ export function agentRunTable(metrics: AgentMetricsView): string[] {
     'cli.metrics.column.merged_clean',
     'cli.metrics.column.breaches',
     'cli.metrics.column.lead_avg',
+    'cli.metrics.column.lead_estimate',
   ] as const satisfies readonly MessageKey[];
   return table(
     header.map((key) => t(key)),

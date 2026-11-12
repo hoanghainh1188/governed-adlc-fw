@@ -88,6 +88,7 @@ export function intentRow(overrides: Partial<Intent> = {}): Intent {
     waiting_cause: null,
     waiting_since: AT,
     waiting_until: null,
+    human_effort_hours: null,
     status: 'in_gate',
     issue_number: 12,
     pr_number: null,
@@ -655,6 +656,20 @@ export function agentMetricsBody(
         avgSeconds: merged === 0 ? null : 5400,
         maxSeconds: merged === 0 ? null : 7200,
       },
+      humanEffort:
+        merged === 0
+          ? {
+              count: 0,
+              estimateHoursSum: null,
+              leadTimeSecondsSum: null,
+              leadToEstimatePercent: null,
+            }
+          : {
+              count: 1,
+              estimateHoursSum: '8',
+              leadTimeSecondsSum: 7200,
+              leadToEstimatePercent: 25,
+            },
     },
     scopeBreaches: 1,
     tokens: { input: '1450', output: '310', cachedInput: '100', cacheSharePercent: 6.9 },

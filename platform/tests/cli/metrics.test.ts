@@ -11,6 +11,7 @@ import {
   agentCostTable,
   agentRunTable,
   formatDuration,
+  formatEstimate,
   formatShare,
   nowTable,
   waitTable,
@@ -254,7 +255,7 @@ describe('adlc metrics agents (V13, ADR-M79)', () => {
     );
     // runs, ended well (2 of 3 ended), retries, CI first try, merged, no changes asked, breaches, lead
     expect(text).toMatch(
-      /pilot\s+coder-openhands 1\.4\.0\s+model-big\s+4\s+67%\s+1\s+50%\s+2\s+50%\s+1\s+1h 30m/,
+      /pilot\s+coder-openhands 1\.4\.0\s+model-big\s+4\s+67%\s+1\s+50%\s+2\s+50%\s+1\s+1h 30m\s+25\.0% \(1\)/,
     );
     // The row without a merge: no share, no lead time.
     expect(text).toMatch(/model-big|unknown\s+4\s+67%\s+1\s+50%\s+0\s+-\s+1\s+-/);
@@ -292,6 +293,57 @@ describe('adlc metrics agents (V13, ADR-M79)', () => {
     expect(body.metrics.rows[0]!.cost.total_usd).toBe('0.900000');
     expect(body.metrics.rows[1]!.cost.per_merged_intent_usd).toBeNull();
     expect(agentCostTable(agentMetricsSchema.parse(agentMetricsBody()).metrics)).toHaveLength(4);
+  });
+
+  // V14 (ADR-M79 §2.6, AC2): the lead time compared with the human-effort estimate.
+  it('V14: shows the lead time against the estimate, and - without one', async () => {
+    const h = await harness({ routes: { [AGENTS]: { status: 200, body: agentMetricsBody() } } });
+    expect(await h.run(['metrics', 'agents', '--project', 'pilot'])).toBe(EXIT.ok);
+    expect(h.out.join('\n')).toContain(t('cli.metrics.column.lead_estimate'));
+    const lines = agentRunTable(agentMetricsSchema.parse(agentMetricsBody()).metrics);
+    expect(lines.find((line) => line.includes('model-big'))).toMatch(/1h 30m\s+25\.0% \(1\)$/);
+    expect(lines.find((line) => line.includes('unknown'))).toMatch(/\s-\s+-$/);
+    expect(h.out.at(-1)).toBe(t('cli.metrics.agents_note'));
+  });
+
+  it('V14: --json carries the comparison; numbers only', async () => {
+    const h = await harness({ routes: { [AGENTS]: { status: 200, body: agentMetricsBody() } } });
+    expect(await h.run(['metrics', 'agents', '--project', 'pilot', '--json'])).toBe(EXIT.ok);
+    const body = JSON.parse(h.out.join('\n')) as {
+      metrics: { rows: { merged: { human_effort: unknown } }[] };
+    };
+    expect(body.metrics.rows[0]!.merged.human_effort).toEqual({
+      count: 1,
+      estimate_hours_sum: '8',
+      lead_time_seconds_sum: 7200,
+      lead_to_estimate_percent: 25,
+    });
+    expect(body.metrics.rows[1]!.merged.human_effort).toEqual({
+      count: 0,
+      estimate_hours_sum: null,
+      lead_time_seconds_sum: null,
+      lead_to_estimate_percent: null,
+    });
+  });
+
+  it('V14: formats the comparison; - without an estimate or from an older server', () => {
+    expect(formatEstimate(undefined)).toBe('-');
+    expect(
+      formatEstimate({
+        count: 0,
+        estimate_hours_sum: null,
+        lead_time_seconds_sum: null,
+        lead_to_estimate_percent: null,
+      }),
+    ).toBe('-');
+    expect(
+      formatEstimate({
+        count: 3,
+        estimate_hours_sum: '12.5',
+        lead_time_seconds_sum: 90000,
+        lead_to_estimate_percent: 200,
+      }),
+    ).toBe('200.0% (3)');
   });
 
   it('shows a refusal with its code (exit 1)', async () => {

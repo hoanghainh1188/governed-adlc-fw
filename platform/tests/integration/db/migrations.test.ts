@@ -72,6 +72,8 @@ const UPDATABLE: Record<string, readonly string[]> = {
     'waiting_cause',
     'waiting_since',
     'waiting_until',
+    // V14 (migration 0050): a person's estimate of the human effort; trigger SDA29.
+    'human_effort_hours',
   ],
   spec_refs: [],
   plans: [],

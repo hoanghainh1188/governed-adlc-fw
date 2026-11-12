@@ -464,13 +464,16 @@ export function refusalReply(
   if (error instanceof CommandError) {
     // `project_not_found` cannot happen here (the project is the polled one); same text as no role.
     // `scope_not_allowed` cannot happen either: a comment never carries a scope, and
-    // `g7_feedback_on_git_host` is the API's refusal (E01 PR 2, QUESTIONS #190).
+    // `g7_feedback_on_git_host` is the API's refusal (E01 PR 2, QUESTIONS #190). `intent_finished`
+    // comes only from the effort estimate (V14), never from a comment command.
     const code =
       error.code === 'project_not_found'
         ? 'intent_not_found'
         : error.code === 'scope_not_allowed'
           ? 'decision_not_allowed'
-          : error.code === 'g7_feedback_on_git_host' || error.code === 'gate_input_conflict'
+          : error.code === 'g7_feedback_on_git_host' ||
+              error.code === 'gate_input_conflict' ||
+              error.code === 'intent_finished'
             ? 'failed'
             : error.code;
     return { code, params: gate };

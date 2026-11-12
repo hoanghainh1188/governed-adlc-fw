@@ -52,13 +52,18 @@ const OPTIONS = {
     cursor: { type: 'string' },
   },
   show: {},
+  estimate: { hours: { type: 'string' } },
 } as const;
+
+/** V14: hours from 0.25 to 10000 with at most two decimals (the API's `effortEstimateSchema`). */
+const HOURS = /^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/;
 
 export async function runIntent(args: readonly string[], ctx: CliContext): Promise<number> {
   const [command, ...rest] = args;
   if (command === 'create') return create(rest, ctx);
   if (command === 'list') return list(rest, ctx);
   if (command === 'show') return showIntent(rest, ctx);
+  if (command === 'estimate') return estimate(rest, ctx);
   return usage(ctx);
 }
 
@@ -228,6 +233,35 @@ async function showIntent(args: readonly string[], ctx: CliContext): Promise<num
   });
 }
 
+/** V14 (ADR-M79 §2.6): records a person's estimate of the human effort, in hours. */
+async function estimate(args: readonly string[], ctx: CliContext): Promise<number> {
+  const parsed = parseCommand(args, OPTIONS.estimate, 1);
+  const ref = parsed ? intentRef(parsed.positionals[0] ?? '') : undefined;
+  const hours = parsed?.values.hours;
+  if (!parsed || ref === undefined || typeof hours !== 'string' || !validHours(hours)) {
+    return usage(ctx);
+  }
+  const json = parsed.values.json === true;
+  return withApi(ctx, json, async (client) => {
+    const intent = await client.put(`/v1/intents/${segment(ref)}/effort-estimate`, intentSchema, {
+      hours: Number(hours),
+    });
+    if (json) ctx.stdout(toJson(intent));
+    else
+      say(ctx, 'cli.intent.estimated', {
+        code: intent.code,
+        hours: show(intent.human_effort_hours),
+      });
+    return EXIT.ok;
+  });
+}
+
+function validHours(value: string): boolean {
+  if (!HOURS.test(value)) return false;
+  const hours = Number(value);
+  return hours >= 0.25 && hours <= 10_000;
+}
+
 function printDetail(ctx: CliContext, intent: IntentDetail): void {
   say(ctx, 'cli.intent.detail', {
     ...summary(intent),
@@ -236,6 +270,7 @@ function printDetail(ctx: CliContext, intent: IntentDetail): void {
     issue: show(intent.issue_number),
     pr: show(intent.pr_number),
     created_at: intent.created_at,
+    effort: show(intent.human_effort_hours),
   });
   printHold(ctx, intent);
   if (intent.spec) {

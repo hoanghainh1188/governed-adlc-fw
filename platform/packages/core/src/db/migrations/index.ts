@@ -49,6 +49,7 @@ import { migration0046Housekeeping } from './0046-housekeeping.js';
 import { migration0047ClientDataDeletion } from './0047-client-data-deletion.js';
 import { migration0048ClientPurge } from './0048-client-purge.js';
 import { migration0049ProjectRepoPath } from './0049-project-repo-path.js';
+import { migration0050IntentEffortEstimate } from './0050-intent-effort-estimate.js';
 import type { SqlMigration } from './define.js';
 
 export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
@@ -101,4 +102,5 @@ export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
   '0047-client-data-deletion': migration0047ClientDataDeletion,
   '0048-client-purge': migration0048ClientPurge,
   '0049-project-repo-path': migration0049ProjectRepoPath,
+  '0050-intent-effort-estimate': migration0050IntentEffortEstimate,
 };

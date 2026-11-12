@@ -44,6 +44,11 @@ export type CommandErrorCode =
    * ADR-M95 §2.4), without a reason code of `REVIEW_ALLOW_REASON_CODES`.
    */
   | 'review_reason_required'
+  /**
+   * The intent is finished (`done`, `rejected`, `cancelled`, `blocked`): its human-effort estimate
+   * no longer changes (task V14, QUESTIONS #692).
+   */
+  | 'intent_finished'
   /** Unknown intent, or an intent of a project the actor cannot read. */
   | 'intent_not_found'
   /** Unknown project, or a project the actor has no role on. */

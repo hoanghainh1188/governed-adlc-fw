@@ -3,6 +3,7 @@
 // decisions, `intent.closed` and cost records, with no new table. AC2: every measure on seeded
 // data. AC3: who may read it (QUESTIONS #430: a tenant admin, or a role in BOTH cost_read_roles
 // and metrics_read_roles), the range, exact decimals, tenant isolation, and numbers and codes only.
+// V14 AC2 (ADR-M79 §2.6): the merged intents' lead time against the human-effort estimate.
 import { randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -57,6 +58,12 @@ interface Row {
       readonly count: number;
       readonly avg_seconds: number | null;
       readonly max_seconds: number | null;
+    };
+    readonly human_effort: {
+      readonly count: number;
+      readonly estimate_hours_sum: string | null;
+      readonly lead_time_seconds_sum: number | null;
+      readonly lead_to_estimate_percent: number | null;
     };
   };
   readonly scope_breaches: number;
@@ -366,6 +373,11 @@ describeDb('V13: agent efficiency report on PostgreSQL', () => {
     await ci(id, opsRun, 'passed', at(1.1));
     await merge(id, opsRun, at(1.2));
     await closed(id, q1, 1800, at(1.3));
+    // V14: Person A estimated 4 hours for the shop intent; the ops intent has no estimate.
+    await a.scope.intents.recordEffortEstimate(intent, {
+      hours: '4',
+      actorId: a.seeded.personA,
+    });
     // Another tenant's data is never counted.
     const b = tenantB;
     await shapeRun(b.seeded.runId, 'failed', 'agent_error', at(0));
@@ -442,6 +454,13 @@ describeDb('V13: agent efficiency report on PostgreSQL', () => {
         intents: 1,
         without_changes_requested: 0,
         lead_time: { count: 1, avg_seconds: 7200, max_seconds: 7200 },
+        // V14 AC2: 7200 s of lead time against an estimate of 4 hours (14400 s) = 50 %.
+        human_effort: {
+          count: 1,
+          estimate_hours_sum: '4',
+          lead_time_seconds_sum: 7200,
+          lead_to_estimate_percent: 50,
+        },
       });
       expect(shop.scope_breaches).toBe(1);
       const ops = find(m, 'ops', SMALL);
@@ -450,6 +469,13 @@ describeDb('V13: agent efficiency report on PostgreSQL', () => {
         intents: 1,
         without_changes_requested: 1,
         lead_time: { count: 1, avg_seconds: 1800, max_seconds: 1800 },
+        // V14 AC2: no estimate → null, never 0.
+        human_effort: {
+          count: 0,
+          estimate_hours_sum: null,
+          lead_time_seconds_sum: null,
+          lead_to_estimate_percent: null,
+        },
       });
       expect(ops.scope_breaches).toBe(0);
       expect(find(m, 'shop', 'unknown').ci).toEqual({ first_try_total: 0, first_try_passed: 0 });

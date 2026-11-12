@@ -231,7 +231,8 @@ Reason codes: `spec_unclear`, `tests_insufficient`, `security_finding`, `out_of_
 | `adlc run list <INT>` / `adlc run kill <INT>` | Runs, kill switch |
 | `adlc cost report --project <slug>` | Tokens and cost |
 | `adlc metrics gates --project <slug>` | How long gates wait for people |
-| `adlc metrics agents --project <slug>` | How agents and models did: ended well, CI first try, cost per merged intent |
+| `adlc metrics agents --project <slug>` | How agents and models did: ended well, CI first try, cost per merged intent, lead time against the human-effort estimate |
+| `adlc intent estimate <INT-…> --hours <n>` | Records how many hours the work would take without an agent (Person A, while the intent is open) |
 | `adlc evidence build\|list\|show\|export <INT>` | The Evidence Pack |
 | `adlc eval plan list\|show\|create\|change\|archive`, `adlc eval run <plan-id>`, `adlc eval list\|show` | Evaluation plans: agents, models and prompt variants measured on a fixed task set ([handbook Ch.19 §19.8c](../handbook/02-playbook/ch19-approval-queues.md)) |
 
