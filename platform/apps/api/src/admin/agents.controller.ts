@@ -26,12 +26,14 @@ import {
   type Agent,
 } from '@sdlc/core';
 
+import { SessionAction } from '../auth/auth.guard.js';
 import { CurrentPrincipal, type Principal } from '../auth/principal.js';
 import { agentApiError } from '../errors/api-error.js';
-import { CLOCK } from '../tokens.js';
+import { ADMIN_STEP_UP, CLOCK } from '../tokens.js';
 import { parseRequest } from '../validation.js';
 import { actorOf } from './actor.js';
 import { presentAgent, presentRound, presentVerdict } from './agents.present.js';
+import type { AdminChange, AdminStepUp } from './step-up.js';
 import {
   agentKeySchema,
   approveAgentSchema,
@@ -45,9 +47,19 @@ import {
 
 type Body = Record<string, unknown>;
 
+const BASE = '/v1/admin/agents';
+
+/** An agent change of a dashboard session takes a passkey step-up (U09, ADR-M73 §2.4b). */
+function agentChange(decision: string, target: string): AdminChange {
+  return { action: 'admin.agent', decision, target };
+}
+
 @Controller('v1/admin/agents')
 export class AdminAgentsController {
-  constructor(@Inject(CLOCK) private readonly now: () => Date) {}
+  constructor(
+    @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(ADMIN_STEP_UP) private readonly stepUp: AdminStepUp,
+  ) {}
 
   @Get()
   async list(@CurrentPrincipal() p: Principal, @Query() query: unknown): Promise<Body> {
@@ -95,65 +107,75 @@ export class AdminAgentsController {
   }
 
   @Post()
+  @SessionAction('actions')
   @HttpCode(201)
   async register(@CurrentPrincipal() p: Principal, @Body() body: unknown): Promise<Body> {
-    const input = parseRequest(registerAgentSchema, body, 'body');
+    const split = this.stepUp.split(p, body);
+    const input = parseRequest(registerAgentSchema, split.body ?? {}, 'body');
     return this.call(input.key, async () =>
       this.present(
         p,
-        await registerAgentAs(p.scope, actorOf(p), {
-          agentKey: input.key,
-          version: input.version,
-          ownerId: input.owner_id,
-          modelRef: input.model_ref ?? null,
-          instructionsRef: input.instructions_ref,
-          instructionsSha256: input.instructions_sha256,
-          allowedTools: input.allowed_tools,
-          maxAutonomy: input.max_autonomy,
-          approvedEnvironments: input.approved_environments,
-          ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
-          ...rootOf(input),
-          now: this.now(),
-        }),
+        await this.stepUp.run(p, agentChange('register', BASE), split, (q) =>
+          registerAgentAs(q.scope, actorOf(q), {
+            agentKey: input.key,
+            version: input.version,
+            ownerId: input.owner_id,
+            modelRef: input.model_ref ?? null,
+            instructionsRef: input.instructions_ref,
+            instructionsSha256: input.instructions_sha256,
+            allowedTools: input.allowed_tools,
+            maxAutonomy: input.max_autonomy,
+            approvedEnvironments: input.approved_environments,
+            ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
+            ...rootOf(input),
+            now: this.now(),
+          }),
+        ),
       ),
     );
   }
 
   @Patch(':key')
+  @SessionAction('actions')
   async update(
     @CurrentPrincipal() p: Principal,
     @Param('key') key: string,
     @Body() body: unknown,
   ): Promise<Body> {
     const agentKey = parseRequest(agentKeySchema, key, 'path');
-    const input = parseRequest(updateAgentSchema, body, 'body');
+    const split = this.stepUp.split(p, body);
+    const input = parseRequest(updateAgentSchema, split.body ?? {}, 'body');
+    const change = agentChange('update', `${BASE}/${agentKey}`);
     return this.call(agentKey, async () =>
       this.present(
         p,
-        await updateAgentAs(p.scope, actorOf(p), agentKey, {
-          version: input.version,
-          now: this.now(),
-          ...(input.model_ref === undefined ? {} : { modelRef: input.model_ref }),
-          ...(input.instructions_ref === undefined
-            ? {}
-            : { instructionsRef: input.instructions_ref }),
-          ...(input.instructions_sha256 === undefined
-            ? {}
-            : { instructionsSha256: input.instructions_sha256 }),
-          ...(input.allowed_tools === undefined ? {} : { allowedTools: input.allowed_tools }),
-          ...(input.max_autonomy === undefined ? {} : { maxAutonomy: input.max_autonomy }),
-          ...(input.approved_environments === undefined
-            ? {}
-            : { approvedEnvironments: input.approved_environments }),
-          ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
-          ...rootOf(input),
-        }),
+        await this.stepUp.run(p, change, split, (q) =>
+          updateAgentAs(q.scope, actorOf(q), agentKey, {
+            version: input.version,
+            now: this.now(),
+            ...(input.model_ref === undefined ? {} : { modelRef: input.model_ref }),
+            ...(input.instructions_ref === undefined
+              ? {}
+              : { instructionsRef: input.instructions_ref }),
+            ...(input.instructions_sha256 === undefined
+              ? {}
+              : { instructionsSha256: input.instructions_sha256 }),
+            ...(input.allowed_tools === undefined ? {} : { allowedTools: input.allowed_tools }),
+            ...(input.max_autonomy === undefined ? {} : { maxAutonomy: input.max_autonomy }),
+            ...(input.approved_environments === undefined
+              ? {}
+              : { approvedEnvironments: input.approved_environments }),
+            ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
+            ...rootOf(input),
+          }),
+        ),
       ),
     );
   }
 
   /** Approves the activation or retirement; the last approval of a set changes the status. */
   @Post(':key/approvals')
+  @SessionAction('actions')
   @HttpCode(200)
   async approve(
     @CurrentPrincipal() p: Principal,
@@ -161,48 +183,56 @@ export class AdminAgentsController {
     @Body() body: unknown,
   ): Promise<Body> {
     const agentKey = parseRequest(agentKeySchema, key, 'path');
-    const input = parseRequest(approveAgentSchema, body, 'body');
+    const change = agentChange('approve', `${BASE}/${agentKey}/approvals`);
     return this.call(agentKey, async () => {
-      const result = await approveAgent(p.scope, actorOf(p), agentKey, {
-        purpose: input.purpose,
-        capacity: input.as,
-        now: this.now(),
-        ...(input.reason_code === undefined ? {} : { reason: input.reason_code }),
-        ...(input.evaluation_code === undefined ? {} : { evaluationCode: input.evaluation_code }),
-      });
+      const result = await this.stepUp.apply(p, body, approveAgentSchema, change, (q, input) =>
+        approveAgent(q.scope, actorOf(q), agentKey, {
+          purpose: input.purpose,
+          capacity: input.as,
+          now: this.now(),
+          ...(input.reason_code === undefined ? {} : { reason: input.reason_code }),
+          ...(input.evaluation_code === undefined ? {} : { evaluationCode: input.evaluation_code }),
+        }),
+      );
       return presentRound(result, await recertificationMonths(p.scope, null), this.now());
     });
   }
 
   @Post(':key/suspend')
+  @SessionAction('actions')
   @HttpCode(200)
   suspend(@CurrentPrincipal() p: Principal, @Param('key') key: string, @Body() body: unknown) {
     return this.stop(p, key, body, 'suspended');
   }
 
   @Post(':key/quarantine')
+  @SessionAction('actions')
   @HttpCode(200)
   quarantine(@CurrentPrincipal() p: Principal, @Param('key') key: string, @Body() body: unknown) {
     return this.stop(p, key, body, 'quarantined');
   }
 
   @Put(':key/owner')
+  @SessionAction('actions')
   async owner(
     @CurrentPrincipal() p: Principal,
     @Param('key') key: string,
     @Body() body: unknown,
   ): Promise<Body> {
     const agentKey = parseRequest(agentKeySchema, key, 'path');
-    const input = parseRequest(changeOwnerSchema, body, 'body');
+    const change = agentChange('owner', `${BASE}/${agentKey}/owner`);
     return this.call(agentKey, async () =>
       this.present(
         p,
-        await changeOwnerAs(p.scope, actorOf(p), agentKey, input.owner_id, this.now()),
+        await this.stepUp.apply(p, body, changeOwnerSchema, change, (q, input) =>
+          changeOwnerAs(q.scope, actorOf(q), agentKey, input.owner_id, this.now()),
+        ),
       ),
     );
   }
 
   @Post(':key/recertify')
+  @SessionAction('actions')
   @HttpCode(200)
   async recertify(
     @CurrentPrincipal() p: Principal,
@@ -210,13 +240,15 @@ export class AdminAgentsController {
     @Body() body: unknown,
   ): Promise<Body> {
     const agentKey = parseRequest(agentKeySchema, key, 'path');
-    const input = parseRequest(recertifySchema, body ?? {}, 'body');
+    const change = agentChange('recertify', `${BASE}/${agentKey}/recertify`);
     return this.call(agentKey, async () => {
-      const result = await recertifyAgentAs(p.scope, actorOf(p), agentKey, {
-        now: this.now(),
-        ...(input.day === undefined ? {} : { day: input.day }),
-        ...(input.evaluation_code === undefined ? {} : { evaluationCode: input.evaluation_code }),
-      });
+      const result = await this.stepUp.apply(p, body, recertifySchema, change, (q, input) =>
+        recertifyAgentAs(q.scope, actorOf(q), agentKey, {
+          now: this.now(),
+          ...(input.day === undefined ? {} : { day: input.day }),
+          ...(input.evaluation_code === undefined ? {} : { evaluationCode: input.evaluation_code }),
+        }),
+      );
       // L10: the agent and the check of its evaluation (a warning in `warn` mode).
       return {
         ...(await this.present(p, result.agent)),
@@ -232,11 +264,15 @@ export class AdminAgentsController {
     to: 'suspended' | 'quarantined',
   ): Promise<Body> {
     const agentKey = parseRequest(agentKeySchema, key, 'path');
-    const input = parseRequest(stopAgentSchema, body, 'body');
+    // QUESTIONS #681: containment of an agent takes a step-up too; the CLI stays the fast path.
+    const decision = to === 'suspended' ? 'suspend' : 'quarantine';
+    const change = agentChange(decision, `${BASE}/${agentKey}/${decision}`);
     return this.call(agentKey, async () =>
       this.present(
         p,
-        await stopAgentAs(p.scope, actorOf(p), agentKey, to, input.reason_code, this.now()),
+        await this.stepUp.apply(p, body, stopAgentSchema, change, (q, input) =>
+          stopAgentAs(q.scope, actorOf(q), agentKey, to, input.reason_code, this.now()),
+        ),
       ),
     );
   }

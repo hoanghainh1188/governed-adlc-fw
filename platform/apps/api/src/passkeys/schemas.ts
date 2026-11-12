@@ -1,7 +1,7 @@
 // Request schemas of the passkey and step-up endpoints (task U06, design/ADR-M73 §2.4). Shapes and
 // sizes only: `@simplewebauthn/server` checks the WebAuthn answers, core checks the binding.
 import { GATE_CODES } from '@sdlc/contracts';
-import { STEP_UP_ACTIONS } from '@sdlc/core';
+import { ADMIN_STEP_UP_ACTIONS, STEP_UP_ACTIONS } from '@sdlc/core';
 import { z } from 'zod';
 
 import { idSchema } from '../admin/schemas.js';
@@ -76,6 +76,15 @@ export const stepUpRequestSchema = z.discriminatedUnion('action', [
   // `change`, `run`) and `target` (the project's slug for create, else the plan's ID).
   z.strictObject({
     action: z.enum([STEP_UP_ACTIONS[2], STEP_UP_ACTIONS[3], STEP_UP_ACTIONS[4]]),
+    request: decisionBody.refine((body) => typeof body.target === 'string', {
+      message: 'target',
+    }),
+  }),
+  // U09 (ADR-M73 §2.4b, QUESTIONS #685): the body the admin endpoint will receive, with
+  // `decision` (the change) and `target` (the path it writes to, for example
+  // `/v1/admin/projects/web/roles/<id>`).
+  z.strictObject({
+    action: z.enum(ADMIN_STEP_UP_ACTIONS),
     request: decisionBody.refine((body) => typeof body.target === 'string', {
       message: 'target',
     }),

@@ -8,6 +8,7 @@ import {
   assertRecentSignIn,
   createRegistrationChallenge,
   createStepUpChallenge,
+  isAdminStepUpAction,
   isUuid,
   listPasskeys,
   listUserPasskeys,
@@ -164,6 +165,10 @@ export class PasskeysService {
       expectedInputSha256: request.expected_input_sha256 ?? null,
       requestSha256: stepUpRequestSha256(request.request),
     };
+    if (isAdminStepUpAction(request.action)) {
+      // An administration change: the endpoint checks who may make it, in its transaction.
+      return { ...common, intentId: null, escalationId: null, gate: null };
+    }
     if (request.action.startsWith('eval_plan.')) {
       await this.#readablePlanTarget(p, request.request.target);
       return { ...common, intentId: null, escalationId: null, gate: null };

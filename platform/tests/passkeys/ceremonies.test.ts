@@ -11,6 +11,7 @@ import {
   coseAlgorithm,
 } from '../../apps/api/src/passkeys/webauthn.js';
 import {
+  ADMIN_STEP_UP_ACTIONS,
   PasskeyError,
   assertRecentSignIn,
   assertStepUpBinding,
@@ -165,6 +166,34 @@ describe('U06: the step-up binding (QUESTIONS #411)', () => {
       { expectedInputSha256: 'A'.repeat(64) },
     ] as Partial<StepUpBinding>[]) {
       expect(() => assertStepUpBinding({ ...base, ...bad }), JSON.stringify(bad)).toThrow(
+        PasskeyError,
+      );
+    }
+  });
+
+  it('U09: an administration change binds no intent, escalation, gate or input hash', () => {
+    const admin: StepUpBinding = {
+      action: 'admin.project',
+      intentId: null,
+      escalationId: null,
+      gate: null,
+      decision: 'role_grant',
+      expectedInputSha256: null,
+      requestSha256: base.requestSha256,
+    };
+    for (const action of ADMIN_STEP_UP_ACTIONS) {
+      expect(() => assertStepUpBinding({ ...admin, action })).not.toThrow();
+    }
+    for (const bad of [
+      { action: 'admin.tokens' },
+      { intentId: base.intentId },
+      { escalationId: base.intentId },
+      { gate: 'G3' },
+      { expectedInputSha256: 'a'.repeat(64) },
+      { decision: null },
+      { decision: 'Role grant' },
+    ] as Partial<StepUpBinding>[]) {
+      expect(() => assertStepUpBinding({ ...admin, ...bad }), JSON.stringify(bad)).toThrow(
         PasskeyError,
       );
     }

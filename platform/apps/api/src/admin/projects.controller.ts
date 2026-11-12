@@ -8,6 +8,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  Inject,
   Param,
   Patch,
   Post,
@@ -27,13 +28,17 @@ import {
   updateProject,
 } from '@sdlc/core';
 
+import { SessionAction } from '../auth/auth.guard.js';
 import { CurrentPrincipal, type Principal } from '../auth/principal.js';
 import { localeOf } from '../errors/locale.js';
+import { ADMIN_STEP_UP } from '../tokens.js';
 import { parseRequest } from '../validation.js';
 import { actorOf } from './actor.js';
 import { presentConfig, presentProject, presentRoleBinding } from './present.js';
+import type { AdminStepUp } from './step-up.js';
 import {
   createProjectSchema,
+  emptyBodySchema,
   grantRoleSchema,
   historyQuerySchema,
   idSchema,
@@ -44,8 +49,13 @@ import {
 
 type Body = Record<string, unknown>;
 
+const BASE = '/v1/admin/projects';
+
+// U09 (ADR-M73 §2.4b): every change also takes a dashboard session, with a passkey step-up.
 @Controller('v1/admin/projects')
 export class AdminProjectsController {
+  constructor(@Inject(ADMIN_STEP_UP) private readonly stepUp: AdminStepUp) {}
+
   @Get()
   async list(@CurrentPrincipal() p: Principal): Promise<Body> {
     const projects = await listProjects(p.scope, actorOf(p));
@@ -53,17 +63,22 @@ export class AdminProjectsController {
   }
 
   @Post()
+  @SessionAction('actions')
   @HttpCode(201)
   async create(@CurrentPrincipal() p: Principal, @Body() body: unknown): Promise<Body> {
-    const input = parseRequest(createProjectSchema, body, 'body');
-    const project = await createProject(p.scope, actorOf(p), {
-      slug: input.slug,
-      name: input.name,
-      repoFullName: input.repo_full_name,
-      ...(input.repo_path === undefined ? {} : { repoPath: input.repo_path }),
-      ...(input.default_branch === undefined ? {} : { defaultBranch: input.default_branch }),
-      ...(input.git_provider === undefined ? {} : { gitProvider: input.git_provider }),
-    });
+    const split = this.stepUp.split(p, body);
+    const input = parseRequest(createProjectSchema, split.body, 'body');
+    const change = { action: 'admin.project', decision: 'create', target: BASE } as const;
+    const project = await this.stepUp.run(p, change, split, (q) =>
+      createProject(q.scope, actorOf(q), {
+        slug: input.slug,
+        name: input.name,
+        repoFullName: input.repo_full_name,
+        ...(input.repo_path === undefined ? {} : { repoPath: input.repo_path }),
+        ...(input.default_branch === undefined ? {} : { defaultBranch: input.default_branch }),
+        ...(input.git_provider === undefined ? {} : { gitProvider: input.git_provider }),
+      }),
+    );
     return presentProject(project);
   }
 
@@ -75,31 +90,51 @@ export class AdminProjectsController {
   }
 
   @Patch(':project')
+  @SessionAction('actions')
   async update(
     @CurrentPrincipal() p: Principal,
     @Param('project') slug: string,
     @Body() body: unknown,
   ): Promise<Body> {
-    const input = parseRequest(updateProjectSchema, body, 'body');
-    const project = await updateProject(
-      p.scope,
-      actorOf(p),
-      parseRequest(projectSlugSchema, slug, 'path'),
-      {
+    const projectSlug = parseRequest(projectSlugSchema, slug, 'path');
+    const split = this.stepUp.split(p, body);
+    const input = parseRequest(updateProjectSchema, split.body, 'body');
+    const change = {
+      action: 'admin.project',
+      decision: 'update',
+      target: `${BASE}/${projectSlug}`,
+    } as const;
+    const project = await this.stepUp.run(p, change, split, (q) =>
+      updateProject(q.scope, actorOf(q), projectSlug, {
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.repo_full_name === undefined ? {} : { repoFullName: input.repo_full_name }),
         ...(input.repo_path === undefined ? {} : { repoPath: input.repo_path }),
         ...(input.default_branch === undefined ? {} : { defaultBranch: input.default_branch }),
-      },
+      }),
     );
     return presentProject(project);
   }
 
   @Post(':project/archive')
+  @SessionAction('actions')
   @HttpCode(200)
-  async archive(@CurrentPrincipal() p: Principal, @Param('project') slug: string): Promise<Body> {
+  async archive(
+    @CurrentPrincipal() p: Principal,
+    @Param('project') slug: string,
+    @Body() body: unknown,
+  ): Promise<Body> {
+    const projectSlug = parseRequest(projectSlugSchema, slug, 'path');
+    const split = this.stepUp.split(p, body);
+    parseRequest(emptyBodySchema, split.body ?? {}, 'body');
+    const change = {
+      action: 'admin.project',
+      decision: 'archive',
+      target: `${BASE}/${projectSlug}/archive`,
+    } as const;
     return presentProject(
-      await archiveProject(p.scope, actorOf(p), parseRequest(projectSlugSchema, slug, 'path')),
+      await this.stepUp.run(p, change, split, (q) =>
+        archiveProject(q.scope, actorOf(q), projectSlug),
+      ),
     );
   }
 
@@ -120,6 +155,7 @@ export class AdminProjectsController {
   }
 
   @Post(':project/roles')
+  @SessionAction('actions')
   @HttpCode(201)
   async grant(
     @CurrentPrincipal() p: Principal,
@@ -127,26 +163,41 @@ export class AdminProjectsController {
     @Body() body: unknown,
   ): Promise<Body> {
     const projectSlug = parseRequest(projectSlugSchema, slug, 'path');
-    const input = parseRequest(grantRoleSchema, body, 'body');
-    const binding = await grantProjectRole(p.scope, actorOf(p), projectSlug, {
-      userId: input.user_id,
-      role: input.role,
-    });
+    const split = this.stepUp.split(p, body);
+    const input = parseRequest(grantRoleSchema, split.body, 'body');
+    const change = {
+      action: 'admin.project',
+      decision: 'role_grant',
+      target: `${BASE}/${projectSlug}/roles`,
+    } as const;
+    const binding = await this.stepUp.run(p, change, split, (q) =>
+      grantProjectRole(q.scope, actorOf(q), projectSlug, {
+        userId: input.user_id,
+        role: input.role,
+      }),
+    );
     return presentRoleBinding(binding, { id: binding.project_id, slug: projectSlug });
   }
 
   @Delete(':project/roles/:id')
+  @SessionAction('actions')
   async revoke(
     @CurrentPrincipal() p: Principal,
     @Param('project') slug: string,
     @Param('id') id: string,
+    @Body() body: unknown,
   ): Promise<Body> {
     const projectSlug = parseRequest(projectSlugSchema, slug, 'path');
-    const binding = await revokeProjectRole(
-      p.scope,
-      actorOf(p),
-      projectSlug,
-      parseRequest(idSchema, id, 'path'),
+    const roleId = parseRequest(idSchema, id, 'path');
+    const split = this.stepUp.split(p, body);
+    parseRequest(emptyBodySchema, split.body ?? {}, 'body');
+    const change = {
+      action: 'admin.project',
+      decision: 'role_revoke',
+      target: `${BASE}/${projectSlug}/roles/${roleId}`,
+    } as const;
+    const binding = await this.stepUp.run(p, change, split, (q) =>
+      revokeProjectRole(q.scope, actorOf(q), projectSlug, roleId),
     );
     return presentRoleBinding(binding, { id: binding.project_id, slug: projectSlug });
   }
@@ -166,18 +217,26 @@ export class AdminProjectsController {
   }
 
   @Put(':project/config')
+  @SessionAction('actions')
   async saveConfig(
     @CurrentPrincipal() p: Principal,
     @Param('project') slug: string,
     @Body() body: unknown,
     @Headers('accept-language') language: string | undefined,
   ): Promise<Body> {
-    const input = parseRequest(saveConfigSchema, body, 'body');
-    const view = await saveProjectConfig(
-      p.scope,
-      actorOf(p),
-      parseRequest(projectSlugSchema, slug, 'path'),
-      { configYaml: input.config_yaml, expectedVersion: input.expected_version },
+    const projectSlug = parseRequest(projectSlugSchema, slug, 'path');
+    const split = this.stepUp.split(p, body);
+    const input = parseRequest(saveConfigSchema, split.body, 'body');
+    const change = {
+      action: 'admin.project',
+      decision: 'config',
+      target: `${BASE}/${projectSlug}/config`,
+    } as const;
+    const view = await this.stepUp.run(p, change, split, (q) =>
+      saveProjectConfig(q.scope, actorOf(q), projectSlug, {
+        configYaml: input.config_yaml,
+        expectedVersion: input.expected_version,
+      }),
     );
     return presentConfig(view, localeOf(language));
   }

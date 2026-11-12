@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Dashboard administration, part 1: the API takes admin changes from a dashboard session, with a passkey** (task U09 PR 1, ADR-M73 1.7 §2.4b, QUESTIONS #681–#685). With the dashboard actions on, a signed-in person can now send the administration changes from the page: projects (create, update, archive, roles, configuration), users (create, update, disable, enable, GitHub identities, sign out everywhere), tenant admins, the agent register (register, update, approvals, suspend, quarantine, owner, recertify), the project AI record, evidence holds, and removing a person's passkey. Every one of them needs a passkey confirmation bound to the change (the area, the change, the path and the body); a refused change leaves the confirmation unused. The permission checks are unchanged: a self-grant and Person A = Person B are still refused. API tokens and the tool register stay in the CLI. The CLI is unchanged and needs no passkey; it may not send `step_up`. The pages come in the next pull requests.
+
 ## [0.13.0] - 2026-11-12
 
 **Real repositories: very large trees, repositories without CI, and monorepos with one project per folder.**

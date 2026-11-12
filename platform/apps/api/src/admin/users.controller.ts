@@ -30,13 +30,16 @@ import {
   type User,
 } from '@sdlc/core';
 
+import { SessionAction } from '../auth/auth.guard.js';
 import { CurrentPrincipal, type Principal } from '../auth/principal.js';
-import { CLOCK } from '../tokens.js';
+import { ADMIN_STEP_UP, CLOCK } from '../tokens.js';
 import { parseRequest } from '../validation.js';
 import { actorOf } from './actor.js';
 import { presentIdentity, presentIssuedToken, presentToken, presentUser } from './present.js';
+import type { AdminChange, AdminStepUp } from './step-up.js';
 import {
   createUserSchema,
+  emptyBodySchema,
   historyQuerySchema,
   idSchema,
   issueTokenSchema,
@@ -46,9 +49,20 @@ import {
 
 type Body = Record<string, unknown>;
 
+const BASE = '/v1/admin/users';
+
+/** A user change of a dashboard session takes a passkey step-up (U09, ADR-M73 §2.4b). */
+function userChange(decision: string, target: string): AdminChange {
+  return { action: 'admin.user', decision, target };
+}
+
+// Tokens stay in the CLI (MVP1-UI-SCOPE §3.4, QUESTIONS #684): their routes take no session write.
 @Controller('v1/admin/users')
 export class AdminUsersController {
-  constructor(@Inject(CLOCK) private readonly now: () => Date) {}
+  constructor(
+    @Inject(CLOCK) private readonly now: () => Date,
+    @Inject(ADMIN_STEP_UP) private readonly stepUp: AdminStepUp,
+  ) {}
 
   @Get()
   async list(@CurrentPrincipal() p: Principal): Promise<Body> {
@@ -60,13 +74,17 @@ export class AdminUsersController {
   }
 
   @Post()
+  @SessionAction('actions')
   @HttpCode(201)
   async create(@CurrentPrincipal() p: Principal, @Body() body: unknown): Promise<Body> {
-    const input = parseRequest(createUserSchema, body, 'body');
-    const user = await createUser(p.scope, actorOf(p), {
-      email: input.email,
-      displayName: input.display_name,
-    });
+    const user = await this.stepUp.apply(
+      p,
+      body,
+      createUserSchema,
+      userChange('create', BASE),
+      (q, input) =>
+        createUser(q.scope, actorOf(q), { email: input.email, displayName: input.display_name }),
+    );
     return presentUser(user, false);
   }
 
@@ -76,36 +94,62 @@ export class AdminUsersController {
   }
 
   @Patch(':user')
+  @SessionAction('actions')
   async update(
     @CurrentPrincipal() p: Principal,
     @Param('user') id: string,
     @Body() body: unknown,
   ): Promise<Body> {
-    const input = parseRequest(updateUserSchema, body, 'body');
-    const user = await updateUser(p.scope, actorOf(p), parseRequest(idSchema, id, 'path'), {
-      ...(input.email === undefined ? {} : { email: input.email }),
-      ...(input.display_name === undefined ? {} : { displayName: input.display_name }),
-    });
+    const userId = parseRequest(idSchema, id, 'path');
+    const user = await this.stepUp.apply(
+      p,
+      body,
+      updateUserSchema,
+      userChange('update', `${BASE}/${userId}`),
+      (q, input) =>
+        updateUser(q.scope, actorOf(q), userId, {
+          ...(input.email === undefined ? {} : { email: input.email }),
+          ...(input.display_name === undefined ? {} : { displayName: input.display_name }),
+        }),
+    );
     return this.present(p, user);
   }
 
   @Post(':user/disable')
+  @SessionAction('actions')
   @HttpCode(200)
-  async disable(@CurrentPrincipal() p: Principal, @Param('user') id: string): Promise<Body> {
-    const user = await setUserActive(
-      p.scope,
-      actorOf(p),
-      parseRequest(idSchema, id, 'path'),
-      false,
-      this.now(),
+  async disable(
+    @CurrentPrincipal() p: Principal,
+    @Param('user') id: string,
+    @Body() body: unknown,
+  ): Promise<Body> {
+    const userId = parseRequest(idSchema, id, 'path');
+    const user = await this.stepUp.apply(
+      p,
+      body,
+      emptyBodySchema,
+      userChange('disable', `${BASE}/${userId}/disable`),
+      (q) => setUserActive(q.scope, actorOf(q), userId, false, this.now()),
     );
     return this.present(p, user);
   }
 
   @Post(':user/enable')
+  @SessionAction('actions')
   @HttpCode(200)
-  async enable(@CurrentPrincipal() p: Principal, @Param('user') id: string): Promise<Body> {
-    const user = await setUserActive(p.scope, actorOf(p), parseRequest(idSchema, id, 'path'), true);
+  async enable(
+    @CurrentPrincipal() p: Principal,
+    @Param('user') id: string,
+    @Body() body: unknown,
+  ): Promise<Body> {
+    const userId = parseRequest(idSchema, id, 'path');
+    const user = await this.stepUp.apply(
+      p,
+      body,
+      emptyBodySchema,
+      userChange('enable', `${BASE}/${userId}/enable`),
+      (q) => setUserActive(q.scope, actorOf(q), userId, true),
+    );
     return this.present(p, user);
   }
 
@@ -126,34 +170,47 @@ export class AdminUsersController {
   }
 
   @Post(':user/identities')
+  @SessionAction('actions')
   @HttpCode(201)
   async link(
     @CurrentPrincipal() p: Principal,
     @Param('user') id: string,
     @Body() body: unknown,
   ): Promise<Body> {
-    const input = parseRequest(linkIdentitySchema, body, 'body');
-    const identity = await linkIdentity(p.scope, actorOf(p), parseRequest(idSchema, id, 'path'), {
-      ...(input.provider === undefined ? {} : { provider: input.provider }),
-      externalId: input.external_id,
-      externalLogin: input.external_login,
-    });
+    const userId = parseRequest(idSchema, id, 'path');
+    const identity = await this.stepUp.apply(
+      p,
+      body,
+      linkIdentitySchema,
+      userChange('identity_link', `${BASE}/${userId}/identities`),
+      (q, input) =>
+        linkIdentity(q.scope, actorOf(q), userId, {
+          ...(input.provider === undefined ? {} : { provider: input.provider }),
+          externalId: input.external_id,
+          externalLogin: input.external_login,
+        }),
+    );
     return presentIdentity(identity);
   }
 
   @Delete(':user/identities/:identity')
+  @SessionAction('actions')
   async unlink(
     @CurrentPrincipal() p: Principal,
     @Param('user') id: string,
     @Param('identity') identityId: string,
+    @Body() body: unknown,
   ): Promise<Body> {
-    const identity = await unlinkIdentity(
-      p.scope,
-      actorOf(p),
-      parseRequest(idSchema, id, 'path'),
-      parseRequest(idSchema, identityId, 'path'),
+    const userId = parseRequest(idSchema, id, 'path');
+    const identity = parseRequest(idSchema, identityId, 'path');
+    const unlinked = await this.stepUp.apply(
+      p,
+      body,
+      emptyBodySchema,
+      userChange('identity_unlink', `${BASE}/${userId}/identities/${identity}`),
+      (q) => unlinkIdentity(q.scope, actorOf(q), userId, identity),
     );
-    return presentIdentity(identity);
+    return presentIdentity(unlinked);
   }
 
   // Other users' tokens (B13 AC5, QUESTIONS #152): a token issued for someone else lives at most
@@ -198,12 +255,19 @@ export class AdminUsersController {
 
   /** U05 (ADR-M73 §2.2): a tenant admin signs a person out of the dashboard everywhere. */
   @Delete(':user/sessions')
-  async endSessions(@CurrentPrincipal() p: Principal, @Param('user') id: string): Promise<Body> {
-    const ended = await endUserWebSessions(
-      p.scope,
-      actorOf(p),
-      parseRequest(idSchema, id, 'path'),
-      this.now(),
+  @SessionAction('actions')
+  async endSessions(
+    @CurrentPrincipal() p: Principal,
+    @Param('user') id: string,
+    @Body() body: unknown,
+  ): Promise<Body> {
+    const userId = parseRequest(idSchema, id, 'path');
+    const ended = await this.stepUp.apply(
+      p,
+      body,
+      emptyBodySchema,
+      userChange('sessions_end', `${BASE}/${userId}/sessions`),
+      (q) => endUserWebSessions(q.scope, actorOf(q), userId, this.now()),
     );
     return { ended };
   }

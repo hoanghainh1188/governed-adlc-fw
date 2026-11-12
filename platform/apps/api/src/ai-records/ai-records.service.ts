@@ -32,11 +32,30 @@ export class AiRecordsService {
     return presentAiRecord(record, project);
   }
 
+  /**
+   * Saves a new version. `run` wraps the write: a dashboard session's passkey step-up runs it in
+   * the step-up's transaction (U09, ADR-M73 §2.4b); the drafts are woken after it commits.
+   */
   async save(
     p: Principal,
     slug: string,
     body: z.infer<typeof saveAiRecordSchema>,
+    run: <T>(write: (q: Principal) => Promise<T>) => Promise<T> = (write) => write(p),
   ): Promise<Record<string, unknown>> {
+    const { project, saved } = await run((q) => this.write(q, slug, body));
+    // Every draft, on purpose: the step decides again and records nothing new for the same cause.
+    const drafts = await p.scope.intents.listForProject(project.id, { status: 'draft' });
+    for (const intent of drafts) {
+      await wakeQuietly(
+        this.signals,
+        { tenantId: p.scope.tenantId, intentId: intent.id },
+        this.logger,
+      );
+    }
+    return presentAiRecord(saved, project);
+  }
+
+  private async write(p: Principal, slug: string, body: z.infer<typeof saveAiRecordSchema>) {
     const project = await this.project(p.scope, slug, p.userId, 'write');
     const saved = await saveAiRecord(p.scope, project.id, {
       expectedVersion: body.expected_version,
@@ -50,16 +69,7 @@ export class AiRecordsService {
       actorType: 'human',
       today: this.now().toISOString().slice(0, 10),
     });
-    // Every draft, on purpose: the step decides again and records nothing new for the same cause.
-    const drafts = await p.scope.intents.listForProject(project.id, { status: 'draft' });
-    for (const intent of drafts) {
-      await wakeQuietly(
-        this.signals,
-        { tenantId: p.scope.tenantId, intentId: intent.id },
-        this.logger,
-      );
-    }
-    return presentAiRecord(saved, project);
+    return { project, saved };
   }
 
   private async project(
