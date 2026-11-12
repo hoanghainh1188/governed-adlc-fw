@@ -1,5 +1,13 @@
 // The API reads of the dashboard: GET endpoints that already exist for the CLI (ADR-M54 §2.1).
 import {
+  adminConfigSchema,
+  adminIdentityListSchema,
+  adminProjectListSchema,
+  adminProjectSchema,
+  adminRoleListSchema,
+  adminTenantRoleListSchema,
+  adminUserListSchema,
+  adminUserSchema,
   authConfigSchema,
   chainSchema,
   costReportSchema,
@@ -151,3 +159,45 @@ export const readEvaluationReport = (code: string, o: Signal = {}) =>
 /** L06 (QUESTIONS #482): the evaluations that ended in the last 7 days, in the person's projects. */
 export const readRecentEvaluations = (o: Signal = {}) =>
   getJson(apiPath('/v1/evaluations/recent'), recentEvaluationsSchema, o);
+
+// U09 (ADR-M73 §2.4b, MVP1-UI-SCOPE §3.4): the reads of the administration screens, the GET
+// endpoints of `adlc admin`. The API decides who may read: tenant admins, and for a project's
+// details, roles and configuration anyone with a role on it.
+
+export const readAdminProjects = (o: Signal = {}) =>
+  getJson(apiPath('/v1/admin/projects'), adminProjectListSchema, o);
+
+export const readAdminProject = (slug: string, o: Signal = {}) =>
+  getJson(apiPath(`/v1/admin/projects/${segment(slug)}`), adminProjectSchema, o);
+
+/** The roles of a project; `history` adds the revoked ones. */
+export const readProjectRoles = (slug: string, history: boolean, o: Signal = {}) =>
+  getJson(
+    apiPath(`/v1/admin/projects/${segment(slug)}/roles`, {
+      include_revoked: history ? 'true' : undefined,
+    }),
+    adminRoleListSchema,
+    o,
+  );
+
+export const readProjectConfig = (slug: string, o: Signal = {}) =>
+  getJson(apiPath(`/v1/admin/projects/${segment(slug)}/config`), adminConfigSchema, o);
+
+export const readAdminUsers = (o: Signal = {}) =>
+  getJson(apiPath('/v1/admin/users'), adminUserListSchema, o);
+
+export const readAdminUser = (id: string, o: Signal = {}) =>
+  getJson(apiPath(`/v1/admin/users/${segment(id)}`), adminUserSchema, o);
+
+/** A person's GitHub accounts; `history` adds the unlinked ones. */
+export const readIdentities = (id: string, history: boolean, o: Signal = {}) =>
+  getJson(
+    apiPath(`/v1/admin/users/${segment(id)}/identities`, {
+      include_unlinked: history ? 'true' : undefined,
+    }),
+    adminIdentityListSchema,
+    o,
+  );
+
+export const readTenantAdmins = (o: Signal = {}) =>
+  getJson(apiPath('/v1/admin/tenant-admins'), adminTenantRoleListSchema, o);

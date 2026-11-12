@@ -4,6 +4,12 @@
 
 ### Added
 - **Dashboard administration, part 1: the API takes admin changes from a dashboard session, with a passkey** (task U09 PR 1, ADR-M73 1.7 §2.4b, QUESTIONS #681–#685). With the dashboard actions on, a signed-in person can now send the administration changes from the page: projects (create, update, archive, roles, configuration), users (create, update, disable, enable, GitHub identities, sign out everywhere), tenant admins, the agent register (register, update, approvals, suspend, quarantine, owner, recertify), the project AI record, evidence holds, and removing a person's passkey. Every one of them needs a passkey confirmation bound to the change (the area, the change, the path and the body); a refused change leaves the confirmation unused. The permission checks are unchanged: a self-grant and Person A = Person B are still refused. API tokens and the tool register stay in the CLI. The CLI is unchanged and needs no passkey; it may not send `step_up`. The pages come in the next pull requests.
+- **Dashboard administration, part 2: the pages for projects, people and tenant admins** (task U09 PR 2, ADR-M73 1.8, ADR-M54 0.8, QUESTIONS #683, #686). A new **Admin** screen (`#/admin`) for tenant admins, and for a project's `admin` their projects:
+  - Projects: create one, change its details, give and revoke roles (a self-grant and Person A = Person B are refused in the platform's words).
+  - Project configuration: see the stored YAML, choose a file, see its line difference to the stored version, then save it.
+  - People: add one, change their name or address, link or unlink a GitHub account by its numeric ID, disable or enable them, sign them out everywhere.
+  - Tenant admins: make one, remove one.
+  Every change asks for a passkey. With a token sign-in the screens are read only. The screens load as a chunk of their own, so the first load stays under 80 kB of JavaScript.
 
 ## [0.13.0] - 2026-11-12
 

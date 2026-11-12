@@ -20,7 +20,7 @@ function controllers(dir: string): string[] {
 }
 
 /** Routes of one method as patterns, `:param` → one segment. */
-function routesOf(method: 'Get' | 'Post' | 'Delete'): RegExp[] {
+function routesOf(method: 'Get' | 'Post' | 'Put' | 'Patch' | 'Delete'): RegExp[] {
   return controllers(apiSrc).flatMap((file) => {
     // A file may hold several controllers (L05): each route takes the base of the one above it.
     const text = fs.readFileSync(file, 'utf8');
@@ -81,20 +81,20 @@ describe('the dashboard reads existing GET endpoints only', () => {
 });
 
 describe('U06: the dashboard writes existing routes only, with their method', () => {
-  it('every write of src/api/writes.ts is a POST or DELETE route of the API', () => {
-    const writes = fs.readFileSync(
-      path.join(root, 'platform/apps/dashboard/src/api/writes.ts'),
-      'utf8',
-    );
+  it('every write of src/api/writes.ts is a route of the API with the same method', () => {
+    const writes = ['writes.ts', 'admin-writes.ts']
+      .map((f) => fs.readFileSync(path.join(root, 'platform/apps/dashboard/src/api', f), 'utf8'))
+      .join('\n');
     const calls = [
-      ...writes.matchAll(/send\(\s*apiPath\([`']([^`']+)[`']\),\s*'(POST|DELETE)'/g),
+      ...writes.matchAll(/send\(\s*apiPath\([`']([^`']+)[`']\),\s*'(POST|PUT|PATCH|DELETE)'/g),
     ].map((m) => ({ path: m[1]!.replace(/\$\{[^}]+\}/g, 'X'), method: m[2]! }));
     // U06: sign out (2), passkeys (3); L05: the step-up and the four plan actions (5);
     // U07: kill run (1), gate decision (1), escalation ack (1), escalation decision (1);
-    // U08: create intent (1).
-    expect(calls.length).toBe(18);
+    // U08: create intent (1); U09 PR 2: administration (14).
+    expect(calls.length).toBe(32);
+    const decorator = { POST: 'Post', PUT: 'Put', PATCH: 'Patch', DELETE: 'Delete' } as const;
     for (const call of calls) {
-      const routes = routesOf(call.method === 'POST' ? 'Post' : 'Delete');
+      const routes = routesOf(decorator[call.method as keyof typeof decorator]);
       expect(
         routes.some((r) => r.test(call.path)),
         `${call.method} ${call.path}`,

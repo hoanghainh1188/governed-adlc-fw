@@ -1,8 +1,9 @@
 // Every write the dashboard sends (U05–U08, design/ADR-M73 §2.3, §2.4), with a fixed path:
 // sign out, the person's own passkeys, the passkey step-up, the four evaluation plan actions of
 // L05 (ADR-M82 §2.7, QUESTIONS #470), the decisions, kill and escalation actions of U07, and the
-// intent, spec, plan and evidence pack actions of U08 (no step-up). A static test checks that these
-// are the only writes and that each is a route of the API.
+// intent, spec, plan and evidence pack actions of U08 (no step-up). The administration changes of
+// U09 are in `admin-writes.ts` (a chunk of their own, QUESTIONS #686). A static test checks that
+// these are the only writes and that each is a route of the API.
 import {
   decisionSchema,
   endedSessionsSchema,
@@ -28,6 +29,7 @@ import {
   type SubmittedPlanView,
 } from '@sdlc/api-schemas';
 
+import type { AdminAction } from '../model/admin.js';
 import { apiPath, segment, send } from './client.js';
 
 /** Ends the GitHub session of this browser (`this`) or every one of the person (`everywhere`). */
@@ -81,7 +83,9 @@ export type StepUpRequestInput =
       readonly escalation: string;
       readonly expected_input_sha256?: string;
       readonly request: Readonly<Record<string, unknown>>;
-    };
+    }
+  // U09: an administration change; `request` holds the body, `decision` and `target`.
+  | { readonly action: AdminAction; readonly request: Readonly<Record<string, unknown>> };
 
 /**
  * A passkey challenge for one action, bound to the body the page will send (without

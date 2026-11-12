@@ -13,11 +13,17 @@ export type Route =
   | { readonly name: 'eval-plan'; readonly id: string; readonly query: URLSearchParams }
   | { readonly name: 'eval-plan-new'; readonly query: URLSearchParams }
   | { readonly name: 'eval-plan-edit'; readonly id: string; readonly query: URLSearchParams }
-  | { readonly name: 'evaluation'; readonly code: string; readonly query: URLSearchParams };
+  | { readonly name: 'evaluation'; readonly code: string; readonly query: URLSearchParams }
+  // U09 (ADR-M73 §2.4b): administration: the overview, one project, its configuration, one person.
+  | { readonly name: 'admin'; readonly query: URLSearchParams }
+  | { readonly name: 'admin-project'; readonly slug: string; readonly query: URLSearchParams }
+  | { readonly name: 'admin-config'; readonly slug: string; readonly query: URLSearchParams }
+  | { readonly name: 'admin-user'; readonly id: string; readonly query: URLSearchParams };
 
 const INTENT_CODE = /^INT-[0-9]{4}-[0-9]{4,}$/;
 const EVAL_CODE = /^EVAL-[0-9]{4}-[0-9]{4,9}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const PROJECT_SLUG = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 export function parseRoute(hash: string): Route {
   const raw = hash.replace(/^#/, '');
@@ -31,6 +37,18 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'numbers') return { name: 'numbers', query };
   if (parts[0] === 'audit') return { name: 'audit', query };
   if (parts[0] === 'passkeys') return { name: 'passkeys', query };
+  if (parts[0] === 'admin') {
+    const slug = parts[2];
+    if (parts[1] === 'projects' && slug !== undefined && PROJECT_SLUG.test(slug)) {
+      return parts[3] === 'config'
+        ? { name: 'admin-config', slug, query }
+        : { name: 'admin-project', slug, query };
+    }
+    if (parts[1] === 'users' && parts[2] !== undefined && UUID.test(parts[2])) {
+      return { name: 'admin-user', id: parts[2], query };
+    }
+    return { name: 'admin', query };
+  }
   if (parts[0] === 'evaluations') {
     if (parts[1] === 'plans' && parts[2] === 'new') return { name: 'eval-plan-new', query };
     if (parts[1] === 'plans' && parts[2] !== undefined && UUID.test(parts[2])) {
@@ -68,4 +86,13 @@ export function planHref(id: string, edit = false): string {
 
 export function evaluationHref(code: string): string {
   return EVAL_CODE.test(code) ? `#/evaluations/${code}` : '#/evaluations';
+}
+
+/** U09: the route of one project, its configuration, or one person; the overview otherwise. */
+export function adminProjectHref(slug: string, config = false): string {
+  return PROJECT_SLUG.test(slug) ? `#/admin/projects/${slug}${config ? '/config' : ''}` : '#/admin';
+}
+
+export function adminUserHref(id: string): string {
+  return UUID.test(id) ? `#/admin/users/${id}` : '#/admin';
 }

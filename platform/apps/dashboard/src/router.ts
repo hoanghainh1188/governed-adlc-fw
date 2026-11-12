@@ -4,6 +4,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { parseRoute, type Route } from './model/route.js';
 
 export {
+  adminProjectHref,
+  adminUserHref,
   evaluationHref,
   href,
   intentHref,

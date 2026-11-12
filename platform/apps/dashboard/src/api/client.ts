@@ -6,9 +6,8 @@
 // (`credentials: 'same-origin'`) and no Authorization header: never both.
 //
 // U06 (ADR-M73 §2.3): writes go through `send` only, with the session cookie and the session's
-// CSRF token in `X-SDLC-CSRF`, a JSON body or none. The paths are fixed in `writes.ts` (sign out,
-// passkeys, the step-up, and L05's four evaluation plan actions); a static test refuses any other.
-// No write changes an intent, gate, run or escalation.
+// CSRF token in `X-SDLC-CSRF`, a JSON body or none. The paths are fixed in `writes.ts`; a static
+// test refuses any other. U09 (ADR-M73 §2.4b): the administration changes add PUT and PATCH.
 import { errorEnvelopeSchema, webSessionSchema } from '@sdlc/api-schemas';
 import type { z } from 'zod';
 
@@ -22,6 +21,12 @@ export class ApiError extends Error {
     readonly code: string,
     /** The API's refusal reason, a code (L05: `evaluation.error.<reason>` in the catalog). */
     readonly reason?: string,
+    /** U09: the API's details (a refused configuration: each problem, in the API's words). */
+    readonly details?: readonly {
+      readonly path: string;
+      readonly issue: string;
+      readonly message?: string | undefined;
+    }[],
   ) {
     super(code);
   }
@@ -101,13 +106,16 @@ async function csrfToken(): Promise<string> {
   return read.csrf_token;
 }
 
+/** The methods of a write. */
+export type WriteMethod = 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
 /**
- * A write of the GitHub session (U06): POST or DELETE to a fixed path of `writes.ts`, the cookie,
- * the CSRF token, a JSON body or none. The answer is checked with `schema`; `null` for no body.
+ * A write of the GitHub session (U06): a fixed path of `writes.ts`, the cookie, the CSRF token, a
+ * JSON body or none. The answer is checked with `schema`; `null` for no body.
  */
 export async function send<S extends z.ZodType>(
   path: string,
-  method: 'POST' | 'DELETE',
+  method: WriteMethod,
   schema: S | null,
   body?: unknown,
 ): Promise<z.infer<S> | undefined> {
@@ -128,7 +136,7 @@ interface Write {
 
 async function request(
   path: string,
-  method: 'GET' | 'POST' | 'DELETE',
+  method: 'GET' | WriteMethod,
   credential: Credential,
   writeOrSignal?: Write | AbortSignal,
 ): Promise<unknown> {
@@ -163,9 +171,10 @@ async function request(
     const envelope = errorEnvelopeSchema.safeParse(body);
     const code = envelope.success ? envelope.data.error.code : 'unexpected';
     const reason = envelope.success ? envelope.data.error.reason : undefined;
+    const details = envelope.success ? envelope.data.error.details : undefined;
     // An expired or revoked token or session ends the tab's sign-in; the person signs in again.
     if (response.status === 401 && endsCurrentSignIn(credential)) session.signOut();
-    throw new ApiError(response.status, code, reason);
+    throw new ApiError(response.status, code, reason, details);
   }
   return body;
 }
