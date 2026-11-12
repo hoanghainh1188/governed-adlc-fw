@@ -186,6 +186,11 @@ export type IntentWaitReason =
   /** C08: the pull request is open; G6 waits for CI (the checks are not all finished). */
   | 'ci_pending'
   /**
+   * O06 (ADR-M106): the pushed commit has no check at all, so the repository may have no CI. G6
+   * waits `verification.ci_missing_minutes`, then pauses with a `technical` escalation.
+   */
+  | 'ci_missing'
+  /**
    * C08 PR 2 (ADR-M38 §2.7): CI passed and G6 is HITL (the matrix, a security finding at the
    * threshold, or findings unknown): Person B approves (`/approve G6`).
    */
@@ -248,6 +253,7 @@ export const INTENT_WAIT_REASONS = [
   'publish_review',
   'publish_retry',
   'ci_pending',
+  'ci_missing',
   'g6_decision',
   'g7_decision',
   'g7_merge',

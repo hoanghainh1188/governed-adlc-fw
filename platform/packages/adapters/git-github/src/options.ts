@@ -38,6 +38,8 @@ export interface GitHubAdapterOptions {
   readonly maxOpenPullRequests?: number;
   /** Largest file `getFileAtCommit` returns. Default 1 MiB. */
   readonly maxFileBytes?: number;
+  /** Most Git trees calls `listPaths` makes for one large commit (O06, ADR-M106). Default 200. */
+  readonly maxTreeRequests?: number;
 }
 
 export interface ResolvedOptions {
@@ -57,6 +59,7 @@ export interface ResolvedOptions {
   readonly maxPagesPerPoll: number;
   readonly maxOpenPullRequests: number;
   readonly maxFileBytes: number;
+  readonly maxTreeRequests: number;
 }
 
 /** KV path of the GitHub App entry (D-03 §8.2, OpenBao policies api, worker, runner). */
@@ -119,5 +122,6 @@ export function resolveOptions(options: GitHubAdapterOptions): ResolvedOptions {
     maxPagesPerPoll: count('maxPagesPerPoll', options.maxPagesPerPoll, 4, 1, 20),
     maxOpenPullRequests: count('maxOpenPullRequests', options.maxOpenPullRequests, 50, 1, 500),
     maxFileBytes: count('maxFileBytes', options.maxFileBytes, 1024 * 1024, 1, 100 * 1024 * 1024),
+    maxTreeRequests: count('maxTreeRequests', options.maxTreeRequests, 200, 1, 5000),
   };
 }

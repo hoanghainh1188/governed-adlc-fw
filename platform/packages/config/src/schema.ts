@@ -268,6 +268,8 @@ export const projectConfigSchema = z.strictObject({
   verification: z.strictObject({
     required_checks: uniqueList(checkName).max(50),
     ci_timeout_minutes: positiveInt.max(24 * 60),
+    // O06 (ADR-M106): a commit with no check at all stops sooner than a slow CI.
+    ci_missing_minutes: positiveInt.max(24 * 60),
   }),
   access: z.strictObject({
     intent_create_roles: uniqueList(role).min(1),

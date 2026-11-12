@@ -218,6 +218,8 @@ export interface ProjectConfig {
     readonly required_checks: readonly string[];
     /** Pending this long after the push → paused at G6, `technical` escalation. */
     readonly ci_timeout_minutes: number;
+    /** O06 (ADR-M106): no check at all on the pushed commit → paused after this; ≤ the timeout. */
+    readonly ci_missing_minutes: number;
   };
   /**
    * Who may create and read intents through the API (task B03, ADR-M26, QUESTIONS.md #66).

@@ -50,6 +50,7 @@ import { resolveOptions, type GitHubAdapterOptions, type ResolvedOptions } from 
 import { listPages } from './pages.js';
 import { Poller } from './polling.js';
 import { SecretString } from './secret-string.js';
+import { listTreePaths } from './tree.js';
 import { verifyWebhookRequest } from './webhook.js';
 
 /** GitHub limits: comment bodies (characters) and files listed for one pull request. */
@@ -450,32 +451,18 @@ export class GitHubAdapter implements GitHostAdapter {
   }
 
   /**
-   * Every non-directory path of the commit's tree (task C07, QUESTIONS #126): one recursive call to
-   * the Git trees API. GitHub cuts a large tree short (`truncated`); a partial list could hide an
-   * agent instruction file, so that fails with `tree_truncated` (fail closed, ADR-M34 §2.4).
+   * Every non-directory path of the commit's tree (task C07, QUESTIONS #126). A tree that GitHub
+   * cuts short is listed in parts, up to `maxTreeRequests` calls (task O06, ADR-M106); past that a
+   * partial list could hide an agent instruction file, so it fails with `tree_truncated` (fail
+   * closed, ADR-M34 §2.4).
    */
   async listPaths(ref: RepoRef, commitSha: string): Promise<string[]> {
-    const base = repoPath(ref);
     if (!isSha(commitSha)) throw new GitHostError('invalid_input', { field: 'sha' });
-    const res = await this.#auth.withRepoAuth(ref, (auth) =>
-      this.#http.json('GET', `${base}/git/trees/${commitSha}`, {
-        auth,
-        query: { recursive: 1 },
-      }),
+    return listTreePaths(
+      { http: this.#http, auth: this.#auth, maxRequests: this.#options.maxTreeRequests },
+      ref,
+      commitSha,
     );
-    const body = obj(res.body, 'tree');
-    if (bool(body.truncated, 'tree.truncated')) throw new GitHostError('tree_truncated');
-    const paths = new Set<string>();
-    for (const item of arr(body.tree, 'tree.tree')) {
-      const entry = obj(item, 'tree.entry');
-      const type = str(entry.type, 'tree.entry.type');
-      if (type === 'tree') continue;
-      if (type !== 'blob' && type !== 'commit') {
-        throw new GitHostError('invalid_response', { field: 'tree.entry.type' });
-      }
-      paths.add(str(entry.path, 'tree.entry.path'));
-    }
-    return [...paths].sort();
   }
 
   /**

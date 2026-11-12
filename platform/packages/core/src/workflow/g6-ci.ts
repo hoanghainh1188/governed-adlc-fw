@@ -9,7 +9,8 @@
 // Checks (QUESTIONS #159): the project's `verification.required_checks` by name (empty: every check
 // on the commit). Passed: `success`, `neutral`, `skipped`. Failed: `failure`, `error`, `timed_out`.
 // Pending: not finished, `cancelled`, `stale`, `action_required` (a person can run it again), a
-// required check that is missing, or no check at all (a repository without CI never passes).
+// required check that is missing. No check at all on the commit is `missing` (O06, ADR-M106): the
+// repository may have no CI; it never passes, and G6 stops sooner with a cause of its own.
 import { createHash } from 'node:crypto';
 
 import { canonicalJson } from '@sdlc/config';
@@ -28,7 +29,7 @@ export interface G6Deps {
   >;
 }
 
-export type CiState = 'passed' | 'failed' | 'pending';
+export type CiState = 'passed' | 'failed' | 'pending' | 'missing';
 export type FindingsState = 'known' | 'not_enabled' | 'forbidden';
 
 export interface CiReading {
@@ -85,8 +86,8 @@ export function evaluateChecks(
   considered.sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0] < b[0] ? -1 : 1));
   const states = considered.map(([, state]) => state);
   const state: CiState =
-    states.length === 0
-      ? 'pending'
+    checks.length === 0
+      ? 'missing'
       : states.includes('failed')
         ? 'failed'
         : states.includes('pending')

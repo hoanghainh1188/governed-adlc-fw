@@ -171,7 +171,8 @@ When the pull request is open, the platform reads its CI by itself. It reads the
 |---|---|
 | success, neutral, skipped | passed |
 | failure, error, timed out | failed |
-| still running, cancelled, stale, action required, a required check that is missing, no check at all | pending (a person can run a check again) |
+| still running, cancelled, stale, action required, a required check that is missing | pending (a person can run a check again) |
+| no check at all on the pushed commit | missing: the repository may have no CI (§14.10.3) |
 
 A project without CI never passes G6.
 
@@ -182,6 +183,7 @@ A project without CI never passes G6.
 | failed, retries left | G6 fails (`ci_failed`). The intent goes back to **G4**; a new run starts **on top of the pushed commit**, and the agent is told that CI failed and to fix the checks. The same pull request gets the new commit. Retries: `run.g6_ci_retries` (2 by default), counted since the last G3 approval |
 | failed, no retry left | G6 fails. The intent goes back to **G3**, which is HITL at every risk tier from now on. Check the plan and the spec: the problem is probably not the code |
 | still pending after `verification.ci_timeout_minutes` (60 by default) | The intent is **paused** at G6, and a **technical** escalation goes to Person B. No retry is used. `resume` lets G6 read CI again, with a new timeout |
+| missing (no check at all) after `verification.ci_missing_minutes` (15 by default) | The same as a timeout, with the cause `ci_missing` (§14.10.3) |
 | passed | The platform checks the security findings (below), then decides G6 by the risk tier: Low (AUDIT) and Medium (HOTL) the platform passes G6 and the intent moves to **G7**; Person B is told and can still send it back with `/request-changes G6 <reason>` within the block window (a new run after G4). High and Critical (HITL): Person B approves with `/approve G6` |
 
 **Security findings.** The platform reads the open GitHub code-scanning alerts of the pull request, counts them per severity, and stores only the counts.
@@ -205,6 +207,24 @@ If any unapproved licenses, install scripts, or typosquatting warnings are detec
 **Platform operator:** for the security counts the GitHub App needs "Code scanning alerts: Read-only" ([`platform/deploy/README.md`](../../platform/deploy/README.md#github-app-permissions)).
 
 ---
+
+### 14.10.3. A repository without CI
+
+G6 needs independent evidence, so it never passes without CI. When the pushed commit has no check at all, the intent waits with the reason `ci_missing`, and `adlc next` says that the repository has no CI. After `verification.ci_missing_minutes` (15 by default; never longer than the CI timeout) the intent is **paused** with a **technical** escalation and the cause `ci_missing`.
+
+To go on:
+
+1. Add a CI workflow that runs on pull requests to the default branch: at least the build and the tests. On GitHub, this is a file under `.github/workflows/`.
+2. Optional: make one summary job (for example `ci-ok`) and name it in `verification.required_checks`, so that G6 waits for exactly that check.
+3. Merge the workflow into the default branch.
+4. Decide the escalation (§14.10.1 shows the decisions):
+   - `roll-back`: the intent goes back to **G3** (HITL from now on). After G3 and G4 a new run pushes to the same pull request, and that push starts the new CI.
+   - `resume`: G6 only reads CI again, with a new timeout. Use it when the pull request's head commit already has checks (for example a person started them).
+   - Do not close the pull request or push to the branch `agent/INT-…` yourself: G6 would stop with `pr_closed` or `branch_moved`.
+
+The next intents of the repository get CI on their pull requests from the start.
+
+If the commit has checks but none of the names in `verification.required_checks`, the intent waits as `ci_pending`, not `ci_missing`: fix the names.
 
 ## 14.11. Metrics
 
@@ -246,5 +266,6 @@ If any unapproved licenses, install scripts, or typosquatting warnings are detec
 | 0.4 | 2026-10-03 | Claude Code (task C08, PR 2) | §14.10.2: how G6 reads CI, retries, the timeout, security findings (ADR-M38 §2.7, QUESTIONS #157–#159) |
 | 0.6 | 2026-10-09 | Claude (docs review fixes) | `roll-back` is the decision's spelling (the CLI refuses `roll_back`) |
 | 0.7 | 2026-10-24 | Claude (task H04) | §14.10.1: the push comes after the secret scan of G5 (Chapter 13 §13.10.5a, ADR-M93) |
+| 0.9 | 2026-11-12 | Claude (task O06) | §14.10.2: no check at all is `missing`, with `verification.ci_missing_minutes`; new §14.10.3: a repository without CI (ADR-M106) |
 | 0.8 | 2026-10-27 | Claude Code (task H02) | §14.10.2: dependency scanning outside the sandbox (ADR-M96, QUESTIONS #606–#608) |
 | 0.5 | 2026-10-09 | Claude Code (docs review PR C) | §14.10.1, §14.10.2: the GitHub App permissions link to the one list in `platform/deploy/README.md` |

@@ -172,11 +172,25 @@ The platform checks G4 by itself when the intent reaches it, in this order:
 | 4 | The spec and the plan are the versions G2 and G3 approved | G4 fails: `input_mismatch` |
 | 5 | The project AI record allows the intent's data class (Chapter 2 §2.5) | G4 fails: `ai_record_missing` or `data_class_not_allowed` |
 | 6 | The agent is registered and active, approved for the sandbox, its model is allowed for the data class, and `AGENTS.md` at the start commit equals the registered version (Chapter 20) | G4 fails: `agent_not_runnable`, `instructions_mismatch` or `autonomy_not_allowed` |
-| 6b | <a id="instruction-files"></a>The start commit has no other file the agent reads as instructions (this is the one list; other documents link here): `CLAUDE.md`, `GEMINI.md`, `agent.md`, `.cursorrules` at the root, `AGENTS.md` in any folder, or files under `.agents/skills/`, `.openhands/skills/`, `.openhands/microagents/`. Names are compared without case and without invisible characters, so only the exact pinned path is left out: `agents.md` next to `AGENTS.md` is another file and counts | G4 fails: `instructions_unpinned`. Remove the file, or make it part of a new agent version (Chapter 20). A repository too large for the Git host to list in one answer fails the same way for now |
+| 6b | <a id="instruction-files"></a>The start commit has no other file the agent reads as instructions (this is the one list; other documents link here): `CLAUDE.md`, `GEMINI.md`, `agent.md`, `.cursorrules` at the root, `AGENTS.md` in any folder, or files under `.agents/skills/`, `.openhands/skills/`, `.openhands/microagents/`. Names are compared without case and without invisible characters, so only the exact pinned path is left out: `agents.md` next to `AGENTS.md` is another file and counts | G4 fails: `instructions_unpinned`. Remove the file, or make it part of a new agent version (Chapter 20). A very large repository is listed in parts (§13.10.2a); only a tree too large even for that fails, with `tree_truncated` |
 | 7 | The intent budget is not used up | G4 fails: `budget_exceeded` |
 
 - When G4 fails, the platform posts one comment on the intent's issue with the reason code and mentions Person A. **The intent stays at G4.** Fix the cause (for example register a new agent version after an edit of `AGENTS.md`, or update the AI record); the platform checks G4 again on its own.
 - The run starts from the **latest commit of the default branch**.
+
+### 13.10.2a. Before the first intent on a repository
+
+Check these points once per repository, before Person A creates the first intent. Each one stops an intent at a gate when it is missing.
+
+| Point | Why | When it is missing |
+|---|---|---|
+| `AGENTS.md` at the root, registered with the agent (Chapter 20) | The agent reads it as its instructions; G4 compares it with the registered version | G4 fails: `instructions_missing`. Write `AGENTS.md` (the build and test commands, the folders the agent may change, the code style), merge it, then register a new agent version with it as `instructions_ref` |
+| No other instruction file (§13.10.2 check 6b) | A file the agent reads but nobody registered would change its instructions | G4 fails: `instructions_unpinned`. A monorepo with an `AGENTS.md` in each package hits this today; see the note below |
+| CI that runs on pull requests | G6 needs independent checks (Chapter 14 §14.10.3) | G6 pauses with `ci_missing` |
+
+**Very large repositories.** The platform lists every path of the start commit to find instruction files. GitHub cuts the answer short for a very large tree. The platform then lists the tree folder by folder (at most 200 requests to GitHub for one commit). Only a tree too large even for that fails G4 with `tree_truncated`: tell the platform operator, who can raise the limit.
+
+**Monorepos.** One project per repository is the rule today. A monorepo whose packages each have an `AGENTS.md` cannot run an agent until those files are removed or registered. Several projects on one repository, each with its own folder, come in a later version (design/QUESTIONS.md #677).
 
 ### 13.10.3. Approving G4 (High risk)
 
@@ -362,4 +376,5 @@ An approval without one of these codes is refused (`review_reason_required`) and
 | 0.11 | 2026-10-09 | Claude (docs review PR C2) | §13.10.2 check 6b: the one list of agent instruction files (only the exact pinned path is left out); §13.10.4: "The budgets", the one description with the default amounts (moved from ROLLOUT-GUIDE) |
 | 0.14 | 2026-10-24 | Claude (task X11) | §13.10.4: long runs and small models, context condensing (`run.context_condensing`, rule M35; ADR-M29 §2.10) |
 | 0.15 | 2026-10-24 | Claude (task H04) | §13.10.5: G5 checks the secret scan (`secret_in_diff`, `secret_scan_failed`); new §13.10.5a: the secret scan of the run's diff (ADR-M93, QUESTIONS #586–#590) |
+| 0.17 | 2026-11-12 | Claude (task O06) | §13.10.2 check 6b: a very large tree is listed in parts; new §13.10.2a: before the first intent on a repository (`AGENTS.md`, other instruction files, CI, very large trees, monorepos; ADR-M106) |
 | 0.16 | 2026-10-26 | Claude (task H05) | §13.10.5: the size check after the other checks; new §13.10.5b: the size of the change a person must review (`run.review_limits`, `review_too_large`, `review_size_unknown`, the allowing reason codes, the split at G3; ADR-M95, QUESTIONS #601–#605) |

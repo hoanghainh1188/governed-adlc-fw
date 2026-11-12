@@ -439,6 +439,13 @@ describe('holds: inputs, escalations, the platform, the set-up', () => {
     expect(adviseNext(at(reason), me(['person_a']))).toMatchObject({ kind: 'platform', code });
   });
 
+  it('ci_missing (O06 AC3): the project adds CI, not only an admin', () => {
+    const next = adviseNext(at('ci_missing', 'G6', { pr_number: 7 }), me(['person_a']));
+    expect(next).toMatchObject({ kind: 'fix_setup', code: 'setup_ci', notes: [] });
+    expect(adviceText(next)).toContain('#7');
+    expect(adviceText(next)).toContain('Ch.14');
+  });
+
   it('a running agent: the kill switch only for the kill roles', () => {
     expect(adviseNext(at('run_in_progress'), me(['person_a'])).code).toBe('run_running');
     expect(adviseNext(at('run_in_progress'), me(['pm_brse'])).code).toBe('run_watch');
