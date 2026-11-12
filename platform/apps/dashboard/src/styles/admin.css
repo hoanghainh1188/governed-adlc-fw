@@ -1,0 +1,186 @@
+/* U09: the administration screens (design/ADR-M73 §2.4b). Tokens only: the light and dark pairs
+   are the ones contrast.test.ts checks. The configuration difference marks each line by its sign
+   and its colour, so it reads without colour too. */
+
+.admin-section {
+  margin-top: var(--space-section);
+}
+
+.admin-section > h2,
+.admin-section .section-head h2 {
+  margin: 0;
+}
+
+.admin-section .section-head {
+  margin-bottom: var(--space-3);
+}
+
+.admin-table th[scope='row'] .sub {
+  display: block;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.admin-table td,
+.admin-table th {
+  vertical-align: middle;
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-row-revoked {
+  color: var(--ink-muted);
+}
+
+.admin-row-revoked th a {
+  color: inherit;
+}
+
+.admin-chip {
+  margin-left: var(--space-2);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chip.admin-status-active {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.chip.admin-status-other {
+  color: var(--ink-muted);
+}
+
+.admin-facts {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: var(--space-2) var(--space-6);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.admin-facts dt {
+  color: var(--ink-muted);
+  font-size: var(--text-small);
+}
+
+.admin-facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-list,
+.admin-links {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--accent-fill);
+  background: var(--paper-raised);
+  border-radius: var(--radius-chip);
+}
+
+.admin-list li .button {
+  margin-left: auto;
+}
+
+.change-summary {
+  margin: 0 0 var(--space-4);
+  max-width: 60ch;
+}
+
+/* The stored configuration and the difference to the chosen file (QUESTIONS #683). */
+.config-yaml,
+.config-diff {
+  max-height: 24rem;
+  margin: 0 0 var(--space-4);
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background: var(--paper-sunk);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  line-height: 1.5;
+}
+
+.config-yaml {
+  padding: var(--space-3);
+}
+
+.config-line {
+  min-width: max-content;
+  white-space: pre;
+}
+
+.admin-section h3 {
+  margin: var(--space-6) 0 var(--space-2);
+}
+
+.config-yaml:focus-visible,
+.config-diff:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 1.75rem 1fr;
+  min-width: max-content;
+}
+
+.diff-mark {
+  text-align: center;
+  color: var(--ink-muted);
+  user-select: none;
+}
+
+.diff-text {
+  padding-right: var(--space-3);
+  white-space: pre;
+}
+
+.diff-added {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+}
+
+.diff-added .diff-mark {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.diff-removed {
+  background: color-mix(in srgb, var(--alert) 12%, transparent);
+}
+
+.diff-removed .diff-mark {
+  color: var(--alert);
+  font-weight: 700;
+}
+
+@media (max-width: 40rem) {
+  .admin-facts {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+
+  .admin-facts dd {
+    margin-bottom: var(--space-2);
+  }
+}

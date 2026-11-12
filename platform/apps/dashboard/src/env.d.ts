@@ -5,4 +5,10 @@ declare module 'virtual:dashboard-catalog' {
   export default catalog;
 }
 
+declare module 'virtual:dashboard-admin-catalog' {
+  /** U09 (QUESTIONS #686): the `dashboard.admin.*` messages, loaded with the admin screens. */
+  const catalog: Readonly<Record<string, string>>;
+  export default catalog;
+}
+
 declare module '*.css';

@@ -23,6 +23,7 @@ import { stepUpRequestSha256 } from '../../packages/core/dist/passkeys/index.js'
 import { decisionWrite, isDecisionPath } from './decisions-stub.mjs';
 import { intakeWrite, isIntakePath } from './intake-stub.mjs';
 import { evalPlans } from './eval-stub.mjs';
+import { adminRead, adminWrite, isAdminPath, resetAdmin } from './admin-stub.mjs';
 import { fixtures } from './fixtures.mjs';
 
 const root = path.resolve(import.meta.dirname, '../../..');
@@ -333,6 +334,36 @@ async function stepUpAndPlans(req, res, url) {
   return (json(res, answer.status, answer.body), true);
 }
 
+/**
+ * U09: the administration reads (a token or a session) and changes (a session on `localhost`, the
+ * CSRF layers and a passkey step-up). `POST /v1/__stub/admin-reset` puts the tenant back for the
+ * next test; the dashboard never calls it.
+ */
+async function adminRoutes(req, res, url) {
+  if (url.pathname === '/v1/__stub/admin-reset' && req.method === 'POST') {
+    resetAdmin();
+    res.writeHead(204).end();
+    return true;
+  }
+  if (!isAdminPath(url.pathname)) return false;
+  if (req.method === 'GET') {
+    const answer = adminRead(url);
+    if (answer === undefined) return false;
+    if (!authenticate(req, res)) return true;
+    return (json(res, answer.status ?? 200, answer.body), true);
+  }
+  const local = (req.headers.host ?? '').startsWith('localhost:');
+  const secret = cookieOf(req, '__Host-sdlc_session');
+  if (!local) return false;
+  if (!secret || !sessions.has(secret)) return (json(res, 401, error('session_ended')), true);
+  if (!writeAllowed(req, secret)) return (json(res, 403, error('csrf_refused')), true);
+  const body = (await readBody(req)) ?? {};
+  const answer = await adminWrite(req.method, url, body, (stepUp, action, request) =>
+    stepUpHolds(stepUp, action, stepUpRequestSha256(request)),
+  );
+  return (json(res, answer.status, answer.body), true);
+}
+
 /** The caller's credential: the token, a session cookie, or neither. Both: 400. */
 function authenticate(req, res) {
   const bearer = req.headers.authorization;
@@ -372,6 +403,7 @@ http
     // L05: the step-up and the evaluation plans (reads with a token or a session; writes from a
     // session on `localhost` only, with the CSRF layers and, where the API needs it, a passkey).
     if (await stepUpAndPlans(req, res, url)) return;
+    if (await adminRoutes(req, res, url)) return;
     // The dashboard is read only: the stub refuses every other method (the test counts them).
     if (req.method !== 'GET') return json(res, 405, error('method_not_allowed'));
     if (!authenticate(req, res)) return;

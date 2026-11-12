@@ -10,6 +10,7 @@ import { ApiError } from './api/client.js';
 import { readAuthConfig, readMeWithCookie, readWebSession } from './api/reads.js';
 import { endSession } from './api/writes.js';
 import { Txt } from './components/common.js';
+import { Lazy } from './components/Lazy.js';
 import { t } from './i18n.js';
 import { href, useRoute, type Route } from './router.js';
 import { session } from './session.js';
@@ -131,6 +132,9 @@ export function App() {
               {me.tenant_admin === true && (
                 <NavItem route={route} name="audit" label={t('dashboard.nav.audit')} />
               )}
+              {mayAdminister(me) && (
+                <NavItem route={route} name="admin" label={t('dashboard.nav.admin')} />
+              )}
               {session.actions() && (
                 <NavItem route={route} name="passkeys" label={t('dashboard.nav.passkeys')} />
               )}
@@ -180,7 +184,8 @@ function NavItem({
   const active =
     route.name === name ||
     (name === 'intents' && route.name === 'intent') ||
-    (name === 'evaluations' && route.name.startsWith('eval'));
+    (name === 'evaluations' && route.name.startsWith('eval')) ||
+    (name === 'admin' && route.name.startsWith('admin'));
   return (
     <li>
       <a href={href(name)} aria-current={active ? 'page' : undefined}>
@@ -212,7 +217,49 @@ function Screen({ route, me }: { readonly route: Route; readonly me: Me }) {
       return session.actions() ? <Passkeys /> : <IntentsBoard me={me} query={route.query} />;
     case 'audit':
       return me.tenant_admin === true ? <Audit /> : <IntentsBoard me={me} query={route.query} />;
+    // U09: administration; the API decides what each person may read and change.
+    case 'admin':
+    case 'admin-project':
+    case 'admin-config':
+    case 'admin-user':
+      return mayAdminister(me) ? (
+        <Lazy load={loadAdmin}>
+          {(screens) => <AdminScreen route={route} me={me} screens={screens} />}
+        </Lazy>
+      ) : (
+        <IntentsBoard me={me} query={route.query} />
+      );
     default:
       return <IntentsBoard me={me} query={route.query} />;
+  }
+}
+
+/** U09: a tenant admin, or a person with the project role `admin` somewhere. */
+function mayAdminister(me: Me): boolean {
+  return me.tenant_admin === true || me.roles.some((r) => r.role === 'admin');
+}
+
+/** U09 (QUESTIONS #686): the administration screens are a chunk of their own. */
+const loadAdmin = () => import('./views/admin-screens.js');
+type AdminScreens = Awaited<ReturnType<typeof loadAdmin>>;
+
+function AdminScreen({
+  route,
+  me,
+  screens,
+}: {
+  readonly route: Route;
+  readonly me: Me;
+  readonly screens: AdminScreens;
+}) {
+  switch (route.name) {
+    case 'admin-project':
+      return <screens.AdminProject slug={route.slug} me={me} />;
+    case 'admin-config':
+      return <screens.AdminConfig slug={route.slug} />;
+    case 'admin-user':
+      return <screens.AdminUser id={route.id} />;
+    default:
+      return <screens.Admin me={me} />;
   }
 }

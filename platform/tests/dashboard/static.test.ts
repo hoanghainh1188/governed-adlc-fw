@@ -27,6 +27,9 @@ function code(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
+/** The files that hold the dashboard's writes: U05–U08, and U09's admin chunk (QUESTIONS #686). */
+const WRITE_FILES = ['src/api/writes.ts', 'src/api/admin-writes.ts'];
+
 const sources = files(srcDir, /\.tsx?$/).map((file) => ({
   file: path.relative(appDir, file),
   text: code(fs.readFileSync(file, 'utf8')),
@@ -37,8 +40,8 @@ describe('the dashboard writes only its own session and passkeys (AC1; U05, U06)
     const callers = sources.filter((s) => /\bfetch\s*\(/.test(s.text)).map((s) => s.file);
     expect(callers).toEqual(['src/api/client.ts']);
     const client = sources.find((s) => s.file === 'src/api/client.ts')!.text;
-    const methods = [...client.matchAll(/'(GET|POST|PUT|PATCH|DELETE)'/g)].map((m) => m[1]);
-    expect(methods.filter((m) => m === 'PUT' || m === 'PATCH')).toEqual([]);
+    // U09 (ADR-M73 §2.4b): PUT and PATCH only as write methods of `send`, never for a read.
+    expect(client).toContain("export type WriteMethod = 'POST' | 'PUT' | 'PATCH' | 'DELETE';");
     // GETs go through getJson / getPublicJson only.
     expect([...client.matchAll(/request\(path, 'GET'/g)]).toHaveLength(2);
     // Writes: one `request` call, in `send`, with the cookie and the CSRF token (ADR-M73 §2.3).
@@ -51,15 +54,15 @@ describe('the dashboard writes only its own session and passkeys (AC1; U05, U06)
       "if (write?.body !== undefined) headers['content-type'] = 'application/json';",
     );
     for (const { file, text } of sources) {
-      if (file === 'src/api/writes.ts' || file === 'src/api/client.ts') continue;
+      if (WRITE_FILES.includes(file) || file === 'src/api/client.ts') continue;
       expect(text, file).not.toMatch(/\bsend\(/);
     }
   });
 
   it('the writes are exactly sign-out, the own passkeys, the step-up and the plan actions', () => {
-    const writes = sources.find((s) => s.file === 'src/api/writes.ts')!.text;
+    const writes = WRITE_FILES.map((f) => sources.find((s) => s.file === f)!.text).join('\n');
     const calls = [
-      ...writes.matchAll(/send\(\s*apiPath\([`']([^`']+)[`']\),\s*'(POST|DELETE)'/g),
+      ...writes.matchAll(/send\(\s*apiPath\([`']([^`']+)[`']\),\s*'(POST|PUT|PATCH|DELETE)'/g),
     ].map((m) => `${m[2]} ${m[1]!.replace(/\$\{[^}]+\}/g, 'X')}`);
     expect(calls.sort()).toEqual(
       [
@@ -84,9 +87,40 @@ describe('the dashboard writes only its own session and passkeys (AC1; U05, U06)
         'POST /v1/intents/X/specs',
         'POST /v1/intents/X/plans',
         'POST /v1/intents/X/evidence-packs',
+        // U09 PR 2 (ADR-M73 §2.4b): projects, roles, configuration, people, GitHub accounts,
+        // tenant admins; each with a passkey step-up. Never a token route (QUESTIONS #684).
+        'POST /v1/admin/projects',
+        'PATCH /v1/admin/projects/X',
+        'POST /v1/admin/projects/X/roles',
+        'DELETE /v1/admin/projects/X/roles/X',
+        'PUT /v1/admin/projects/X/config',
+        'POST /v1/admin/users',
+        'PATCH /v1/admin/users/X',
+        'POST /v1/admin/users/X/disable',
+        'POST /v1/admin/users/X/enable',
+        'POST /v1/admin/users/X/identities',
+        'DELETE /v1/admin/users/X/identities/X',
+        'DELETE /v1/admin/users/X/sessions',
+        'POST /v1/admin/tenant-admins',
+        'DELETE /v1/admin/tenant-admins/X',
       ].sort(),
     );
     expect([...writes.matchAll(/\bsend\(/g)]).toHaveLength(calls.length);
+  });
+
+  it('U09: each administration change binds its passkey to the path it writes to', () => {
+    const writes = sources.find((s) => s.file === 'src/api/admin-writes.ts')!.text;
+    // `const target = <path>;` then `signed(confirm, '<area>', …)`, then `send(apiPath(<path>)`.
+    const changes = [
+      ...writes.matchAll(
+        /const target = ([`'][^`']+[`']);\s*const signedBody = await signed\(\s*confirm,\s*'(admin\.[a-z_]+)',\s*'([a-z_]+)',\s*target[\s\S]*?send\(\s*apiPath\(([`'][^`']+[`'])\)/g,
+      ),
+    ];
+    expect(changes).toHaveLength(14);
+    for (const [, target, area, decision, sent] of changes) {
+      expect(sent, `${area} ${decision}`).toBe(target);
+    }
+    expect([...writes.matchAll(/await signed\(/g)]).toHaveLength(changes.length);
   });
 
   it('U06: the CSRF token stays in memory; the passkey ceremony runs in the browser', () => {
@@ -101,7 +135,7 @@ describe('the dashboard writes only its own session and passkeys (AC1; U05, U06)
       expect(text, file).not.toMatch(
         /XMLHttpRequest|navigator\.sendBeacon|new WebSocket|EventSource|<form[^>]*action=/,
       );
-      if (file === 'src/api/client.ts' || file === 'src/api/writes.ts') continue;
+      if (file === 'src/api/client.ts' || WRITE_FILES.includes(file)) continue;
       expect(text, file).not.toMatch(/'(POST|PUT|PATCH|DELETE)'/);
     }
   });
@@ -204,10 +238,16 @@ describe.runIf(built)('the build (AC3, `pnpm build` first)', () => {
     }
   });
 
-  it('stays within its budget: under 80 kB of JavaScript gzipped', () => {
-    const js = assets
-      .filter((f) => f.endsWith('.js'))
-      .reduce((n, f) => n + gzipSync(fs.readFileSync(f)).length, 0);
-    expect(js).toBeLessThan(80 * 1024);
+  it('stays within its budget: under 80 kB of JavaScript gzipped at first load', () => {
+    const gz = (f: string) => gzipSync(fs.readFileSync(f)).length;
+    const js = assets.filter((f) => f.endsWith('.js'));
+    // U09 (QUESTIONS #686): the administration screens are a chunk of their own, under 25 kB.
+    const admin = js.filter((f) => path.basename(f).startsWith('admin-screens-'));
+    expect(admin).toHaveLength(1);
+    expect(gz(admin[0]!)).toBeLessThan(25 * 1024);
+    const first = js.filter((f) => !admin.includes(f));
+    expect(first).toHaveLength(1);
+    expect(html).toContain(`/dashboard/assets/${path.basename(first[0]!)}`);
+    expect(gz(first[0]!)).toBeLessThan(80 * 1024);
   });
 });

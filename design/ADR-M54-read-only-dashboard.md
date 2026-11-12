@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** (Harry, 2026-10-16; built by task U01) |
+| Status | **Accepted** (Harry, 2026-10-16; built by task U01). Version 0.8: the budget per chunk (Harry, 2026-11-12, QUESTIONS #686) |
 | Date | 2026-10-07 |
 | Decided by | Harry (QUESTIONS #255; U01 plan approved 2026-10-07 with the answers to QUESTIONS #260–#263: the four read-only fields, #263 option B, the token in memory only) |
 | Related | D-08 task U01 (AC1–AC6); D-02 §4.2 (version 1.4); D-03 §5.1, §9, §11 (version 1.32); ADR-M03 (no web UI in the MVP), ADR-M26 (the API), ADR-M36 (the CLI's API client), ADR-M30 (intent workflow), ADR-M28 (escalations), ADR-M45 (cost report), ADR-M47 (gate metrics), ADR-M48 (Evidence Packs); handbook Ch.19 §19.8e; QUESTIONS #255, #260–#265; task U02 |
@@ -81,7 +81,7 @@ Harry decided (QUESTIONS #255, 2026-10-07): a **read-only** dashboard, started i
 - **Vite 8.3.1** (already pinned at the root for Vitest) builds it; no Vite dev server in Compose.
 - **No chart library:** small SVG components (wait-time bars per gate, cost split, SLA countdown) built on the colour tokens.
 - **Fonts:** IBM Plex Sans and IBM Plex Mono 5.3.0 (OFL-1.1) from `@fontsource`, Latin subset, served by the api, `font-display: swap`.
-- **Budget:** under 80 kB of JavaScript gzipped, checked on the build output.
+- **Budget:** under 80 kB of JavaScript gzipped, checked on the build output. Version 0.8 (U09, QUESTIONS #686): the budget is for the first load; the administration screens are a chunk of their own, loaded when a person opens one, under 25 kB gzipped, with their `dashboard.admin.*` messages.
 - **Response schemas:** the CLI's zod schemas move into a package both apps import (an app never imports another app).
 - **Labels and messages** through `@sdlc/messages` (`dashboard.*` keys), bundled at build time (NFR-08).
 
@@ -136,3 +136,4 @@ Harry decided (QUESTIONS #255, 2026-10-07): a **read-only** dashboard, started i
 | 0.2 | 2026-10-07 | Claude (task U01, PR 1) | After the code review: what `waiting_for` does not say (§2.4); Harry: task U02 exposes the workflow's last waiting reason and moves the notice audiences to the shared function (QUESTIONS #264, #265; §4) |
 | 0.1 | 2026-10-07 | Claude (task U01, PR 1) | First version: read only, served by the api under `/dashboard/`, 127.0.0.1 only, CSP, the token in memory, the four fields, one oversight resolution for the workflow and `waiting_for`; PR 2's app and tests |
 | 0.7 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
+| 0.8 | 2026-11-12 | Claude (task U09, PR 2), decided by Harry | §2.5 Budget: 80 kB for the first load; the administration screens a chunk of their own under 25 kB (QUESTIONS #686) |
