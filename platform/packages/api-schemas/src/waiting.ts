@@ -25,6 +25,7 @@ export const WAITING_REASON_KEYS: Readonly<Record<string, string>> = {
   publish_review: 'intent.waiting.publish_review',
   publish_retry: 'intent.waiting.publish_retry',
   ci_pending: 'intent.waiting.ci_pending',
+  ci_missing: 'intent.waiting.ci_missing',
   g6_decision: 'intent.waiting.g6_decision',
   g7_decision: 'intent.waiting.g7_decision',
   g7_merge: 'intent.waiting.g7_merge',

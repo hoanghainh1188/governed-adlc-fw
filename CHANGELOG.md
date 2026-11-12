@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Upgrade notes
+- **Project configuration (O06):** the default configuration gains `verification.ci_missing_minutes` (15), so the default `config_hash` changes. Nothing to do; a project that sets its own `verification` section needs no change (the default fills the new key).
+
+### Added
+- **Real repositories, part 1** (task O06 PR 1, ADR-M106, QUESTIONS #676). A very large repository no longer fails G4 at once: when GitHub cuts the tree short, the adapter lists it folder by folder (at most 200 Git trees calls for one commit, adapter option `maxTreeRequests`), and only a tree too large even for that fails with `tree_truncated`. A pushed commit with no CI check at all is now `missing`, not `pending`: G6 waits with the reason `ci_missing`, `adlc next` says the repository needs CI, and after `verification.ci_missing_minutes` (default 15, never longer than the CI timeout) the intent is paused with a technical escalation (check `ci_missing`). New handbook sections: Ch.13 §13.10.2a (before the first intent on a repository) and Ch.14 §14.10.3 (a repository without CI). Monorepos (AC2) wait for QUESTIONS #677.
+
 ## [0.12.0] - 2026-11-12
 
 **Client data deletion, the Docker AuthZ plugin on the runner Engine, vLLM on a separate GPU host, and fewer manual steps for a server deployment.**

@@ -54,6 +54,7 @@ export const ADVICE_CODES = [
   'ci_pending',
   'publish_retry',
   'changes_requested',
+  'setup_ci',
   'setup_git_host',
   'setup_evidence',
   'setup_later_gate',
@@ -98,6 +99,7 @@ const ADVICE_KEYS: Readonly<Record<AdviceCode, MessageKey>> = {
   ci_pending: 'cli.next.advice.ci_pending',
   publish_retry: 'cli.next.advice.publish_retry',
   changes_requested: 'cli.next.advice.changes_requested',
+  setup_ci: 'cli.next.advice.setup_ci',
   setup_git_host: 'cli.next.advice.setup_git_host',
   setup_evidence: 'cli.next.advice.setup_evidence',
   setup_later_gate: 'cli.next.advice.setup_later_gate',
@@ -351,6 +353,8 @@ export const REASON_RULES: Readonly<Record<IntentWaitReason, Rule>> = {
       ? advice('you_act', 'proposal', facts)
       : advice('waits_for', 'waits_role', facts, { roles: 'person_a' }, ['person_a']),
   ci_pending: (facts) => advice('platform', 'ci_pending', facts),
+  // O06 (ADR-M106): no check at all; the project's people add CI (not only an admin).
+  ci_missing: (facts) => advice('fix_setup', 'setup_ci', facts),
   publish_retry: (facts) => advice('platform', 'publish_retry', facts),
   g7_changes_requested: (facts) => advice('platform', 'changes_requested', facts),
   git_host_unavailable: (facts) => advice('fix_setup', 'setup_git_host', facts),

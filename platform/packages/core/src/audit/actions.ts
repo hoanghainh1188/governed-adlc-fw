@@ -335,7 +335,7 @@ export const AUDIT_ACTIONS = {
   },
   /**
    * A G6 check failed (C08 PR 2, ADR-M38 §2.7): the exact cause next to the decision's reason
-   * code: `ci_failed` (a retry), `ci_no_retries` (back to G3), `ci_timeout`, `pr_closed`,
+   * code: `ci_failed` (a retry), `ci_no_retries` (back to G3), `ci_timeout`, `ci_missing` (O06), `pr_closed`,
    * `pr_merged`, `branch_moved`, `critical_finding`.
    */
   'gate.g6_check_failed': {

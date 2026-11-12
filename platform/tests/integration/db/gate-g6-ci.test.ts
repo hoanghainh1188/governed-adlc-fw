@@ -289,6 +289,44 @@ describeDb('C08 PR 2: G6 reads CI, on PostgreSQL', () => {
     expect(await notices(t, intent)).toContain('g6_resumed');
   });
 
+  it('no check at all (O06 AC3): waits ci_missing, then paused with the cause ci_missing; a check that appears goes on as pending', async () => {
+    ci.checks = [];
+    const intent = await atG4(t, 'medium');
+    await runToCi(intent);
+    const first = await step(intent);
+    expect(first).toMatchObject({ outcome: 'waiting', reason: 'ci_missing' });
+    expect(await waitingRow(t.f.scope, intent)).toMatchObject({ reason: 'ci_missing' });
+    // The default ci_missing_minutes (15) is shorter than the CI timeout (60).
+    expect((first as { wakeInMs?: number }).wakeInMs).toBeLessThanOrEqual(15 * MINUTE);
+
+    at(clock.getTime() - T0.getTime() + 16 * MINUTE);
+    expect(await step(intent)).toEqual({ outcome: 'waiting', reason: 'publish_review' });
+    expect(await reload(intent)).toMatchObject({ status: 'paused', current_gate: 'G6' });
+    const [escalation] = (await t.f.scope.escalations.listForIntent(intent.id)).slice(-1);
+    expect(escalation).toMatchObject({
+      route: 'technical',
+      packet: { gate: 'G6', subject_kind: 'g6_input', reason_code: 'ci_failed' },
+    });
+    expect(await checks(intent)).toEqual(['ci_missing']);
+    expect(await g6Decisions(intent)).toEqual([]);
+
+    // CI was added: `resume` reads CI again and waits as for any running check.
+    ci.checks = [running()];
+    await decide(intent, 'resume');
+    expect(await step(intent)).toMatchObject({ outcome: 'waiting', reason: 'ci_pending' });
+  });
+
+  it('a check that appears before the ci_missing limit: no stop at 16 minutes', async () => {
+    ci.checks = [];
+    const intent = await atG4(t, 'medium');
+    await runToCi(intent);
+    expect(await step(intent)).toMatchObject({ reason: 'ci_missing' });
+    ci.checks = [running()];
+    at(clock.getTime() - T0.getTime() + 16 * MINUTE);
+    expect(await step(intent)).toMatchObject({ outcome: 'waiting', reason: 'ci_pending' });
+    expect(await reload(intent)).toMatchObject({ status: 'in_gate', current_gate: 'G6' });
+  });
+
   it('a changed input while paused (CI finished) voids the escalation; G6 reads CI again', async () => {
     const intent = await atG4(t, 'medium');
     await runToCi(intent);

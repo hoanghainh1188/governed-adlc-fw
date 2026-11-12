@@ -268,7 +268,7 @@ export const RUN_EVENT_TYPES = {
   /**
    * What G6 read from the Git host about the run's pull request (C08 PR 2, ADR-M38 §2.7): the
    * pull request's state and head, the result of the checks G6 waits for (`state`: `passed`,
-   * `failed`, `pending`), the SHA-256 of their sorted names and conclusions (the names stay on the
+   * `failed`, `pending`, `missing`: no check at all, O06), the SHA-256 of their sorted names and conclusions (the names stay on the
    * Git host), and the open security findings per severity (`findings`: `known`, `not_enabled`,
    * `forbidden`). Recorded when it changed; G6 decides from the latest one.
    */

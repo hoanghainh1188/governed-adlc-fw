@@ -14,6 +14,9 @@
 //   4. CI pending → wait (`ci_pending`) until `verification.ci_timeout_minutes` after the clock
 //      start (entry into G6, the end of G5's block window, or the close of the last G6
 //      escalation), then `paused` and a `technical` escalation; no retry used (QUESTIONS #159);
+//   4b. no check at all on the commit (O06, ADR-M106: the repository may have no CI) → wait
+//      (`ci_missing`) until the shorter of `verification.ci_missing_minutes` and the CI timeout,
+//      then `paused` and a `technical` escalation (`ci_missing`); no retry used;
 //   5. CI passed: a critical security finding → `paused` and a `security` escalation, once per
 //      input (a `resume` brings the intent back for Person B's approval); otherwise oversight from
 //      the matrix with the findings (`securityFindings`, `securityFindingsUnknown`: fail closed,
@@ -53,6 +56,7 @@ export type G6Check =
   | 'ci_failed'
   | 'ci_no_retries'
   | 'ci_timeout'
+  | 'ci_missing'
   | 'pr_closed'
   | 'pr_merged'
   | 'branch_moved'
@@ -67,6 +71,8 @@ const STOPS: Readonly<
 > = {
   // Not `time`: that trigger is the gate deadline's (closed when the gate is decided).
   ci_timeout: { route: 'technical', trigger: 'unusual_behaviour', reason: 'ci_failed' },
+  // O06 (ADR-M106): `resume` stays at G6 and reads CI again, as after a timeout.
+  ci_missing: { route: 'technical', trigger: 'unusual_behaviour', reason: 'ci_failed' },
   pr_closed: { route: 'technical', trigger: 'unusual_behaviour', reason: 'input_mismatch' },
   pr_merged: { route: 'technical', trigger: 'unusual_behaviour', reason: 'input_mismatch' },
   branch_moved: { route: 'technical', trigger: 'unusual_behaviour', reason: 'input_mismatch' },
@@ -131,13 +137,17 @@ export async function stepCi(
   if (ci.headSha !== facts.pushedHead)
     return stop(tx, registry, policy, intent, facts, 'branch_moved');
   if (ci.state === 'failed') return failCi(tx, registry, policy, intent, facts);
-  if (ci.state === 'pending') {
+  if (ci.state === 'pending' || ci.state === 'missing') {
+    const { ci_timeout_minutes, ci_missing_minutes } = policy.config.verification;
+    const missing = ci.state === 'missing';
+    const minutes = missing ? Math.min(ci_missing_minutes, ci_timeout_minutes) : ci_timeout_minutes;
     const deadline =
-      (await ciClockStart(tx, registry, policy, intent, run)).getTime() +
-      policy.config.verification.ci_timeout_minutes * MINUTE;
+      (await ciClockStart(tx, registry, policy, intent, run)).getTime() + minutes * MINUTE;
     const now = registry.now().getTime();
-    if (now >= deadline) return stop(tx, registry, policy, intent, facts, 'ci_timeout');
-    return wait('ci_pending', deadline - now);
+    if (now >= deadline) {
+      return stop(tx, registry, policy, intent, facts, missing ? 'ci_missing' : 'ci_timeout');
+    }
+    return wait(missing ? 'ci_missing' : 'ci_pending', deadline - now);
   }
 
   // CI passed.

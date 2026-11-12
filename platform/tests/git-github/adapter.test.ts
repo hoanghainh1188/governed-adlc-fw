@@ -179,10 +179,109 @@ describe('listPaths (C07, QUESTIONS #126)', () => {
     expect(request?.query.get('recursive')).toBe('1');
   });
 
-  it('fails closed on a truncated tree (tree_truncated)', async () => {
+  it('fails closed when GitHub cuts a folder even without recursive (tree_truncated)', async () => {
     h.stub.on('GET', TREE, { body: { sha: SHA_A, truncated: true, tree: [] } });
     await expect(h.adapter().listPaths(REPO, SHA_A)).rejects.toMatchObject({
       code: 'tree_truncated',
+    });
+  });
+
+  describe('a tree GitHub cuts short (O06 AC1, ADR-M106)', () => {
+    const SUB_APPS = 'c'.repeat(40);
+    const SUB_WEB = 'd'.repeat(40);
+    const SUB_LIB = 'e'.repeat(40);
+    const tree = (treeSha: string) => `/repos/acme/shop/git/trees/${treeSha}`;
+    const blob = (path: string) => ({ path, type: 'blob', mode: '100644', sha: SHA_B });
+    const dir = (path: string, treeSha: string) => ({
+      path,
+      type: 'tree',
+      mode: '040000',
+      sha: treeSha,
+    });
+
+    /** root → apps (cut) → web (whole), lib (whole); root also has AGENTS.md. */
+    function bigRepo(): void {
+      h.stub.on('GET', tree(SHA_A), (req) =>
+        req.query.get('recursive') === '1'
+          ? { body: { sha: SHA_A, truncated: true, tree: [blob('partial')] } }
+          : {
+              body: {
+                sha: SHA_A,
+                truncated: false,
+                tree: [blob('AGENTS.md'), dir('apps', SUB_APPS)],
+              },
+            },
+      );
+      h.stub.on('GET', tree(SUB_APPS), (req) =>
+        req.query.get('recursive') === '1'
+          ? { body: { sha: SUB_APPS, truncated: true, tree: [] } }
+          : {
+              body: {
+                sha: SUB_APPS,
+                truncated: false,
+                tree: [dir('web', SUB_WEB), dir('lib', SUB_LIB), blob('README.md')],
+              },
+            },
+      );
+      h.stub.on('GET', tree(SUB_WEB), {
+        body: {
+          sha: SUB_WEB,
+          truncated: false,
+          tree: [dir('src', SHA_B), blob('src/AGENTS.md'), blob('src/main.ts')],
+        },
+      });
+      h.stub.on('GET', tree(SUB_LIB), {
+        body: { sha: SUB_LIB, truncated: false, tree: [blob('index.ts')] },
+      });
+    }
+
+    it('lists it in parts: every path, full, sorted, never the cut listing', async () => {
+      bigRepo();
+      await expect(h.adapter().listPaths(REPO, SHA_A)).resolves.toEqual([
+        'AGENTS.md',
+        'apps/README.md',
+        'apps/lib/index.ts',
+        'apps/web/src/AGENTS.md',
+        'apps/web/src/main.ts',
+      ]);
+      // root: recursive + plain; apps: recursive + plain; web, lib: recursive only.
+      expect(h.stub.requestsTo('GET', tree(SHA_A))).toHaveLength(2);
+      expect(h.stub.requestsTo('GET', tree(SUB_APPS))).toHaveLength(2);
+      expect(h.stub.requestsTo('GET', tree(SUB_WEB))).toHaveLength(1);
+      expect(h.stub.requestsTo('GET', tree(SUB_LIB))).toHaveLength(1);
+    });
+
+    it('fails closed past maxTreeRequests (tree_truncated)', async () => {
+      bigRepo();
+      await expect(h.adapter({ maxTreeRequests: 5 }).listPaths(REPO, SHA_A)).rejects.toMatchObject({
+        code: 'tree_truncated',
+      });
+      expect(h.stub.requests.filter((r) => r.path.includes('/git/trees/'))).toHaveLength(5);
+      await expect(h.adapter({ maxTreeRequests: 6 }).listPaths(REPO, SHA_A)).resolves.toHaveLength(
+        5,
+      );
+    });
+
+    it.each(['a/b', '..', '.'])('refuses a folder entry named %j', async (name) => {
+      h.stub.on('GET', tree(SHA_A), (req) =>
+        req.query.get('recursive') === '1'
+          ? { body: { truncated: true, tree: [] } }
+          : { body: { truncated: false, tree: [dir(name, SUB_LIB)] } },
+      );
+      await expect(h.adapter().listPaths(REPO, SHA_A)).rejects.toMatchObject({
+        code: 'invalid_response',
+      });
+    });
+
+    it('refuses a sub-tree without a valid SHA', async () => {
+      h.stub.on('GET', tree(SHA_A), (req) =>
+        req.query.get('recursive') === '1'
+          ? { body: { truncated: true, tree: [] } }
+          : { body: { truncated: false, tree: [dir('apps', '../x')] } },
+      );
+      await expect(h.adapter().listPaths(REPO, SHA_A)).rejects.toMatchObject({
+        code: 'invalid_response',
+      });
     });
   });
 

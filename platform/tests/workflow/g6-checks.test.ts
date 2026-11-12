@@ -34,8 +34,14 @@ describe('evaluateChecks (QUESTIONS #159)', () => {
     },
   );
 
-  it('no check at all is pending: a repository without CI never passes G6', () => {
-    expect(evaluateChecks([], []).state).toBe('pending');
+  it('no check at all is missing: a repository without CI never passes G6 (O06 AC3)', () => {
+    expect(evaluateChecks([], []).state).toBe('missing');
+    // Required names do not change it: the commit has no check of any name.
+    expect(evaluateChecks([], ['ci-ok']).state).toBe('missing');
+  });
+
+  it('a check of another name than the required one is pending, not missing', () => {
+    expect(evaluateChecks([check('lint', 'success')], ['ci-ok']).state).toBe('pending');
   });
 
   it('a failure wins over pending checks', () => {
