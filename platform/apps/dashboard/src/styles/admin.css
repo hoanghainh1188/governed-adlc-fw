@@ -184,3 +184,44 @@
     margin-bottom: var(--space-2);
   }
 }
+
+/* U09 PR 3: the agent register, the shortcuts of the overview. */
+.admin-actions {
+  justify-content: flex-start;
+  margin-top: var(--space-4);
+}
+
+.admin-rounds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  gap: var(--space-4);
+}
+
+.admin-round {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.admin-round h3 {
+  margin: 0 0 var(--space-2);
+}
+
+.admin-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.admin-shortcuts .intake-row {
+  flex: 1 1 18rem;
+}
+
+/* A slug or an agent key as the screen's title keeps the title's size. */
+.screen-head h1.code {
+  font-size: var(--text-title);
+}

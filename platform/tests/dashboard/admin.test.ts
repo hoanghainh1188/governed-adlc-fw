@@ -5,12 +5,33 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { PROJECT_ROLES as CONTRACT_ROLES } from '@sdlc/contracts';
+import {
+  AGENT_ADAPTERS as CONTRACT_ADAPTERS,
+  AGENT_KEY_PATTERN,
+  AI_ALLOWED_VALUES,
+  DATA_CLASSES as CONTRACT_DATA_CLASSES,
+  DISCLOSURE_FORMATS as CONTRACT_DISCLOSURE,
+  PROD_LOGS_ALLOWED_VALUES,
+  PROJECT_ROLES as CONTRACT_ROLES,
+} from '@sdlc/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
   ADMIN_ERROR_CODES,
   adminErrorKey,
+  AGENT_ADAPTERS,
+  AGENT_KEY,
+  AGENT_STATUS_REASONS,
+  agentChanges,
+  AI_ALLOWED,
+  checkAgent,
+  checkAiRecord,
+  checkApproval,
+  checkHoldLink,
+  codeList,
+  DATA_CLASSES,
+  DISCLOSURE_FORMATS,
+  PROD_LOGS_ALLOWED,
   checkIdentity,
   checkProject,
   checkRole,
@@ -25,10 +46,13 @@ import {
   REPO_FULL_NAME,
 } from '../../apps/dashboard/src/model/admin.js';
 import {
+  adminAgentHref,
+  adminHoldHref,
   adminProjectHref,
   adminUserHref,
   parseRoute,
 } from '../../apps/dashboard/src/model/route.js';
+import { AGENT_STATUS_REASONS as CORE_REASONS } from '../../packages/core/src/agents/rules.js';
 import {
   EXTERNAL_ID_PATTERN,
   EXTERNAL_LOGIN_PATTERN,
@@ -192,5 +216,145 @@ describe('U09: routes', () => {
     expect(adminProjectHref('../x')).toBe('#/admin');
     expect(adminUserHref(ID)).toBe(`#/admin/users/${ID}`);
     expect(adminUserHref('x')).toBe('#/admin');
+  });
+});
+
+describe('U09 PR 3: the agent register, the AI record, evidence holds', () => {
+  const HASH = 'a'.repeat(64);
+  const form = {
+    key: 'openhands-qwen',
+    version: '1',
+    owner: ID,
+    model: '',
+    instructionsRef: 'AGENTS.md@v1',
+    instructionsSha256: HASH,
+    tools: 'git, tests  git',
+    autonomy: 'L1',
+    environments: ['sandbox'],
+    adapter: '',
+  };
+
+  it('uses the same codes as the platform', () => {
+    expect(AGENT_KEY.source).toBe(AGENT_KEY_PATTERN.source);
+    expect([...AGENT_ADAPTERS]).toEqual([...CONTRACT_ADAPTERS]);
+    expect([...AGENT_STATUS_REASONS]).toEqual([...CORE_REASONS]);
+    expect([...AI_ALLOWED]).toEqual([...AI_ALLOWED_VALUES]);
+    expect([...PROD_LOGS_ALLOWED]).toEqual([...PROD_LOGS_ALLOWED_VALUES]);
+    expect([...DISCLOSURE_FORMATS]).toEqual([...CONTRACT_DISCLOSURE]);
+    expect([...DATA_CLASSES]).toEqual([...CONTRACT_DATA_CLASSES]);
+  });
+
+  it('a new agent: the fields of adlc admin agent register; the file is pinned by its hash', () => {
+    expect(codeList('git, tests  git')).toEqual(['git', 'tests']);
+    expect(checkAgent(form)).toEqual({
+      body: {
+        key: 'openhands-qwen',
+        version: '1',
+        owner_id: ID,
+        instructions_ref: 'AGENTS.md@v1',
+        instructions_sha256: HASH,
+        allowed_tools: ['git', 'tests'],
+        max_autonomy: 'L1',
+        approved_environments: ['sandbox'],
+      },
+    });
+    expect(checkAgent({ ...form, key: 'Bad' })).toEqual({
+      error: 'dashboard.admin.error.agent_key',
+    });
+    expect(checkAgent({ ...form, instructionsSha256: '' })).toEqual({
+      error: 'dashboard.admin.error.instructions_file',
+    });
+    expect(checkAgent({ ...form, autonomy: 'L3' })).toEqual({
+      error: 'dashboard.admin.error.autonomy',
+    });
+    expect(checkAgent({ ...form, environments: [] })).toEqual({
+      error: 'dashboard.admin.error.environments',
+    });
+  });
+
+  it('a new version sends the version and what changed; a new file needs its hash', () => {
+    const before = {
+      model_ref: null,
+      instructions_ref: 'AGENTS.md@v1',
+      allowed_tools: ['git', 'tests'],
+      max_autonomy: 'L1',
+      approved_environments: ['sandbox'],
+    };
+    const same = { ...form, version: '2', instructionsSha256: '' };
+    expect(agentChanges(before, same)).toBeNull();
+    expect(agentChanges(before, { ...same, autonomy: 'L2', model: 'qwen' })).toEqual({
+      body: { version: '2', model_ref: 'qwen', max_autonomy: 'L2' },
+    });
+    expect(agentChanges(before, { ...same, instructionsRef: 'AGENTS.md@v2' })).toEqual({
+      error: 'dashboard.admin.error.instructions_file',
+    });
+    expect(
+      agentChanges(before, { ...same, instructionsRef: 'AGENTS.md@v2', instructionsSha256: HASH }),
+    ).toEqual({
+      body: { version: '2', instructions_ref: 'AGENTS.md@v2', instructions_sha256: HASH },
+    });
+  });
+
+  it('an approval names its round, its capacity and maybe an evaluation', () => {
+    expect(checkApproval({ purpose: 'activate', capacity: 'person_b', evaluation: '' })).toEqual({
+      body: { purpose: 'activate', as: 'person_b' },
+    });
+    expect(
+      checkApproval({ purpose: 'activate', capacity: 'owner', evaluation: 'EVAL-2026-0001' }),
+    ).toEqual({ body: { purpose: 'activate', as: 'owner', evaluation_code: 'EVAL-2026-0001' } });
+    expect(checkApproval({ purpose: 'activate', capacity: 'admin', evaluation: '' })).toEqual({
+      error: 'dashboard.admin.error.capacity',
+    });
+    expect(checkApproval({ purpose: 'run', capacity: 'owner', evaluation: '' })).toEqual({
+      error: 'dashboard.admin.error.purpose',
+    });
+  });
+
+  it('the AI record: codes, a date and one https link, never text', () => {
+    const record = {
+      aiAllowed: 'yes',
+      classes: ['client_restricted', 'internal'],
+      prodLogs: 'no',
+      disclosure: 'standard_note',
+      confirmedAt: '',
+      recordRef: '',
+    };
+    expect(checkAiRecord(2, record)).toEqual({
+      body: {
+        expected_version: 2,
+        ai_allowed: 'yes',
+        allowed_data_classes: ['internal', 'client_restricted'],
+        prod_logs_allowed: 'no',
+        disclosure_format: 'standard_note',
+        confirmed_at: null,
+        record_ref: null,
+      },
+    });
+    expect(checkAiRecord(0, { ...record, recordRef: 'http://x' })).toEqual({
+      error: 'dashboard.admin.error.link',
+    });
+    expect(checkAiRecord(0, { ...record, confirmedAt: '12/11/2026' })).toEqual({
+      error: 'dashboard.admin.error.date',
+    });
+    expect(checkHoldLink('')).toEqual({ body: {} });
+    expect(checkHoldLink(' https://tickets.example/1 ')).toEqual({
+      body: { reason_ref: 'https://tickets.example/1' },
+    });
+    expect(checkHoldLink('a lawsuit')).toEqual({ error: 'dashboard.admin.error.link' });
+  });
+
+  it('routes of the agent register and of the evidence holds', () => {
+    expect(parseRoute('#/admin/agents').name).toBe('admin-agents');
+    expect(parseRoute('#/admin/agents/openhands-qwen')).toMatchObject({
+      name: 'admin-agent',
+      key: 'openhands-qwen',
+    });
+    expect(parseRoute('#/admin/holds/INT-2026-0001')).toMatchObject({
+      name: 'admin-hold',
+      code: 'INT-2026-0001',
+    });
+    expect(parseRoute('#/admin/holds/x').name).toBe('admin');
+    expect(adminAgentHref('Bad Key')).toBe('#/admin/agents');
+    expect(adminHoldHref('INT-2026-0001')).toBe('#/admin/holds/INT-2026-0001');
   });
 });

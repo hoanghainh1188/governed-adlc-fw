@@ -22,6 +22,7 @@ import { checkIdentity, checkUser } from '../model/admin.js';
 import { href } from '../router.js';
 import { session } from '../session.js';
 import { ChangesNote } from './Admin.js';
+import { UserPasskeys } from './AdminUserPasskeys.js';
 import { confirmAdminChange } from './admin-step-up.js';
 
 type Dialog = 'edit' | 'disable' | 'enable' | 'sessions' | 'link' | AdminIdentityView | null;
@@ -74,6 +75,7 @@ export function AdminUser({ id }: { readonly id: string }) {
               onHistory={setHistory}
               onDialog={setDialog}
             />
+            <UserPasskeys user={user} />
             {dialog !== null && (
               <UserDialog
                 user={user}

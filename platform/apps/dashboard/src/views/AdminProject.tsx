@@ -8,7 +8,7 @@ import { useState } from 'preact/hooks';
 
 import { readAdminProject, readAdminUsers, readProjectRoles } from '../api/reads.js';
 import { useApi } from '../api/use-api.js';
-import { grantRole, revokeRole, updateProject } from '../api/admin-writes.js';
+import { archiveProject, grantRole, revokeRole, updateProject } from '../api/admin-writes.js';
 import { ChangeDialog, TextField } from '../components/ChangeDialog.js';
 import { Empty, Show, Txt, When } from '../components/common.js';
 import { t } from '../i18n.js';
@@ -16,6 +16,7 @@ import { checkRole, PROJECT_ROLES, projectChanges } from '../model/admin.js';
 import { adminProjectHref, adminUserHref, href } from '../router.js';
 import { session } from '../session.js';
 import { ChangesNote } from './Admin.js';
+import { AdminAiRecord } from './AdminAiRecord.js';
 import { confirmAdminChange } from './admin-step-up.js';
 
 interface Loaded {
@@ -66,6 +67,7 @@ export function AdminProject({ slug, me }: { readonly slug: string; readonly me:
               onHistory={setHistory}
               onDone={reload}
             />
+            <AdminAiRecord slug={slug} />
           </>
         )}
       </Show>
@@ -83,14 +85,20 @@ function Details({
   readonly onDone: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   return (
     <section class="admin-section" aria-labelledby="project-details">
       <div class="section-head">
         <h2 id="project-details">{t('dashboard.admin.project.details')}</h2>
         {canEdit && session.actions() && project.status === 'active' && (
-          <button type="button" class="button button-quiet" onClick={() => setEditing(true)}>
-            {t('dashboard.admin.project.edit')}
-          </button>
+          <div class="row-actions">
+            <button type="button" class="button button-quiet" onClick={() => setEditing(true)}>
+              {t('dashboard.admin.project.edit')}
+            </button>
+            <button type="button" class="button button-danger" onClick={() => setArchiving(true)}>
+              {t('dashboard.admin.project.archive')}
+            </button>
+          </div>
         )}
       </div>
       <dl class="admin-facts">
@@ -115,6 +123,20 @@ function Details({
           <Txt value={project.status} />
         </dd>
       </dl>
+      {archiving && (
+        <ChangeDialog
+          id="archive-project"
+          title={t('dashboard.admin.project.archive')}
+          summary={t('dashboard.admin.project.archive_summary', { project: project.slug })}
+          danger
+          onClose={() => setArchiving(false)}
+          onConfirm={async () => {
+            await archiveProject(project.slug, confirmAdminChange);
+            setArchiving(false);
+            onDone();
+          }}
+        />
+      )}
       {editing && (
         <EditProject
           project={project}

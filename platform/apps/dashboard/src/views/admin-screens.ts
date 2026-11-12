@@ -11,3 +11,6 @@ export { Admin } from './Admin.js';
 export { AdminConfig } from './AdminConfig.js';
 export { AdminProject } from './AdminProject.js';
 export { AdminUser } from './AdminUser.js';
+export { AdminAgent } from './AdminAgent.js';
+export { AdminAgents } from './AdminAgents.js';
+export { AdminHold } from './AdminHold.js';

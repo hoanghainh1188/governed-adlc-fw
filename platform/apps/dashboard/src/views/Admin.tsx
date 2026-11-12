@@ -12,8 +12,8 @@ import { createProject, createUser } from '../api/admin-writes.js';
 import { ChangeDialog, TextField } from '../components/ChangeDialog.js';
 import { Empty, Show, Txt } from '../components/common.js';
 import { t } from '../i18n.js';
-import { checkProject, checkUser } from '../model/admin.js';
-import { adminProjectHref, adminUserHref } from '../router.js';
+import { checkProject, checkUser, INTENT_CODE } from '../model/admin.js';
+import { adminHoldHref, adminProjectHref, adminUserHref, href } from '../router.js';
 import { session } from '../session.js';
 import { confirmAdminChange } from './admin-step-up.js';
 import { TenantAdmins } from './AdminTenantAdmins.js';
@@ -30,6 +30,7 @@ export function Admin({ me }: { readonly me: Me }) {
       </div>
       <p class="lede">{t('dashboard.admin.lede')}</p>
       <ChangesNote />
+      <Shortcuts />
       {tenantAdmin ? (
         <>
           <Projects />
@@ -333,6 +334,43 @@ function OwnProjects({ me }: { readonly me: Me }) {
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/** The agent register, and the evidence holds of an intent by its code: for every person. */
+function Shortcuts() {
+  const [code, setCode] = useState('');
+  const valid = INTENT_CODE.test(code.trim());
+  return (
+    <section class="admin-section admin-shortcuts" aria-labelledby="admin-shortcuts">
+      <h2 id="admin-shortcuts" class="visually-hidden">
+        {t('dashboard.admin.shortcuts')}
+      </h2>
+      <a class="button button-quiet" href={href('admin/agents')}>
+        {t('dashboard.admin.agents.title')}
+      </a>
+      <form
+        class="intake-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (valid) window.location.assign(adminHoldHref(code.trim()));
+        }}
+      >
+        <label for="hold-intent" class="visually-hidden">
+          {t('dashboard.admin.hold.intent')}
+        </label>
+        <input
+          id="hold-intent"
+          value={code}
+          placeholder="INT-2026-0001"
+          maxLength={20}
+          onInput={(e) => setCode(e.currentTarget.value)}
+        />
+        <button type="submit" class="button button-quiet" disabled={!valid}>
+          {t('dashboard.admin.hold.open')}
+        </button>
+      </form>
     </section>
   );
 }

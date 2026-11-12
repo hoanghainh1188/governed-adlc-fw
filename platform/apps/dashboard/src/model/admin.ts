@@ -167,6 +167,14 @@ export const ADMIN_ERROR_CODES = [
   'config_rejected',
   'config_version_conflict',
   'invalid_request',
+  // PR 3: the agent register, the AI record, evidence holds.
+  'agent_refused',
+  'agent_not_found',
+  'ai_record_invalid',
+  'ai_record_version_conflict',
+  'evidence_hold_exists',
+  'evidence_hold_not_found',
+  'intent_not_found',
 ] as const;
 
 /** The catalog key of a refused administration change, or `null` for the general text. */
@@ -256,4 +264,196 @@ export function diffCounts(diff: readonly DiffLine[]): {
     removed: diff.filter((d) => d.kind === 'removed').length,
     added: diff.filter((d) => d.kind === 'added').length,
   };
+}
+
+// U09 PR 3: the agent register (ADR-M31, ADR-M37 §2.8), the AI record (ADR-M32), evidence holds
+// (ADR-M51). The values are `@sdlc/contracts` and core's; a test compares them.
+
+export const AGENT_KEY = /^[a-z][a-z0-9-]{0,62}[a-z0-9]$/;
+export const INTENT_CODE = /^INT-[0-9]{4}-[0-9]{4,9}$/;
+export const AGENT_AUTONOMY = ['L0', 'L1', 'L2'] as const;
+export const AGENT_ENVIRONMENTS = ['sandbox', 'staging', 'production'] as const;
+export const AGENT_ADAPTERS = ['openhands', 'opencode'] as const;
+/** Who approves an activation or a retirement, in which capacity (ADR-M37 §2.8). */
+export const APPROVER_CAPACITIES = ['owner', 'person_a', 'person_b', 'governance'] as const;
+/** Why an agent is suspended or quarantined (core `AGENT_STATUS_REASONS`). */
+export const AGENT_STATUS_REASONS = [
+  'incident',
+  'quality',
+  'security',
+  'no_owner',
+  'replaced',
+  'unused',
+  'provider_end_of_support',
+  'other',
+] as const;
+export const AI_ALLOWED = ['no', 'yes', 'yes_with_conditions'] as const;
+export const PROD_LOGS_ALLOWED = ['no', 'yes_masked'] as const;
+export const DISCLOSURE_FORMATS = ['client_format', 'standard_note'] as const;
+export const DATA_CLASSES = [
+  'public',
+  'internal',
+  'client_confidential',
+  'client_restricted',
+  'prohibited',
+] as const;
+const EVAL_CODE = /^EVAL-[0-9]{4}-[0-9]{4,9}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
+const HTTPS = /^https:\/\/\S+$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A comma or space list of codes: `a, b c` → `['a', 'b', 'c']`. */
+export function codeList(text: string): string[] {
+  return [...new Set(text.split(/[\s,]+/).filter((c) => c !== ''))];
+}
+
+export interface AgentForm {
+  readonly key: string;
+  readonly version: string;
+  readonly owner: string;
+  readonly model: string;
+  readonly instructionsRef: string;
+  /** The SHA-256 of the chosen instruction file, computed in the browser; '' when none. */
+  readonly instructionsSha256: string;
+  readonly tools: string;
+  readonly autonomy: string;
+  readonly environments: readonly string[];
+  readonly adapter: string;
+}
+
+/** A new agent (`POST /v1/admin/agents`): the same fields as `adlc admin agent register`. */
+export function checkAgent(form: AgentForm): Checked<Readonly<Record<string, unknown>>> {
+  if (!AGENT_KEY.test(form.key.trim())) return { error: 'dashboard.admin.error.agent_key' };
+  if (form.version.trim() === '') return { error: 'dashboard.admin.error.version' };
+  if (!UUID.test(form.owner)) return { error: 'dashboard.admin.error.owner' };
+  if (form.instructionsRef.trim() === '') return { error: 'dashboard.admin.error.instructions' };
+  if (!SHA256.test(form.instructionsSha256))
+    return { error: 'dashboard.admin.error.instructions_file' };
+  const autonomy = AGENT_AUTONOMY.find((a) => a === form.autonomy);
+  if (autonomy === undefined) return { error: 'dashboard.admin.error.autonomy' };
+  if (form.environments.length === 0) return { error: 'dashboard.admin.error.environments' };
+  const model = form.model.trim();
+  return {
+    body: {
+      key: form.key.trim(),
+      version: form.version.trim(),
+      owner_id: form.owner,
+      ...(model === '' ? {} : { model_ref: model }),
+      instructions_ref: form.instructionsRef.trim(),
+      instructions_sha256: form.instructionsSha256,
+      allowed_tools: codeList(form.tools),
+      max_autonomy: autonomy,
+      approved_environments: [...form.environments],
+      ...(form.adapter === '' ? {} : { adapter: form.adapter }),
+    },
+  };
+}
+
+/**
+ * A new version of an agent (`PATCH`): the version and the fields that changed. A new instruction
+ * file needs its ref too. Returns `null` when only the version would change.
+ */
+export function agentChanges(
+  before: {
+    readonly model_ref: string | null;
+    readonly instructions_ref: string;
+    readonly allowed_tools: readonly string[];
+    readonly max_autonomy: string;
+    readonly approved_environments: readonly string[];
+  },
+  form: Omit<AgentForm, 'key' | 'owner' | 'adapter'>,
+): Checked<Readonly<Record<string, unknown>>> | null {
+  if (form.version.trim() === '') return { error: 'dashboard.admin.error.version' };
+  if (form.instructionsRef.trim() === '') return { error: 'dashboard.admin.error.instructions' };
+  if (form.environments.length === 0) return { error: 'dashboard.admin.error.environments' };
+  const body: Record<string, unknown> = {};
+  const model = form.model.trim();
+  if (model !== (before.model_ref ?? '')) body.model_ref = model === '' ? null : model;
+  const ref = form.instructionsRef.trim();
+  if (ref !== before.instructions_ref || form.instructionsSha256 !== '') {
+    if (!SHA256.test(form.instructionsSha256))
+      return { error: 'dashboard.admin.error.instructions_file' };
+    body.instructions_ref = ref;
+    body.instructions_sha256 = form.instructionsSha256;
+  }
+  const tools = codeList(form.tools);
+  if (tools.join(',') !== before.allowed_tools.join(',')) body.allowed_tools = tools;
+  if (form.autonomy !== before.max_autonomy) body.max_autonomy = form.autonomy;
+  if (
+    [...form.environments].sort().join(',') !== [...before.approved_environments].sort().join(',')
+  ) {
+    body.approved_environments = [...form.environments];
+  }
+  if (Object.keys(body).length === 0) return null;
+  return { body: { version: form.version.trim(), ...body } };
+}
+
+/** An approval of an activation or a retirement, with an optional evaluation code (ADR-M86). */
+export function checkApproval(form: {
+  readonly purpose: string;
+  readonly capacity: string;
+  readonly evaluation: string;
+}): Checked<Readonly<Record<string, string>>> {
+  const capacity = APPROVER_CAPACITIES.find((c) => c === form.capacity);
+  if (form.purpose !== 'activate' && form.purpose !== 'retire') {
+    return { error: 'dashboard.admin.error.purpose' };
+  }
+  if (capacity === undefined) return { error: 'dashboard.admin.error.capacity' };
+  const evaluation = form.evaluation.trim();
+  if (evaluation !== '' && !EVAL_CODE.test(evaluation)) {
+    return { error: 'dashboard.admin.error.evaluation' };
+  }
+  return {
+    body: {
+      purpose: form.purpose,
+      as: capacity,
+      ...(evaluation === '' ? {} : { evaluation_code: evaluation }),
+    },
+  };
+}
+
+export interface AiRecordForm {
+  readonly aiAllowed: string;
+  readonly classes: readonly string[];
+  readonly prodLogs: string;
+  readonly disclosure: string;
+  readonly confirmedAt: string;
+  readonly recordRef: string;
+}
+
+/** A new version of the project AI record: codes, a date and one `https://` link, no text. */
+export function checkAiRecord(
+  expectedVersion: number,
+  form: AiRecordForm,
+): Checked<Readonly<Record<string, unknown>>> {
+  const aiAllowed = AI_ALLOWED.find((v) => v === form.aiAllowed);
+  const prodLogs = PROD_LOGS_ALLOWED.find((v) => v === form.prodLogs);
+  const disclosure = DISCLOSURE_FORMATS.find((v) => v === form.disclosure);
+  if (aiAllowed === undefined || prodLogs === undefined || disclosure === undefined) {
+    return { error: 'dashboard.admin.error.ai_record' };
+  }
+  const confirmed = form.confirmedAt.trim();
+  if (confirmed !== '' && !DAY.test(confirmed)) return { error: 'dashboard.admin.error.date' };
+  const ref = form.recordRef.trim();
+  if (ref !== '' && !HTTPS.test(ref)) return { error: 'dashboard.admin.error.link' };
+  return {
+    body: {
+      expected_version: expectedVersion,
+      ai_allowed: aiAllowed,
+      allowed_data_classes: DATA_CLASSES.filter((c) => form.classes.includes(c)),
+      prod_logs_allowed: prodLogs,
+      disclosure_format: disclosure,
+      confirmed_at: confirmed === '' ? null : confirmed,
+      record_ref: ref === '' ? null : ref,
+    },
+  };
+}
+
+/** A hold's optional link: `https://` only, never text (ADR-M51). */
+export function checkHoldLink(link: string): Checked<Readonly<Record<string, string>>> {
+  const ref = link.trim();
+  if (ref === '') return { body: {} };
+  return HTTPS.test(ref) && ref.length <= 512
+    ? { body: { reason_ref: ref } }
+    : { error: 'dashboard.admin.error.link' };
 }

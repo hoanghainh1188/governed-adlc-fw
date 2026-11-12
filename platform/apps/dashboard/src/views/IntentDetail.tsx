@@ -38,7 +38,7 @@ import { holdOf } from '../model/hold.js';
 import { intentLinks } from '../model/intents.js';
 import { roundUsd } from '../model/numbers.js';
 import { secondsSince } from '../model/time.js';
-import { href } from '../router.js';
+import { adminHoldHref, href } from '../router.js';
 import { session } from '../session.js';
 
 export function IntentDetail({ code }: { readonly code: string }) {
@@ -520,6 +520,9 @@ function Packs({
     <section aria-labelledby="packs-title" class="panel">
       <h2 id="packs-title">{t('dashboard.detail.packs')}</h2>
       {session.actions() && <BuildPack intent={code} onDone={onDone} />}
+      <p class="muted">
+        <a href={adminHoldHref(code)}>{t('dashboard.detail.evidence_hold')}</a>
+      </p>
       {error && <ErrorMessage error={error} />}
       {packs.length === 0 ? (
         <Empty messageKey="dashboard.detail.no_packs" />

@@ -34,6 +34,65 @@ function initial() {
       { id: uuid(601), user_id: ME, role: 'tenant_admin', revoked_at: null, created_at: NOW() },
     ],
     configs: new Map([['shop', { version: 1, yaml: 'oversight:\n  matrix: {}\n' }]]),
+    // PR 3: two agents, an AI record for `shop`, holds by intent, one passkey of Ann.
+    agents: [
+      agent('openhands-qwen', 'qwen3-coder:30b', 'active', 'L2'),
+      agent('opencode-gpt', 'gpt-oss:20b', 'pending_activation', 'L1'),
+    ],
+    approvals: [],
+    records: new Map([['shop', aiRecord('shop', 1)]]),
+    holds: new Map(),
+    passkeys: [
+      {
+        id: uuid(951),
+        user_id: uuid(2),
+        aaguid: null,
+        created_at: NOW(),
+        last_used_at: null,
+        revoked_at: null,
+      },
+    ],
+  };
+}
+
+function agent(key, model, status, autonomy) {
+  return {
+    id: uuid(key.length + 500),
+    key,
+    version: '1',
+    status,
+    owner_id: ME,
+    model_ref: model,
+    instructions_ref: 'AGENTS.md@v1',
+    instructions_sha256: 'c'.repeat(64),
+    allowed_tools: ['git', 'tests'],
+    max_autonomy: autonomy,
+    approved_environments: ['sandbox'],
+    adapter: key.startsWith('opencode') ? 'opencode' : 'openhands',
+    root_instructions_ref: null,
+    root_instructions_sha256: null,
+    last_recertified_at: status === 'active' ? '2026-10-01' : null,
+    recertification_due_on: status === 'active' ? '2027-01-01' : null,
+    overdue: false,
+    updated_at: NOW(),
+  };
+}
+
+function aiRecord(slug, version, body = {}) {
+  const p = slug === 'pilot' ? 901 : 902;
+  return {
+    project: { id: uuid(p), slug },
+    version,
+    ai_allowed: body.ai_allowed ?? 'yes',
+    allowed_data_classes: body.allowed_data_classes ?? ['internal'],
+    prod_logs_allowed: body.prod_logs_allowed ?? 'no',
+    disclosure_format: body.disclosure_format ?? 'standard_note',
+    confirmed_at: body.confirmed_at ?? null,
+    consent: body.confirmed_at ? 'confirmed' : 'unknown',
+    record_ref: body.record_ref ?? null,
+    record_sha256: 'e'.repeat(64),
+    updated_by: ME,
+    created_at: NOW(),
   };
 }
 
@@ -110,9 +169,36 @@ const U = '/v1/admin/users';
 const T = '/v1/admin/tenant-admins';
 const SLUG = '([a-z0-9][a-z0-9-]{0,62})';
 const ID = '([0-9a-f-]{36})';
+const A = '/v1/admin/agents';
+const KEY = '([a-z][a-z0-9-]{0,62}[a-z0-9])';
+const CODE = '(INT-[0-9]{4}-[0-9]{4,9})';
+/** The approvers of an activation (ADR-M37 §2.8, simplified for the stub). */
+const REQUIRED = ['owner', 'person_b'];
+
+function rounds(a) {
+  return ['activate', 'retire'].map((purpose) => {
+    const given = state.approvals.filter(
+      (x) => x.agent === a.key && x.purpose === purpose && x.version === a.version,
+    );
+    const missing = REQUIRED.filter((c) => !given.some((g) => g.capacity === c));
+    return {
+      agent: a,
+      purpose,
+      required: REQUIRED,
+      missing,
+      approvals: given.map((g) => g.row),
+      completed: purpose === 'activate' ? a.status === 'active' : a.status === 'retired',
+      evaluation: null,
+    };
+  });
+}
 
 export function isAdminPath(pathname) {
-  return pathname.startsWith('/v1/admin/');
+  return (
+    pathname.startsWith('/v1/admin/') ||
+    /^\/v1\/projects\/[a-z0-9-]+\/ai-record$/.test(pathname) ||
+    /^\/v1\/intents\/INT-[0-9-]+\/evidence-hold$/.test(pathname)
+  );
 }
 
 /** A read of the administration screens; `undefined` when the path is not one. */
@@ -139,6 +225,28 @@ export function adminRead(url) {
     const found = state.users.find((u) => u.id === m[1]);
     return found ? { body: presentUser(found) } : refusal(404, 'user_not_found');
   }
+  if (p === A) return { body: { items: state.agents } };
+  m = new RegExp(`^${A}/${KEY}$`).exec(p);
+  if (m) {
+    const found = state.agents.find((a) => a.key === m[1]);
+    return found
+      ? { body: { ...found, rounds: rounds(found), evaluation: null } }
+      : refusal(404, 'agent_not_found');
+  }
+  m = new RegExp(`^/v1/projects/${SLUG}/ai-record$`).exec(p);
+  if (m) {
+    const found = state.records.get(m[1]);
+    return found ? { body: found } : refusal(404, 'ai_record_not_found');
+  }
+  m = new RegExp(`^/v1/intents/${CODE}/evidence-hold$`).exec(p);
+  if (m) {
+    const list = state.holds.get(m[1]) ?? [];
+    return {
+      body: { intent: m[1], active: list.find((h) => !h.released_at) ?? null, history: list },
+    };
+  }
+  m = new RegExp(`^${U}/${ID}/passkeys$`).exec(p);
+  if (m) return { body: { items: state.passkeys.filter((k) => k.user_id === m[1]) } };
   m = new RegExp(`^${U}/${ID}/identities$`).exec(p);
   if (m) {
     const all = url.searchParams.get('include_unlinked') === 'true';
@@ -165,6 +273,18 @@ function changeOf(method, p) {
     ['DELETE', `^${U}/${ID}/sessions$`, 'admin.user', 'sessions_end'],
     ['POST', `^${T}$`, 'admin.tenant_admin', 'grant'],
     ['DELETE', `^${T}/${ID}$`, 'admin.tenant_admin', 'revoke'],
+    ['POST', `^${P}/${SLUG}/archive$`, 'admin.project', 'archive'],
+    ['PUT', `^/v1/projects/${SLUG}/ai-record$`, 'admin.ai_record', 'save'],
+    ['PUT', `^/v1/intents/${CODE}/evidence-hold$`, 'admin.evidence_hold', 'hold'],
+    ['DELETE', `^/v1/intents/${CODE}/evidence-hold$`, 'admin.evidence_hold', 'release'],
+    ['DELETE', `^${U}/${ID}/passkeys/${ID}$`, 'admin.passkey', 'revoke'],
+    ['POST', `^${A}$`, 'admin.agent', 'register'],
+    ['PATCH', `^${A}/${KEY}$`, 'admin.agent', 'update'],
+    ['POST', `^${A}/${KEY}/approvals$`, 'admin.agent', 'approve'],
+    ['POST', `^${A}/${KEY}/suspend$`, 'admin.agent', 'suspend'],
+    ['POST', `^${A}/${KEY}/quarantine$`, 'admin.agent', 'quarantine'],
+    ['PUT', `^${A}/${KEY}/owner$`, 'admin.agent', 'owner'],
+    ['POST', `^${A}/${KEY}/recertify$`, 'admin.agent', 'recertify'],
   ];
   for (const [m, pattern, action, decision] of routes) {
     const match = new RegExp(pattern).exec(p);
@@ -188,6 +308,99 @@ export async function adminWrite(method, url, body, holds) {
   });
   if (!ok) return refusal(403, 'step_up_refused');
   return apply(change, rest);
+}
+
+function holdChange(decision, intent, b) {
+  const list = state.holds.get(intent) ?? [];
+  const active = list.find((h) => !h.released_at);
+  if (decision === 'hold') {
+    if (active) return refusal(409, 'evidence_hold_exists');
+    const hold = {
+      id: newId(),
+      held_by: ME,
+      reason_ref: b.reason_ref ?? null,
+      created_at: NOW(),
+      released_at: null,
+      released_by: null,
+    };
+    state.holds.set(intent, [...list, hold]);
+    return { status: 201, body: { hold } };
+  }
+  if (!active) return refusal(404, 'evidence_hold_not_found');
+  active.released_at = NOW();
+  active.released_by = ME;
+  return { status: 200, body: { hold: active } };
+}
+
+const REFUSED = {
+  approval_duplicate:
+    'Agent {key}: you, or someone in the same capacity, already approved this step for the agent as it is now. The approvers are always different people.',
+};
+
+function agentChange(decision, key, b) {
+  if (decision === 'register') {
+    if (state.agents.some((a) => a.key === b.key))
+      return refusal(409, 'agent_refused', { reason: 'agent_exists' });
+    const created = {
+      ...agent(b.key, b.model_ref ?? null, 'pending_activation', b.max_autonomy),
+      ...b,
+      owner_id: b.owner_id,
+      id: newId(),
+    };
+    delete created.key_;
+    state.agents.push(created);
+    return { status: 201, body: created };
+  }
+  const a = state.agents.find((x) => x.key === key);
+  if (!a) return refusal(404, 'agent_not_found');
+  if (decision === 'approve') {
+    const own = state.approvals.find(
+      (x) =>
+        x.agent === key &&
+        x.purpose === b.purpose &&
+        x.version === a.version &&
+        (x.by === ME || x.capacity === b.as),
+    );
+    if (own) {
+      return refusal(409, 'agent_refused', {
+        reason: 'approval_duplicate',
+        reason_message: REFUSED.approval_duplicate.replace('{key}', key),
+      });
+    }
+    const row = {
+      id: newId(),
+      agent_version: a.version,
+      purpose: b.purpose,
+      capacity: b.as,
+      approver_id: ME,
+      created_at: NOW(),
+    };
+    state.approvals.push({
+      agent: key,
+      purpose: b.purpose,
+      version: a.version,
+      capacity: b.as,
+      by: ME,
+      row,
+    });
+    const round = rounds(a).find((r) => r.purpose === b.purpose);
+    if (round.missing.length === 0) a.status = b.purpose === 'activate' ? 'active' : 'retired';
+    return { status: 200, body: rounds(a).find((r) => r.purpose === b.purpose) };
+  }
+  if (decision === 'update') {
+    Object.assign(a, b, { status: 'pending_activation' });
+    return { status: 200, body: a };
+  }
+  if (decision === 'suspend' || decision === 'quarantine') {
+    a.status = decision === 'suspend' ? 'suspended' : 'quarantined';
+    return { status: 200, body: a };
+  }
+  if (decision === 'owner') {
+    a.owner_id = b.owner_id;
+    return { status: 200, body: a };
+  }
+  a.last_recertified_at = NOW().slice(0, 10);
+  return { status: 200, body: { ...a, evaluation: null } };
 }
 
 function apply({ action, decision, args }, b) {
@@ -228,6 +441,29 @@ function apply({ action, decision, args }, b) {
     r.revoked_at = NOW();
     return { status: 200, body: r };
   }
+  if (key === 'admin.project archive') {
+    // `shop` has open intents in the fixtures: the API refuses its archive.
+    if (args[0] === 'shop') return refusal(409, 'project_has_open_intents');
+    const p = state.projects.find((x) => x.slug === args[0]);
+    p.status = 'archived';
+    return { status: 200, body: p };
+  }
+  if (action === 'admin.ai_record') {
+    const stored = state.records.get(args[0]);
+    if (b.expected_version !== (stored?.version ?? 0))
+      return refusal(409, 'ai_record_version_conflict');
+    const saved = aiRecord(args[0], (stored?.version ?? 0) + 1, b);
+    state.records.set(args[0], saved);
+    return { status: 200, body: saved };
+  }
+  if (action === 'admin.evidence_hold') return holdChange(decision, args[0], b);
+  if (action === 'admin.passkey') {
+    const k = state.passkeys.find((x) => x.id === args[1] && !x.revoked_at);
+    if (!k) return refusal(404, 'passkey_not_found');
+    k.revoked_at = NOW();
+    return { status: 200, body: { ...k, user_id: undefined } };
+  }
+  if (action === 'admin.agent') return agentChange(decision, args[0], b);
   if (key === 'admin.project config') {
     const stored = state.configs.get(args[0]) ?? { version: 0, yaml: '' };
     if (b.expected_version !== stored.version) return refusal(409, 'config_version_conflict');

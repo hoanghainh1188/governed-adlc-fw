@@ -132,9 +132,7 @@ export function App() {
               {me.tenant_admin === true && (
                 <NavItem route={route} name="audit" label={t('dashboard.nav.audit')} />
               )}
-              {mayAdminister(me) && (
-                <NavItem route={route} name="admin" label={t('dashboard.nav.admin')} />
-              )}
+              <NavItem route={route} name="admin" label={t('dashboard.nav.admin')} />
               {session.actions() && (
                 <NavItem route={route} name="passkeys" label={t('dashboard.nav.passkeys')} />
               )}
@@ -222,21 +220,19 @@ function Screen({ route, me }: { readonly route: Route; readonly me: Me }) {
     case 'admin-project':
     case 'admin-config':
     case 'admin-user':
-      return mayAdminister(me) ? (
+    case 'admin-agents':
+    case 'admin-agent':
+    case 'admin-hold':
+      // Every person sees it: the agent register and the approvals are theirs too (ADR-M37
+      // §2.8); the screen shows what the person's roles allow, and the API decides.
+      return (
         <Lazy load={loadAdmin}>
           {(screens) => <AdminScreen route={route} me={me} screens={screens} />}
         </Lazy>
-      ) : (
-        <IntentsBoard me={me} query={route.query} />
       );
     default:
       return <IntentsBoard me={me} query={route.query} />;
   }
-}
-
-/** U09: a tenant admin, or a person with the project role `admin` somewhere. */
-function mayAdminister(me: Me): boolean {
-  return me.tenant_admin === true || me.roles.some((r) => r.role === 'admin');
 }
 
 /** U09 (QUESTIONS #686): the administration screens are a chunk of their own. */
@@ -259,6 +255,12 @@ function AdminScreen({
       return <screens.AdminConfig slug={route.slug} />;
     case 'admin-user':
       return <screens.AdminUser id={route.id} />;
+    case 'admin-agents':
+      return <screens.AdminAgents me={me} />;
+    case 'admin-agent':
+      return <screens.AdminAgent agentKey={route.key} me={me} />;
+    case 'admin-hold':
+      return <screens.AdminHold code={route.code} />;
     default:
       return <screens.Admin me={me} />;
   }

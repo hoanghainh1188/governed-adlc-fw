@@ -16,6 +16,10 @@ export function adminErrorText(error: unknown): string {
   const key = adminErrorKey(error.code);
   if (key === null) return actionErrorText(error);
   const text = t(key);
+  // An agent register refusal: the API's own sentence names the agent and the reason.
+  if (error.reasonMessage !== undefined && error.reasonMessage !== '') {
+    return `${text} ${cleanText(error.reasonMessage)}`;
+  }
   if (error.code === 'conflicting_role' && error.reason !== undefined) {
     return `${text} ${t('dashboard.admin.error.conflicting_role', { role: cleanText(error.reason) })}`;
   }

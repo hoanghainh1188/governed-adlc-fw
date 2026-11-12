@@ -90,8 +90,8 @@ describe('U06: the dashboard writes existing routes only, with their method', ()
     ].map((m) => ({ path: m[1]!.replace(/\$\{[^}]+\}/g, 'X'), method: m[2]! }));
     // U06: sign out (2), passkeys (3); L05: the step-up and the four plan actions (5);
     // U07: kill run (1), gate decision (1), escalation ack (1), escalation decision (1);
-    // U08: create intent (1); U09 PR 2: administration (14).
-    expect(calls.length).toBe(32);
+    // U08: create intent (1); U09: administration (PR 2: 14, PR 3: 12).
+    expect(calls.length).toBe(44);
     const decorator = { POST: 'Post', PUT: 'Put', PATCH: 'Patch', DELETE: 'Delete' } as const;
     for (const call of calls) {
       const routes = routesOf(decorator[call.method as keyof typeof decorator]);

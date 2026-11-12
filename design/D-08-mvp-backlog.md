@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Version | 1.67 |
+| Version | 1.71 |
 | Date | 2026-10-29 |
 | Status | **Approved** (Harry, 2026-09-24) — version 1.0, aligned with the handbook (tag `design-v1.0`) |
 | Readers | Tech lead, developers, Claude Code |
@@ -1823,7 +1823,7 @@ flowchart LR
 - [ ] AC2: Project configuration upload with the difference to the stored version before saving; the agent register and its approvals; the AI record; evidence holds; project archive
 - [ ] AC3: Step-up for every admin change; API tokens stay in the CLI; Playwright tests per action and role
 
-> Note: MVP1-UI-SCOPE 1.2 §3.4. Ordered again from `design/M-E-REPORT.md` (§9)
+> Note: MVP1-UI-SCOPE 1.2 §3.4. Ordered again from `design/M-E-REPORT.md` (§9). Done 2026-11-12 in three PRs: the step-up for every admin route (PR #513), the pages for projects, configuration, people and tenant admins (PR #514), then the agent register, the AI record, evidence holds, project archive, a person's passkeys and handbook Ch.19 (ADR-M73 1.7–1.9, ADR-M54 0.8; QUESTIONS #681–#686)
 
 #### V14. Human-effort baseline for the agent report
 
@@ -2060,6 +2060,7 @@ If a doc is missing or contradictory: add the question to design/QUESTIONS.md an
 | 1.68 | 2026-10-30 | Claude, approved by Harry | Release v0.10.0 with O03 |
 | 1.69 | 2026-10-31 | Claude, approved by Harry | Release v0.11.0 with O04 and O05 |
 | 1.70 | 2026-11-11 | Claude, approved by Harry | New tasks V18 (the runner host set-up), V19 (`server:setup` steps 8–13) and V20 (team access and the runner link in the settings), milestone Server; order V20, V19, V18 (QUESTIONS #671–#673) |
+| 1.71 | 2026-11-12 | Claude Code (task U09), approved by Harry | U09 done: the dashboard's administration in three PRs (QUESTIONS #681–#686) |
 | 1.48 | 2026-10-13 | Claude (task L02, PR 4), approved by Harry | L02 note: the first result table is in D-07 §9; the evaluation was stopped at 53 of 80 runs (QUESTIONS #447) |
 | 1.28 | 2026-10-09 | Claude (task A10), approved by Harry | A10 note: ClickHouse access management done (`sdlc_admin`, ADR-M63 §6, QUESTIONS #330) |
 | 1.27 | 2026-10-09 | Claude (task A10, PR 1), approved by Harry | A10 note: three PRs (TLS everywhere, backups and the drill, the server with the operator; ADR-M63, QUESTIONS #325–#327); code area `openbao/tls.sh` |
