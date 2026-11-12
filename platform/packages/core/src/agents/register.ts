@@ -7,13 +7,13 @@
 //
 // Every change and its audit event are one transaction. Audit payloads hold keys, versions,
 // status codes and hashes only: never the model name or the owner.
-import type { AgentAdapterCode, AgentStatus } from '@sdlc/contracts';
+import { isAgentInstructionPath, type AgentAdapterCode, type AgentStatus } from '@sdlc/contracts';
 
 import { auditActor, SYSTEM_ACTOR, type AdminActor } from '../admin/actor.js';
 import { DbError } from '../db/errors.js';
 import type { Agent } from '../db/schema.js';
 import type { TenantScope } from '../db/tenant-scope.js';
-import type { AgentUpdate } from '../db/repositories/agents.js';
+import type { AgentUpdate, RootInstructions } from '../db/repositories/agents.js';
 import { AgentRegisterError } from './errors.js';
 import {
   AGENT_CHANGEABLE_STATUSES,
@@ -45,6 +45,8 @@ export interface RegisterAgent {
   readonly approvedEnvironments: readonly string[];
   /** X03 (ADR-M68 §7): the adapter that drives the agent. Default `openhands`. */
   readonly adapter?: string;
+  /** O06 (ADR-M31 §2.5 0.6): the repository root's instruction file, pinned too. */
+  readonly rootInstructions?: RootInstructions | null;
   readonly now?: Date; /** Who acts (B13). Default: the operator (`system`). */
   readonly actor?: AdminActor;
 }
@@ -60,6 +62,8 @@ export interface UpdateAgent {
   readonly approvedEnvironments?: readonly string[];
   /** X03: another adapter is a new version too (Ch.20 §20.9). */
   readonly adapter?: string;
+  /** O06: set, or null to remove; a change is a new version too. */
+  readonly rootInstructions?: RootInstructions | null;
   readonly now?: Date; /** Who acts (B13). Default: the operator (`system`). */
   readonly actor?: AdminActor;
 }
@@ -103,6 +107,7 @@ export async function registerAgent(scope: TenantScope, input: RegisterAgent): P
   const maxAutonomy = checkMaxAutonomy(input.maxAutonomy);
   const approvedEnvironments = checkEnvironments(input.approvedEnvironments);
   const adapter: AgentAdapterCode = checkAdapter(input.adapter ?? 'openhands');
+  const rootInstructions = checkedRoot(input.rootInstructions ?? null);
   return scope.transaction(async (tx) => {
     const ownerId = await activeOwner(tx, input.ownerId);
     if (await tx.agents.getByKey(input.agentKey)) {
@@ -120,6 +125,7 @@ export async function registerAgent(scope: TenantScope, input: RegisterAgent): P
         maxAutonomy,
         approvedEnvironments,
         adapter,
+        rootInstructions,
       })
       .catch((error: unknown) => {
         // Two registrations of the same key at once: the unique index decides (ADR-M31 §2.1).
@@ -137,6 +143,9 @@ export async function registerAgent(scope: TenantScope, input: RegisterAgent): P
         version: agent.version,
         instructions_sha256: agent.instructions_sha256,
         adapter: agent.adapter,
+        ...(agent.root_instructions_sha256 === null
+          ? {}
+          : { root_instructions_sha256: agent.root_instructions_sha256 }),
       },
     });
     return agent;
@@ -171,6 +180,9 @@ export async function updateAgent(
       ? {}
       : { approvedEnvironments: checkEnvironments(input.approvedEnvironments) }),
     ...(input.adapter === undefined ? {} : { adapter: checkAdapter(input.adapter) }),
+    ...(input.rootInstructions === undefined
+      ? {}
+      : { rootInstructions: checkedRoot(input.rootInstructions) }),
   };
   return scope.transaction(async (tx) => {
     const agent = await lockAgent(tx, agentKey);
@@ -193,6 +205,9 @@ export async function updateAgent(
         version: updated.version,
         instructions_sha256: updated.instructions_sha256,
         adapter: updated.adapter,
+        ...(updated.root_instructions_sha256 === null
+          ? {}
+          : { root_instructions_sha256: updated.root_instructions_sha256 }),
       },
     });
     return updated;
@@ -329,6 +344,23 @@ async function appendRecertified(
 function checkedModel(value: string | null): string | null {
   if (value !== null) checkModelRef(value);
   return value;
+}
+
+/**
+ * The second pinned file (O06, ADR-M31 §2.5 0.6): a file the agent reads at the repository root
+ * (`AGENTS.md`, `CLAUDE.md`, … one segment), with its SHA-256.
+ */
+function checkedRoot(root: RootInstructions | null): RootInstructions | null {
+  if (root === null) return null;
+  const { path } = parseInstructionsRef(root.ref);
+  if (path.includes('/') || !isAgentInstructionPath(path)) {
+    throw new AgentRegisterError(
+      'invalid_input',
+      'not a root instructions file',
+      'root_instructions_ref',
+    );
+  }
+  return { ref: root.ref, sha256: checkedSha256(root.sha256) };
 }
 
 function checkedInstructionsRef(value: string): string {

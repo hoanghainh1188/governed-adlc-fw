@@ -60,6 +60,7 @@ export class AdminProjectsController {
       slug: input.slug,
       name: input.name,
       repoFullName: input.repo_full_name,
+      ...(input.repo_path === undefined ? {} : { repoPath: input.repo_path }),
       ...(input.default_branch === undefined ? {} : { defaultBranch: input.default_branch }),
       ...(input.git_provider === undefined ? {} : { gitProvider: input.git_provider }),
     });
@@ -87,6 +88,7 @@ export class AdminProjectsController {
       {
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(input.repo_full_name === undefined ? {} : { repoFullName: input.repo_full_name }),
+        ...(input.repo_path === undefined ? {} : { repoPath: input.repo_path }),
         ...(input.default_branch === undefined ? {} : { defaultBranch: input.default_branch }),
       },
     );

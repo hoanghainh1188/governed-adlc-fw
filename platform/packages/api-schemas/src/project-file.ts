@@ -37,6 +37,8 @@ export const projectFileSchema = z.strictObject({
     slug: code,
     name: label,
     repository: repo,
+    // O06 (ADR-M106 §2.4): the project's folder in a monorepo; absent = the whole repository.
+    folder: z.string().max(200).optional(),
     default_branch: z.string().min(1).max(100).optional(),
   }),
   team: z

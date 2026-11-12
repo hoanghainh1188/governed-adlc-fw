@@ -398,6 +398,8 @@ export const adminProjectSchema = z.object({
   name: z.string().max(200),
   git_provider: code,
   repo_full_name: z.string().max(200),
+  // O06 (ADR-M106 §2.4); absent from an older server.
+  repo_path: z.string().max(200).optional(),
   default_branch: z.string().max(100),
   status: code,
   created_at: time,
@@ -517,6 +519,9 @@ export const agentSchema = z.object({
   approved_environments: z.array(code).max(3),
   /** X03: absent from a server before X03 (every agent was OpenHands). */
   adapter: code.optional(),
+  /** O06: the repository root's file, pinned too; absent from an older server. */
+  root_instructions_ref: z.string().max(300).nullable().optional(),
+  root_instructions_sha256: code.nullable().optional(),
   last_recertified_at: z.string().max(10).nullable(),
   recertification_due_on: z.string().max(10).nullable(),
   overdue: z.boolean(),

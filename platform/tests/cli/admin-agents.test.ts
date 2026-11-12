@@ -53,6 +53,75 @@ describe('adlc admin agent', () => {
     );
   });
 
+  it('O06: pins the repository root file too, and removes it with none', async () => {
+    const h = await harness({
+      routes: {
+        'POST /v1/admin/agents': {
+          status: 201,
+          body: agentBody({
+            instructions_ref: 'packages/web/AGENTS.md@v1',
+            root_instructions_ref: 'AGENTS.md@v2',
+            root_instructions_sha256: 'd'.repeat(64),
+          }),
+        },
+        'PATCH /v1/admin/agents/coder': { status: 200, body: agentBody({ version: '1.1.0' }) },
+      },
+    });
+    const root = join(h.home, 'ROOT-AGENTS.md');
+    await writeFile(root, '# Monorepo\n');
+    const argv = REGISTER.map((a) => (a === 'AGENTS.md@v1' ? 'packages/web/AGENTS.md@v1' : a));
+    expect(
+      await h.run([
+        ...argv,
+        '--instructions-sha256',
+        'c'.repeat(64),
+        '--root-instructions',
+        'AGENTS.md@v2',
+        '--root-instructions-file',
+        root,
+      ]),
+    ).toBe(EXIT.ok);
+    expect(h.requests[0]?.body).toMatchObject({
+      instructions_ref: 'packages/web/AGENTS.md@v1',
+      root_instructions_ref: 'AGENTS.md@v2',
+      root_instructions_sha256: instructionsSha256(Buffer.from('# Monorepo\n')),
+    });
+    expect(
+      await h.run([
+        'admin',
+        'agent',
+        'update',
+        '--key',
+        'coder',
+        '--version',
+        '1.1.0',
+        '--root-instructions',
+        'none',
+      ]),
+    ).toBe(EXIT.ok);
+    expect(h.requests[1]?.body).toEqual({ version: '1.1.0', root_instructions_ref: null });
+  });
+
+  it.each([
+    [[...REGISTER, '--instructions-sha256', 'a'.repeat(64), '--root-instructions', 'AGENTS.md@v2']],
+    [[...REGISTER, '--instructions-sha256', 'a'.repeat(64), '--root-instructions-file', 'x']],
+    [
+      [
+        ...REGISTER,
+        '--instructions-sha256',
+        'a'.repeat(64),
+        '--root-instructions',
+        'none',
+        '--root-instructions-file',
+        'x',
+      ],
+    ],
+  ])('O06: a root file needs both options, none takes no file (%#)', async (argv) => {
+    const h = await harness();
+    expect(await h.run(argv)).toBe(EXIT.usage);
+    expect(h.requests).toEqual([]);
+  });
+
   it.each([
     [REGISTER],
     [[...REGISTER, '--instructions-sha256', 'a'.repeat(64), '--instructions-file', 'AGENTS.md']],

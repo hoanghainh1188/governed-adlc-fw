@@ -82,6 +82,8 @@ export interface ProjectsTable {
   name: string;
   git_provider: Immutable<GitProvider>;
   repo_full_name: string;
+  /** O06 (ADR-M106 §2.4): the project's folder in the repository; '' = the whole repository. */
+  repo_path: Generated<string>;
   default_branch: Generated<string>;
   status: Generated<ProjectStatus>;
   created_at: CreatedAt;
@@ -996,6 +998,9 @@ export interface AgentsTable {
   model_ref: MutableNullable<string>;
   instructions_ref: string;
   instructions_sha256: string;
+  /** O06 (ADR-M31 §2.5 0.6): the repository root's instruction file, pinned too; null: none. */
+  root_instructions_ref: MutableNullable<string>;
+  root_instructions_sha256: MutableNullable<string>;
   allowed_tools: Mutable<string[]>;
   max_autonomy: AutonomyLevel;
   approved_environments: Mutable<AgentEnvironment[]>;
@@ -1164,6 +1169,7 @@ export const TABLE_COLUMNS = {
     'default_branch',
     'status',
     'created_at',
+    'repo_path',
   ]),
   project_configs: columns<ProjectConfigsTable>()([
     'project_id',
@@ -1467,6 +1473,8 @@ export const TABLE_COLUMNS = {
     'updated_at',
     'created_at',
     'adapter',
+    'root_instructions_ref',
+    'root_instructions_sha256',
   ]),
   intent_notices: columns<IntentNoticesTable>()([
     'id',

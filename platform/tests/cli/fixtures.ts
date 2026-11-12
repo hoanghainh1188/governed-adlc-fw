@@ -342,6 +342,7 @@ export function projectBody(overrides: Partial<Project> = {}): Record<string, un
     name: 'Pilot',
     git_provider: 'github',
     repo_full_name: 'harryforge/pilot-order-inventory',
+    repo_path: '',
     default_branch: 'main',
     status: 'active',
     created_at: AT,
@@ -494,6 +495,8 @@ function agentRow(overrides: Partial<Agent> = {}): Agent {
     created_at: AT,
     updated_at: AT,
     adapter: 'openhands',
+    root_instructions_ref: null,
+    root_instructions_sha256: null,
     ...overrides,
   };
 }

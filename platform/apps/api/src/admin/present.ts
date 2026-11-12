@@ -22,6 +22,7 @@ export function presentProject(project: Project): Record<string, unknown> {
     name: project.name,
     git_provider: project.git_provider,
     repo_full_name: project.repo_full_name,
+    repo_path: project.repo_path,
     default_branch: project.default_branch,
     status: project.status,
     created_at: project.created_at.toISOString(),

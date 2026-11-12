@@ -40,6 +40,9 @@ const CONFIG = {
   'max-autonomy': { type: 'string' },
   environments: { type: 'string' },
   adapter: { type: 'string' },
+  // O06 (ADR-M31 §2.5 0.6): the repository root's file of a monorepo, pinned too; `none` removes it.
+  'root-instructions': { type: 'string' },
+  'root-instructions-file': { type: 'string' },
 } as const;
 
 const agentPath = (call: AdminCall): string =>
@@ -51,6 +54,34 @@ const list = (value: string | undefined): string[] | undefined =>
     .map((item) => item.trim())
     .filter((item) => item !== '');
 
+/** The SHA-256 of a local file, or a usage error. */
+async function fileHash(call: AdminCall, file: string): Promise<string> {
+  try {
+    return createHash('sha256')
+      .update(await readFile(file))
+      .digest('hex');
+  } catch {
+    sayError(call.ctx, 'cli.admin.api.file_unreadable', { path: file, max: '-' });
+    throw new CommandExit(EXIT.usage);
+  }
+}
+
+/**
+ * The second pinned file (O06): `--root-instructions <ref>` with `--root-instructions-file`, or
+ * `--root-instructions none` alone (removes it). Neither: unchanged.
+ */
+async function rootInstructions(call: AdminCall): Promise<Record<string, unknown>> {
+  const ref = opt(call.values, 'root-instructions');
+  const file = opt(call.values, 'root-instructions-file');
+  if (ref === undefined && file === undefined) return {};
+  if (ref === 'none' && file === undefined) return { root_instructions_ref: null };
+  if (ref === undefined || ref === 'none' || file === undefined) {
+    sayError(call.ctx, 'cli.admin.api.usage');
+    throw new CommandExit(EXIT.usage);
+  }
+  return { root_instructions_ref: ref, root_instructions_sha256: await fileHash(call, file) };
+}
+
 /** The instructions hash from exactly one source: the hash, or the file to hash. */
 async function instructionsHash(call: AdminCall, required: boolean): Promise<string | undefined> {
   const file = opt(call.values, 'instructions-file');
@@ -60,14 +91,7 @@ async function instructionsHash(call: AdminCall, required: boolean): Promise<str
     throw new CommandExit(EXIT.usage);
   }
   if (file === undefined) return given;
-  try {
-    return createHash('sha256')
-      .update(await readFile(file))
-      .digest('hex');
-  } catch {
-    sayError(call.ctx, 'cli.admin.api.file_unreadable', { path: file, max: '-' });
-    throw new CommandExit(EXIT.usage);
-  }
+  return fileHash(call, file);
 }
 
 function configBody(values: Values): Record<string, unknown> {
@@ -105,6 +129,7 @@ export const AGENT_COMMANDS: Readonly<Record<string, AdminApiCommand>> = {
         owner_id: await resolveUser(call, str(call.values, 'owner')),
         instructions_sha256: hash,
         ...configBody(call.values),
+        ...(await rootInstructions(call)),
       });
       return output(call, agent, () => sayAgent(call, 'cli.admin.agent.registered', agent));
     },
@@ -118,6 +143,7 @@ export const AGENT_COMMANDS: Readonly<Record<string, AdminApiCommand>> = {
         version: str(call.values, 'version'),
         ...(hash === undefined ? {} : { instructions_sha256: hash }),
         ...configBody(call.values),
+        ...(await rootInstructions(call)),
       });
       return output(call, agent, () => sayAgent(call, 'cli.admin.agent.updated', agent));
     },
@@ -304,7 +330,9 @@ function text(agent: AgentView): Record<string, string> {
     status: agent.status,
     owner_id: agent.owner_id,
     model: show(agent.model_ref),
-    instructions: agent.instructions_ref,
+    instructions: agent.root_instructions_ref
+      ? `${agent.instructions_ref} + ${agent.root_instructions_ref}`
+      : agent.instructions_ref,
     instructions_sha256: agent.instructions_sha256,
     tools: agent.allowed_tools.join(',') || '-',
     max_autonomy: agent.max_autonomy,
