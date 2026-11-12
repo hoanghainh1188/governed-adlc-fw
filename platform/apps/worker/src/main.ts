@@ -327,7 +327,12 @@ async function main(): Promise<void> {
                     now: () => new Date(),
                     langfuse: langfuse.deps,
                     ...(knowledge?.deps?.store
-                      ? { knowledge: { store: knowledge.deps.store } }
+                      ? {
+                          knowledge: {
+                            store: knowledge.deps.store,
+                            ...(knowledge.code?.store ? { codeStore: knowledge.code.store } : {}),
+                          },
+                        }
                       : {}),
                     settings: {
                       mode: retentionSettings.mode,
@@ -347,7 +352,12 @@ async function main(): Promise<void> {
                       langfuse: langfuse.deps,
                       // X04 PR 3a (ADR-M89 §2.4): the versions of the document indexes.
                       ...(knowledge?.deps?.store
-                        ? { knowledge: { store: knowledge.deps.store } }
+                        ? {
+                            knowledge: {
+                              store: knowledge.deps.store,
+                              ...(knowledge.code?.store ? { codeStore: knowledge.code.store } : {}),
+                            },
+                          }
                         : {}),
                       settings: {
                         mode: retentionSettings.mode,

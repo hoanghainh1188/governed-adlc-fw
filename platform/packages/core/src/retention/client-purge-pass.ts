@@ -26,7 +26,7 @@ import {
   langfuseStart,
   type LangfusePurgeDeps,
 } from './langfuse-pass.js';
-import type { KnowledgePurgeDeps } from './knowledge-pass.js';
+import { allStores, storeForKind, type KnowledgePurgeDeps } from './knowledge-pass.js';
 import type { RetentionCounts, RetentionMode } from './pass.js';
 import { isFinished, purgeDecision } from './rules.js';
 
@@ -231,8 +231,9 @@ async function tenantPass(
   );
   counts.failed += retentionCounts.failed;
 
+  let knowledgeStoreAbsent = 0;
   if (deps.settings.mode === 'purge' && deps.knowledge) {
-    await dropKnowledge(deps, scope, counts);
+    knowledgeStoreAbsent = await dropKnowledge(deps, scope, counts);
   }
   const evidenceThisTenant = counts.evidencePurged - evidenceBefore;
   const knowledgeThisTenant = counts.knowledgeDropped - knowledgeBefore;
@@ -245,11 +246,12 @@ async function tenantPass(
 
   const remaining = await scope.retention.clientPurgeableRemaining();
   const langfuseLeft = await langfuseRemaining(deps, scope);
-  if (remaining > 0 || langfuseLeft > 0) {
+  if (remaining > 0 || langfuseLeft > 0 || knowledgeStoreAbsent > 0) {
     deps.logger.log('info', 'client_purge.waiting', {
       tenant_id: scope.tenantId,
       evidence_remaining: remaining,
       langfuse_unconfirmed: langfuseLeft,
+      knowledge_store_absent: knowledgeStoreAbsent,
     });
     return;
   }
@@ -446,13 +448,18 @@ async function purgeOneEvidence(
   }
 }
 
+/**
+ * Deletes the index versions of every finished, not-held intent. Returns how many index versions
+ * this worker could not delete because it has no store of their kind (X06): the purge then waits.
+ */
 async function dropKnowledge(
   deps: ClientPurgePassDeps,
   scope: TenantScope,
   counts: ClientPurgeCounts,
-): Promise<void> {
+): Promise<number> {
   const knowledge = deps.knowledge;
-  if (!knowledge) return;
+  if (!knowledge) return 0;
+  let storeAbsent = 0;
   for (const project of await scope.retention.listProjects()) {
     try {
       const ready = await scope.knowledgeIndexes.listReady(project.id, deps.settings.batch);
@@ -471,6 +478,19 @@ async function dropKnowledge(
           }
         }
         if (blocked) continue;
+        // X06: a code index goes to the code store; never mark what this worker cannot delete.
+        const store = storeForKind(knowledge, index.kind);
+        if (!store) {
+          storeAbsent += 1;
+          counts.failed += 1;
+          deps.logger.log('error', 'client_purge.knowledge_store_absent', {
+            tenant_id: scope.tenantId,
+            project_id: project.id,
+            index_id: index.id,
+            kind: index.kind,
+          });
+          continue;
+        }
         const now = deps.now();
         const marked = await scope.transaction(async (tx) => {
           const locked = await tx.knowledgeIndexes.lockReady(index.id);
@@ -486,18 +506,21 @@ async function dropKnowledge(
               documents: locked.documents,
               chunks: locked.chunks,
               cause: 'client_deletion',
+              kind: locked.kind,
             },
             occurredAt: now,
           });
           return true;
         });
         if (marked) {
-          await knowledge.store.deleteIndexVersion(project.id, index.id);
+          await store.deleteIndexVersion(project.id, index.id);
           counts.knowledgeDropped += 1;
         }
       }
       const left = await scope.knowledgeIndexes.listReady(project.id, 1);
-      if (left.length === 0) await knowledge.store.dropProject(project.id);
+      if (left.length === 0) {
+        for (const each of allStores(knowledge)) await each.dropProject(project.id);
+      }
     } catch (error) {
       counts.failed += 1;
       deps.logger.log('error', 'client_purge.knowledge_failed', {
@@ -507,6 +530,7 @@ async function dropKnowledge(
       });
     }
   }
+  return storeAbsent;
 }
 
 /**

@@ -325,6 +325,19 @@ export interface ProjectConfig {
     /** Chunks per embedding request. */
     readonly embed_batch: number;
   };
+  /** The code index for the tool permission `read_code` (X06, ADR-M108 §2.6). */
+  readonly code_index: {
+    /** At most this many source files per index; more fails the run. */
+    readonly max_files: number;
+    /** A larger file is left out of the index and counted. */
+    readonly max_file_bytes: number;
+    /** At most this many bytes of source per index; more fails the run. */
+    readonly max_total_bytes: number;
+    /** At most this many symbol rows (definitions and references) per index; more fails the run. */
+    readonly max_symbols: number;
+    /** A file whose parse takes longer is left out of the index and counted. */
+    readonly parse_timeout_ms: number;
+  };
   /** Register tools (task X04, ADR-M69 §2.2–§2.7, ADR-M87). */
   readonly tools: {
     /** Maximum age of a tool's last recertification before a warning (rule M18: at most 3). */

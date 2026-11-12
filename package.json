@@ -106,6 +106,7 @@
     "@playwright/test": "1.63.0",
     "@sdlc/adapter-agent-openhands": "workspace:*",
     "@sdlc/adapter-agent-opencode": "workspace:*",
+    "@sdlc/adapter-code-treesitter": "workspace:*",
     "@sdlc/adapter-evidence-s3": "workspace:*",
     "@sdlc/adapter-git-github": "workspace:*",
     "@sdlc/adapter-knowledge-pgvector": "workspace:*",

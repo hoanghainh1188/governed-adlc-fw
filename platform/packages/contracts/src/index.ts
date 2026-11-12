@@ -14,6 +14,7 @@ export type * from './secrets.js';
 export * from './agent.js';
 export * from './tools.js';
 export * from './knowledge.js';
+export * from './code-index.js';
 export * from './agent-instructions.js';
 export * from './repo-path.js';
 export * from './intent-workflow.js';

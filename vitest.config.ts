@@ -23,6 +23,7 @@ const SOURCE_ADAPTERS = [
   'evidence-s3',
   'traces-langfuse',
   'knowledge-pgvector',
+  'code-treesitter',
 ];
 
 export default defineConfig({

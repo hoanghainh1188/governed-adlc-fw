@@ -28,6 +28,9 @@
       "path": "../../packages/adapters/knowledge-pgvector"
     },
     {
+      "path": "../../packages/adapters/code-treesitter"
+    },
+    {
       "path": "../../packages/adapters/git-github"
     },
     {

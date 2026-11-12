@@ -209,6 +209,7 @@ Severity scale (H01 plan): Critical, High, Medium, Low, as the escalation severi
 | G-9 | No limit on the size of a diff that a person must read at G7; a very large or generated diff defeats review | ASI09 | Medium | Confirmed (no size check in the runner, G5 or G7 code) | Closed by H05 (ADR-M95): the runner measures the files and lines a person reviews (generated and lock files apart); over `run.review_limits` (40 files, 1500 lines by default), G5 is HITL and Person A allows the change with a reason code or splits the plan at G3 |
 | G-10 | The agent may carry a secret it found in the repository into the diff or the pull request. The platform has no secret scan of the diff; G6 uses only what the project's CI reports | ASI09, ASI01 | Medium | Confirmed (no scan in the runner, G5 or G6 code) | Closed by H04 (ADR-M93): the runner scans the run's added lines with Gitleaks before G5; a finding or a failed scan holds the run at G5, so nothing is pushed |
 | G-11 | No agent adapter configures MCP yet, and the MCP support of OpenHands, Aider and OpenCode (per-run server over HTTP, a header key) is not confirmed. Until it is, no register tool runs (G4 refuses `tool_transport_not_supported`) | ASI02, ASI07 | Medium | Closed for OpenHands (X04 PR 2: `mcp_config` over HTTP with a header key, confirmed on Agent Server 1.48.0; the live test `tests/integration/runner/tools.test.ts`); open for OpenCode (G4 refuses its register tools) | Task X04; QUESTIONS #519 |
+| G-12 | The worker parses client code to build the code index (X06): a file made to break the parser runs in the worker, which holds platform credentials | ASI05 | Low | Mitigated (ADR-M108 §2.1, §2.6): the parser is WebAssembly (no access outside its own heap, no native code), files over the bytes or parse-time limit are left out, the totals have limits | Accepted; revisit if a native parser or SCIP is added |
 
 **No Critical gap was found. The one High gap (G-7) cannot be fixed inside H01**: it needs a separate VM or rootless Docker for the runner (A10) or an authorization plugin (H07). Every other gap is Medium or Low, tracked as a task or accepted with a reason. G-3, G-4 and G-8 are accepted as written above; no task.
 
@@ -265,4 +266,5 @@ Optional, once, outside CI: one run with `gpt-oss:20b` (Ollama on the owner's ma
 | 0.8 | 2026-10-24 | Claude (task H04) | §5 gap G-10 closed: the secret scan of the diff before G5 (ADR-M93) |
 | 0.9 | 2026-10-26 | Claude (task H05) | §5 gap G-9 closed: the review size limits at G5 (ADR-M95) |
 | 0.10 | 2026-11-10 | Claude (task H07) | §5 gap G-7 closed: Docker AuthZ plugin (ADR-M105) |
+| 0.11 | 2026-11-12 | Claude Code (task X06) | §5 gap G-12: the worker parses client code for the code index (ADR-M108) |
 

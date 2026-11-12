@@ -295,7 +295,7 @@ describeDb('X04 PR 3a: the document index on PostgreSQL', () => {
     expect(await pass(at(181))).toMatchObject({ knowledgeDue: 1, knowledgePurged: 1 });
     expect(store.versions.has(built.indexId)).toBe(false);
     expect((await purgedEvents(w.scope, w.projectId)).map((e) => e.payload)).toEqual([
-      { index_id: built.indexId, documents: 2, chunks: 3, cause: 'retention' },
+      { index_id: built.indexId, documents: 2, chunks: 3, cause: 'retention', kind: 'docs' },
     ]);
     expect(await w.scope.knowledgeIndexes.findReady(w.projectId, SHA, 'bge-m3')).toBeUndefined();
     // Purged once: a later pass does nothing.
@@ -341,7 +341,7 @@ describeDb('X04 PR 3a: the document index on PostgreSQL', () => {
     expect(store.versions.has(built.indexId)).toBe(false);
     expect(store.dropped).toContain(w.projectId);
     expect((await purgedEvents(w.scope, w.projectId)).map((e) => e.payload)).toEqual([
-      { index_id: built.indexId, documents: 2, chunks: 3, cause: 'archive' },
+      { index_id: built.indexId, documents: 2, chunks: 3, cause: 'archive', kind: 'docs' },
     ]);
   });
 
@@ -358,7 +358,7 @@ describeDb('X04 PR 3a: the document index on PostgreSQL', () => {
     expect(await w.scope.knowledgeIndexes.findReady(w.projectId, SHA, 'bge-m3')).toBeUndefined();
     expect(store.versions.has(built.indexId)).toBe(true);
     expect((await purgedEvents(w.scope, w.projectId)).map((e) => e.payload)).toEqual([
-      { index_id: built.indexId, documents: 2, chunks: 3, cause: 'retention' },
+      { index_id: built.indexId, documents: 2, chunks: 3, cause: 'retention', kind: 'docs' },
     ]);
     // The next pass sweeps it (older than the grace).
     const second = await pass(at(182));

@@ -9,3 +9,5 @@ export {
   type KnowledgeSearch,
   type PgVectorKnowledgeReaderOptions,
 } from './reader.js';
+// X06 (design/ADR-M108 §2.4): the code index, schema `kcode_p<…>` in the same `knowledge-db`.
+export { PgCodeIndexStore, type PgCodeIndexStoreOptions } from './code-store.js';

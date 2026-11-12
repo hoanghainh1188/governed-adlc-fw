@@ -18,7 +18,11 @@
 // build left without a row, and chunks no version uses (a build that stopped half way). An
 // archived project past its grace with no ready version loses its schema and read role.
 // In `report` mode the pass only counts. Codes, IDs and counts only in logs.
-import type { KnowledgeStore } from '@sdlc/contracts';
+//
+// X06 (ADR-M108 §2.7): the code index (`kind` `code`) follows the same rules; a code version is
+// deleted from the code store, the sweep runs on both stores, and an archived project loses both
+// schemas.
+import type { IndexStoreLifecycle, KnowledgeIndexKind, KnowledgeStore } from '@sdlc/contracts';
 
 import type { KnowledgeIndex } from '../db/schema.js';
 import type { TenantScope } from '../db/tenant-scope.js';
@@ -29,6 +33,21 @@ import { purgeDecision, type PurgeCause } from './rules.js';
 
 export interface KnowledgePurgeDeps {
   readonly store: KnowledgeStore;
+  /** X06: the code index store. Absent: a code index is never purged (it cannot be deleted). */
+  readonly codeStore?: IndexStoreLifecycle;
+}
+
+/** The store that holds index versions of `kind`, if this worker has it. */
+export function storeForKind(
+  knowledge: KnowledgePurgeDeps,
+  kind: KnowledgeIndexKind,
+): IndexStoreLifecycle | undefined {
+  return kind === 'code' ? knowledge.codeStore : knowledge.store;
+}
+
+/** Every store of this worker (the sweep, a project's schemas). */
+export function allStores(knowledge: KnowledgePurgeDeps): IndexStoreLifecycle[] {
+  return knowledge.codeStore ? [knowledge.store, knowledge.codeStore] : [knowledge.store];
 }
 
 /** Store data younger than this is never swept: a build in progress (the run preparation has 5 minutes). */
@@ -108,10 +127,14 @@ async function purgeIndex(
   project: ProjectFacts,
   indexId: string,
 ): Promise<boolean> {
+  let store: IndexStoreLifecycle | undefined;
   const marked = await scope.transaction(async (tx) => {
     const now = deps.now();
     const index = await tx.knowledgeIndexes.lockReady(indexId);
     if (!index) return false;
+    store = storeForKind(knowledge, index.kind);
+    // Never mark a version this worker cannot delete: its data would stay with no ready row.
+    if (!store) return false;
     const cause = await indexDecision(tx, index, project, now, true);
     if (cause === null) return false;
     if (!(await tx.knowledgeIndexes.markPurged(index.id, now))) return false;
@@ -120,13 +143,19 @@ async function purgeIndex(
       actorType: 'system',
       actorId: null,
       entityId: project.id,
-      payload: { index_id: index.id, documents: index.documents, chunks: index.chunks, cause },
+      payload: {
+        index_id: index.id,
+        documents: index.documents,
+        chunks: index.chunks,
+        cause,
+        kind: index.kind,
+      },
       occurredAt: now,
     });
     return true;
   });
   // After the commit: a failure here leaves the version to the sweep of a later pass.
-  if (marked) await knowledge.store.deleteIndexVersion(project.id, indexId);
+  if (marked && store) await store.deleteIndexVersion(project.id, indexId);
   return marked;
 }
 
@@ -139,20 +168,26 @@ async function sweepStore(
   counts: RetentionCounts,
 ): Promise<void> {
   const before = new Date(deps.now().getTime() - SWEEP_GRACE_MS);
-  const versions = await knowledge.store.listIndexVersions(project.id);
-  const ready = await scope.knowledgeIndexes.readyIds(
-    project.id,
-    versions.map((v) => v.id),
-  );
-  for (const version of versions) {
-    if (ready.has(version.id) || version.createdAt >= before) continue;
-    await knowledge.store.deleteIndexVersion(project.id, version.id);
-    counts.knowledgeSwept += 1;
+  let readyInStores = 0;
+  for (const store of allStores(knowledge)) {
+    const versions = await store.listIndexVersions(project.id);
+    const ready = await scope.knowledgeIndexes.readyIds(
+      project.id,
+      versions.map((v) => v.id),
+    );
+    readyInStores += ready.size;
+    for (const version of versions) {
+      if (ready.has(version.id) || version.createdAt >= before) continue;
+      await store.deleteIndexVersion(project.id, version.id);
+      counts.knowledgeSwept += 1;
+    }
+    counts.knowledgeSwept += await store.deleteOrphanChunks(project.id, before);
   }
-  counts.knowledgeSwept += await knowledge.store.deleteOrphanChunks(project.id, before);
-  if (project.archiveDue && ready.size === 0) {
+  if (project.archiveDue && readyInStores === 0) {
     const left = await scope.knowledgeIndexes.listReady(project.id, 1);
-    if (left.length === 0) await knowledge.store.dropProject(project.id);
+    if (left.length === 0) {
+      for (const store of allStores(knowledge)) await store.dropProject(project.id);
+    }
   }
 }
 
@@ -186,6 +221,17 @@ async function projectPass(
   for (const index of await scope.knowledgeIndexes.listReady(project.id, deps.settings.batch)) {
     try {
       if ((await indexDecision(scope, index, project, deps.now(), false)) === null) continue;
+      if (!storeForKind(knowledge, index.kind)) {
+        // X06: due, but this worker has no store of its kind: never marked, and said so.
+        counts.failed += 1;
+        deps.logger.log('error', 'retention.knowledge_store_absent', {
+          tenant_id: scope.tenantId,
+          project_id: project.id,
+          index_id: index.id,
+          kind: index.kind,
+        });
+        continue;
+      }
       counts.knowledgeDue += 1;
       if (deps.settings.mode !== 'purge') continue;
       if (await purgeIndex(deps, knowledge, scope, project, index.id)) {

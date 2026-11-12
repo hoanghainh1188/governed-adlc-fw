@@ -46,6 +46,10 @@ export const EXPECTED_PACKAGES: readonly WorkspacePackage[] = [
     dir: 'platform/packages/adapters/knowledge-pgvector',
     name: '@sdlc/adapter-knowledge-pgvector',
   },
+  {
+    dir: 'platform/packages/adapters/code-treesitter',
+    name: '@sdlc/adapter-code-treesitter',
+  },
   { dir: 'platform/packages/adapters/traces-langfuse', name: '@sdlc/adapter-traces-langfuse' },
   { dir: 'platform/packages/adapters/policy-simple', name: '@sdlc/adapter-policy-simple' },
   { dir: 'platform/deploy/docker-authz', name: '@sdlc/docker-authz' },

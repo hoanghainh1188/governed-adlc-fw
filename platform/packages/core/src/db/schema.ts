@@ -20,6 +20,7 @@ import type {
   GateDecision,
   GateReasonCode,
   IntentStatus,
+  KnowledgeIndexKind,
   ProjectRole,
   ProviderType,
   ResponseLevel,
@@ -1054,6 +1055,8 @@ export interface KnowledgeIndexesTable {
   project_id: Immutable<string>;
   base_sha: Immutable<string>;
   model: Immutable<string>;
+  /** X06 (migration 0051, ADR-M108 §2.5): `docs` or `code`; fixed after insert. */
+  kind: ColumnType<KnowledgeIndexKind, KnowledgeIndexKind | undefined, never>;
   documents: Immutable<number>;
   chunks: Immutable<number>;
   /** bigint; `pg` returns int8 as a string. */
@@ -1820,6 +1823,7 @@ export const TABLE_COLUMNS = {
     'created_at',
     'last_used_at',
     'purged_at',
+    'kind',
   ]),
   knowledge_index_uses: columns<KnowledgeIndexUsesTable>()([
     'id',

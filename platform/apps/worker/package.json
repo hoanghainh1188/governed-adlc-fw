@@ -12,6 +12,7 @@
   "dependencies": {
     "@sdlc/adapter-evidence-s3": "workspace:*",
     "@sdlc/adapter-git-github": "workspace:*",
+    "@sdlc/adapter-code-treesitter": "workspace:*",
     "@sdlc/adapter-knowledge-pgvector": "workspace:*",
     "@sdlc/adapter-model-litellm": "workspace:*",
     "@sdlc/adapter-policy-simple": "workspace:*",

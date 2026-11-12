@@ -55,7 +55,34 @@ export interface KnowledgeIndexInput {
   readonly documents: readonly KnowledgeDocument[];
 }
 
-export interface KnowledgeStore {
+/**
+ * The kind of an index version (X06, ADR-M108 §2.5): the documents of X04 or the code of X06. The
+ * platform's `knowledge_indexes.kind`; each kind has its own store and its own schema per project.
+ */
+export const KNOWLEDGE_INDEX_KINDS = ['docs', 'code'] as const;
+export type KnowledgeIndexKind = (typeof KNOWLEDGE_INDEX_KINDS)[number];
+
+/**
+ * What the retention pass and the client data deletion need of an index store (X06, ADR-M108
+ * §2.7): the document store and the code store both implement it.
+ */
+export interface IndexStoreLifecycle {
+  /** Deletes one index version and the rows no other version of the project uses. */
+  deleteIndexVersion(projectId: string, indexId: string): Promise<{ readonly chunks: number }>;
+  /** The project's index versions with their creation times (the retention sweep). */
+  listIndexVersions(
+    projectId: string,
+  ): Promise<readonly { readonly id: string; readonly createdAt: Date }[]>;
+  /**
+   * Deletes shared rows no version uses that were stored before `before` (a build that failed or
+   * stopped half way). Returns how many. A store with no shared rows returns 0.
+   */
+  deleteOrphanChunks(projectId: string, before: Date): Promise<number>;
+  /** Deletes the project's schema and read role (an archived project). Idempotent. */
+  dropProject(projectId: string): Promise<void>;
+}
+
+export interface KnowledgeStore extends IndexStoreLifecycle {
   /** Creates the project's schema and read role when they do not exist. Idempotent. */
   ensureProject(input: { readonly tenantId: string; readonly projectId: string }): Promise<void>;
   /** The chunk keys of `sha256s` the project does not hold yet for `model`. */
@@ -73,19 +100,6 @@ export interface KnowledgeStore {
   }): Promise<void>;
   /** Writes an index version and its documents in one transaction. */
   putIndexVersion(input: KnowledgeIndexInput): Promise<void>;
-  /** Deletes one index version and the chunks no other version of the project uses. */
-  deleteIndexVersion(projectId: string, indexId: string): Promise<{ readonly chunks: number }>;
-  /** The project's index versions with their creation times (the retention sweep). */
-  listIndexVersions(
-    projectId: string,
-  ): Promise<readonly { readonly id: string; readonly createdAt: Date }[]>;
-  /**
-   * Deletes chunks no version uses that were stored before `before` (a build that failed or
-   * stopped half way). Returns how many. Chunks of a build in progress are younger.
-   */
-  deleteOrphanChunks(projectId: string, before: Date): Promise<number>;
-  /** Deletes the project's schema and read role (an archived project). Idempotent. */
-  dropProject(projectId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -110,6 +124,8 @@ export const KNOWLEDGE_ERROR_CODES = [
   'embedding_failed',
   /** X04 PR 3b: the tool's database login or model key could not be issued (OpenBao, LiteLLM). */
   'credentials_unavailable',
+  /** X06 (ADR-M108 §2.6): more symbol rows than `code_index.max_symbols`. */
+  'too_many_symbols',
 ] as const;
 export type KnowledgeErrorCode = (typeof KNOWLEDGE_ERROR_CODES)[number];
 

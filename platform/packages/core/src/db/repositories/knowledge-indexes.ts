@@ -1,6 +1,8 @@
-// The platform's record of the index of a project's documents (design/D-05 section 6.1, D-08 X04
-// PR 3a, design/ADR-M89 §2.2). Codes, IDs, hashes and counts only. The index versions themselves
-// (paths, texts, embeddings) live in `knowledge-db` behind `KnowledgeStore`.
+// The platform's record of the indexes of a project: its documents (design/D-05 section 6.1, D-08
+// X04 PR 3a, design/ADR-M89 §2.2) and its code (X06, ADR-M108 §2.5, `kind`). Codes, IDs, hashes and
+// counts only. The index versions themselves (paths, texts, embeddings, symbols) live in
+// `knowledge-db` behind `KnowledgeStore` and `CodeIndexStore`.
+import type { KnowledgeIndexKind } from '@sdlc/contracts';
 import { sql } from 'kysely';
 
 import type { KnowledgeIndex, KnowledgeIndexUse } from '../schema.js';
@@ -10,17 +12,20 @@ export interface NewKnowledgeIndex {
   readonly projectId: string;
   readonly baseSha: string;
   readonly model: string;
+  /** X06: `docs` when absent. */
+  readonly kind?: KnowledgeIndexKind;
   readonly documents: number;
   readonly chunks: number;
   readonly bytes: number;
 }
 
 export class KnowledgeIndexRepository extends TenantRepository {
-  /** The ready (not purged) index of a project's commit and model, if any. */
+  /** The ready (not purged) index of a project's commit, model and kind, if any. */
   findReady(
     projectId: string,
     baseSha: string,
     model: string,
+    kind: KnowledgeIndexKind = 'docs',
   ): Promise<KnowledgeIndex | undefined> {
     return this.run(
       this.db
@@ -30,12 +35,13 @@ export class KnowledgeIndexRepository extends TenantRepository {
         .where('project_id', '=', projectId)
         .where('base_sha', '=', baseSha)
         .where('model', '=', model)
+        .where('kind', '=', kind)
         .where('purged_at', 'is', null)
         .executeTakeFirst(),
     );
   }
 
-  /** Records a built index; `conflict` when another run recorded the same commit and model. */
+  /** Records a built index; `conflict` when another run recorded the same commit, model and kind. */
   create(input: NewKnowledgeIndex & { readonly id: string }): Promise<KnowledgeIndex> {
     return this.run(
       this.db
@@ -46,6 +52,7 @@ export class KnowledgeIndexRepository extends TenantRepository {
           project_id: input.projectId,
           base_sha: input.baseSha,
           model: input.model,
+          kind: input.kind ?? 'docs',
           documents: input.documents,
           chunks: input.chunks,
           bytes: input.bytes,
