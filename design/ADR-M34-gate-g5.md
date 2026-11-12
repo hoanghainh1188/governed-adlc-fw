@@ -136,9 +136,9 @@ Blind spot: paths the ignore rules of `base_sha` ignore (`node_modules`, build o
 - G3 stays HITL for the rest of an intent's life once G5 sent it back; this is stricter than the matrix and needs no configuration.
 - The evidence identity can also delete under `diffs/` (SeaweedFS has no write-only action, ADR-M33 §2.9 gap 1); the bucket is versioned, and E02 re-checks the SHA-256 of each item.
 - C08 recomputes changed files and `head_sha` from the pushed branch with the same code (D-08 C08 note).
-- Very large repositories are refused at G4 (`tree_truncated`) until a paged tree walk exists.
+- Very large repositories are refused at G4 (`tree_truncated`) until a paged tree walk exists. Version 0.4: the walk exists (ADR-M106 §2.1).
 - `listPaths` is one more GitHub call each time G4 is evaluated (every wake and reconcile while an intent waits at G4), next to `getBranchHead` and `getFileAtCommit`. Cache by `base_sha` if API quota becomes a problem.
-- The nested `AGENTS.md` rule follows OpenHands 1.48.0 (QUESTIONS #126): a monorepo with `AGENTS.md` files in sub-folders cannot run an agent until those files are pinned (a later agent register change) or removed.
+- The nested `AGENTS.md` rule follows OpenHands 1.48.0 (QUESTIONS #126): a monorepo with `AGENTS.md` files in sub-folders cannot run an agent until those files are pinned (a later agent register change) or removed. Version 0.4: a project with a `repo_path` checks only the files inside its folder and at the repository root, and its agent may pin the root file too (ADR-M106 §2.4).
 
 ## Version history
 
@@ -147,3 +147,4 @@ Blind spot: paths the ignore rules of `base_sha` ignore (`node_modules`, build o
 | 0.1 | 2026-10-03 | Claude (task C07, PR 1), approved by Harry | First version: §2.1–§2.7 for PR 1; PR 2 adds the G5 step |
 | 0.2 | 2026-10-03 | Claude (task C07, PR 2), approved by Harry | §2.8 the G5 step, §2.9 the decision on a G5 escalation and the budget increase; §2.7, §4 updated (migration 0015, rule M22, SQLSTATE SDA12) |
 | 0.3 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
+| 0.4 | 2026-11-12 | Claude Code (task O06), approved by Harry (QUESTIONS #676–#678) | §4: very large trees are listed in parts; the instruction files of a project with a `repo_path`; a change outside the folder fails G5 (ADR-M106) |
