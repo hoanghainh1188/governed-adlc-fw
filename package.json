@@ -1,6 +1,6 @@
 {
   "name": "governed-adlc-fw",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "license": "MIT",
   "description": "Agentic SDLC Framework: handbook + platform monorepo",
