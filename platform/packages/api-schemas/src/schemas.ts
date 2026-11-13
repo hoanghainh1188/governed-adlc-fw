@@ -409,6 +409,44 @@ export const aiRecordSchema = z.object({
 });
 export type AiRecordView = z.infer<typeof aiRecordSchema>;
 
+// Agent memory of a project (task X13 PR 1, ADR-M74 §2.3, §2.7). Hashes, versions and codes.
+const sha40 = z.string().regex(/^[0-9a-f]{40}$/);
+const sha64 = z.string().regex(/^[0-9a-f]{64}$/);
+export const memoryVersionSchema = z.object({
+  version: z.number().int().min(1),
+  set_sha256: sha64,
+  commit_sha: sha40,
+  source: code,
+  approved_by: id,
+  pr_number: z.number().int().nullable(),
+  intent_id: id.nullable(),
+  run_id: id.nullable(),
+  created_at: time,
+  revoked: z.boolean(),
+  revoked_at: time.nullable(),
+  revoked_by: id.nullable(),
+  revocation_reason: code.nullable(),
+});
+export type MemoryVersionView = z.infer<typeof memoryVersionSchema>;
+export const memoryListSchema = z.object({
+  project: z.object({ id, slug: code }),
+  versions: z.array(memoryVersionSchema).max(1000),
+});
+export type MemoryListView = z.infer<typeof memoryListSchema>;
+export const memoryApproveSchema = z.object({
+  project: z.object({ id, slug: code }),
+  recorded: z.boolean(),
+  files: z.number().int().min(0),
+  commits_without_account: z.number().int().min(0),
+  version: memoryVersionSchema,
+});
+export type MemoryApproveView = z.infer<typeof memoryApproveSchema>;
+export const memoryRevokeSchema = z.object({
+  project: z.object({ id, slug: code }),
+  version: memoryVersionSchema,
+});
+export type MemoryRevokeView = z.infer<typeof memoryRevokeSchema>;
+
 // Admin endpoints (task B13, ADR-M37 §2.6).
 export const adminProjectSchema = z.object({
   id,

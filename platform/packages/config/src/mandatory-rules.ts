@@ -51,6 +51,8 @@
 //                                                                      QUESTIONS.md #499
 //   M35 context condensing only with a known context size ........... ADR-M29 §2.10, D-08 X11,
 //                                                                      QUESTIONS.md #395, #553
+//   M36 memory: a file's cap ≤ the total cap; proposals need L2 ...... ADR-M74 §2.2, D-08 X13,
+//                                                                      QUESTIONS.md #574
 import type {
   AutonomyLevel,
   EscalationRoute,
@@ -628,6 +630,27 @@ const m35: Rule = (c) => {
   ];
 };
 
+/** Autonomy levels that commit and push a change (ADR-M33 §2.9: L1 runs never commit). */
+const PUSHING_LEVELS: readonly AutonomyLevel[] = ['L2', 'L3', 'L4'];
+
+/**
+ * Rule M36 (X13, ADR-M74 §2.2): a memory file's cap is never above the total cap, and runs
+ * propose memory only when an agent may run at L2 or higher (an L1-only project pushes nothing).
+ */
+const m36: Rule = (c) => [
+  ...(c.memory.max_file_chars > c.memory.max_total_chars
+    ? [
+        issue('config.rule.memory_file_over_total', 'memory.max_file_chars', {
+          maximum: c.memory.max_total_chars,
+        }),
+      ]
+    : []),
+  ...(c.memory.mode === 'read_propose' &&
+  !Object.values(c.autonomy.max_by_risk).some((level) => PUSHING_LEVELS.includes(level))
+    ? [issue('config.rule.memory_propose_needs_l2', 'memory.mode')]
+    : []),
+];
+
 const m28: Rule = (c) =>
   c.access.cost_read_roles.includes('viewer')
     ? [issue('config.rule.viewer_never_reads_cost', 'access.cost_read_roles')]
@@ -719,6 +742,7 @@ export const MANDATORY_RULES: Readonly<Record<string, Rule>> = {
   M33: m33,
   M34: m34,
   M35: m35,
+  M36: m36,
 };
 
 /** All mandatory-rule violations; each issue carries its rule id as the `rule` parameter. */

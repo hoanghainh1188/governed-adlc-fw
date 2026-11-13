@@ -706,6 +706,21 @@ export const AUDIT_ACTIONS = {
       kind: 'code?',
     },
   },
+  /**
+   * A person approved a project's agent memory set (X13, ADR-M74 §2.3): its version, its hash and
+   * how (`cli` or `memory_pr`). Never a path or memory text.
+   */
+  'memory.approved': {
+    entityType: 'project',
+    fields: { version: 'version', set_sha256: 'sha256', source: 'code' },
+  },
+  /**
+   * A memory approval was refused (X13, ADR-M74 §2.3): `cause` `bot`, `producer`,
+   * `too_many_commits` or `no_git_identity`; `source` `cli` or `memory_pr`. No version recorded.
+   */
+  'memory.approval_refused': { entityType: 'project', fields: { cause: 'code', source: 'code' } },
+  /** A person revoked a memory version (X13, ADR-M74 §2.7): runs never read that set again. */
+  'memory.revoked': { entityType: 'project', fields: { version: 'version', reason: 'code' } },
   /** A person put an intent's evidence on hold (E05, QUESTIONS #235): never purged until released. */
   'evidence.hold_set': { entityType: 'intent', fields: { hold_id: 'uuid' } },
   /** A person released the hold on an intent's evidence (E05, QUESTIONS #235). */

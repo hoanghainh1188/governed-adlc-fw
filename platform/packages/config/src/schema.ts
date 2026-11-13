@@ -6,6 +6,7 @@ import {
   AUTONOMY_LEVELS,
   CHANGE_FLAGS,
   CONTEXT_CONDENSING_MODES,
+  MEMORY_MODES,
   OVERSIGHT_MODES,
   PROJECT_ROLES,
   PROVIDER_TYPES,
@@ -321,6 +322,14 @@ export const projectConfigSchema = z.strictObject({
     max_total_bytes: positiveInt.max(2 * 1024 * 1024 * 1024),
     max_symbols: positiveInt.max(10_000_000),
     parse_timeout_ms: positiveInt.min(100).max(60_000),
+  }),
+  // X13 (ADR-M74 §2.2, QUESTIONS #574): agent memory across runs. Rule M36: `max_file_chars` ≤
+  // `max_total_chars`; `read_propose` only when an agent may run at L2 or higher.
+  memory: z.strictObject({
+    mode: z.enum(MEMORY_MODES),
+    max_files: positiveInt.max(50),
+    max_file_chars: positiveInt.min(500).max(8000),
+    max_total_chars: positiveInt.min(1000).max(24_000),
   }),
   // X04 (ADR-M69 §2.2–§2.7, ADR-M87): register tools. Rule M18 keeps the recertification age at 3
   // months or less, as for agents. `gateway.image`: the run's MCP gateway, by digest; null until a

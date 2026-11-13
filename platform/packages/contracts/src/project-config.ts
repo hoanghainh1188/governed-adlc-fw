@@ -13,6 +13,7 @@ import type {
   Severity,
 } from './codes.js';
 import type { EscalationRoute, ResponseLevel, SafeAction } from './escalation.js';
+import type { MemoryMode } from './memory.js';
 
 /**
  * How a gate is checked for one risk tier. `POLICY` = automatic policy check with no human
@@ -337,6 +338,20 @@ export interface ProjectConfig {
     readonly max_symbols: number;
     /** A file whose parse takes longer is left out of the index and counted. */
     readonly parse_timeout_ms: number;
+  };
+  /**
+   * Agent memory across runs (task X13, ADR-M74 §2.2, QUESTIONS #574): approved Markdown notes in
+   * `.sdlc/memory/` of the repository. `off` by default; rule M36.
+   */
+  readonly memory: {
+    /** `read`: runs read approved memory; `read_propose`: runs also propose changes. */
+    readonly mode: MemoryMode;
+    /** At most this many memory files are read (1–50). */
+    readonly max_files: number;
+    /** A file is cut after this many characters (500–8000). */
+    readonly max_file_chars: number;
+    /** All files together are cut after this many characters (1000–24000). */
+    readonly max_total_chars: number;
   };
   /** Register tools (task X04, ADR-M69 §2.2–§2.7, ADR-M87). */
   readonly tools: {

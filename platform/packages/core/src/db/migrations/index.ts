@@ -52,6 +52,7 @@ import { migration0049ProjectRepoPath } from './0049-project-repo-path.js';
 import { migration0050IntentEffortEstimate } from './0050-intent-effort-estimate.js';
 import { migration0051CodeIndex } from './0051-code-index.js';
 import { migration0052ReadCodePermission } from './0052-read-code-permission.js';
+import { migration0053MemoryVersions } from './0053-memory-versions.js';
 import type { SqlMigration } from './define.js';
 
 export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
@@ -107,4 +108,5 @@ export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
   '0050-intent-effort-estimate': migration0050IntentEffortEstimate,
   '0051-code-index': migration0051CodeIndex,
   '0052-read-code-permission': migration0052ReadCodePermission,
+  '0053-memory-versions': migration0053MemoryVersions,
 };

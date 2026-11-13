@@ -241,6 +241,9 @@ const UPDATABLE: Record<string, readonly string[]> = {
   // append-only.
   knowledge_indexes: ['last_used_at', 'purged_at'],
   knowledge_index_uses: [],
+  // Append-only (X13, migration 0053): approved and revoked agent memory sets.
+  project_memory_versions: [],
+  project_memory_revocations: [],
   // U05 (migration 0027): seen time only grows; the end is set once (trigger SDA18). No DELETE.
   web_sessions: ['last_seen_at', 'revoked_at', 'end_reason'],
   // U06 (migration 0028): the counter and the last use only grow; revoked once (SDA20). No DELETE.
@@ -394,7 +397,9 @@ describeDb('AC2: migrations on PostgreSQL', () => {
     // X04: tools → users; tool_approvals → tools, users (0038).
     // X04 PR 3a: knowledge_indexes → projects; knowledge_index_uses → knowledge_indexes, runs,
     // intents (0039).
-    expect(fks).toHaveLength(94);
+    // X13: project_memory_versions → projects, users, intents, runs; project_memory_revocations →
+    // project_memory_versions (by version), users (0053).
+    expect(fks).toHaveLength(100);
     for (const fk of fks) {
       expect(fk.on_delete, fk.name).toBe('r'); // RESTRICT: no hard deletes (D-05 D7)
       if (fk.name === 'gate_decisions_voids_fkey') {
@@ -408,6 +413,12 @@ describeDb('AC2: migrations on PostgreSQL', () => {
         expect([fk.child_cols, fk.parent_cols]).toEqual([
           ['tenant_id', 'project_id'],
           ['tenant_id', 'project_id'],
+        ]);
+      } else if (fk.name === 'project_memory_revocations_version_fkey') {
+        // A revocation names the project's version number (X13, D-05 §6.11).
+        expect([fk.child_cols, fk.parent_cols]).toEqual([
+          ['tenant_id', 'project_id', 'version'],
+          ['tenant_id', 'project_id', 'version'],
         ]);
       } else if (fk.parent === 'tenants') {
         expect([fk.child_cols, fk.parent_cols], fk.name).toEqual([['tenant_id'], ['id']]);

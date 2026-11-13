@@ -26,6 +26,8 @@ const APPEND_ONLY = [
   'evaluation_task_decisions',
   'evaluation_task_check_contracts',
   'knowledge_index_uses',
+  'project_memory_versions',
+  'project_memory_revocations',
 ];
 
 const trigger = (event: string, table: string) =>

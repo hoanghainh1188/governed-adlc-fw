@@ -17,6 +17,7 @@ export * from './knowledge.js';
 export * from './code-index.js';
 export * from './agent-instructions.js';
 export * from './repo-path.js';
+export * from './memory.js';
 export * from './intent-workflow.js';
 export * from './run-activity.js';
 export * from './evaluation-activity.js';

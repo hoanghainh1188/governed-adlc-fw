@@ -102,6 +102,7 @@ A project may tighten anything. It may **not** loosen these (rules M1–M32; sou
 | M32 | `access.evidence_hold_roles` never holds `viewer` (E05, ADR-M51, QUESTIONS #235) |
 | M33 | `access.eval_roles` never holds `viewer` (L05, ADR-M82, QUESTIONS #470) |
 | M35 | `run.context_condensing.mode: summarize` needs a context size in `model_context_tokens` and `keep_first` below `max_events`; a run whose model has no size never condenses (X11, ADR-M29 §2.10) |
+| M36 | `memory.max_file_chars` ≤ `memory.max_total_chars`; `memory.mode: read_propose` needs an agent that may run at L2 or higher in `autonomy.max_by_risk` (X13, ADR-M74 §2.2) |
 
 Other loosening is accepted with a warning: a looser matrix cell, fewer approvals, a higher G6 security threshold (`min_severity`), a working day swapped out of the calendar, shorter working hours (still ≥ 7), or more than 20 holidays in one calendar year. A Run Contract validity above 60 minutes, a run cap above the default and a no-progress window under 5 minutes (`run.loop_detection.no_progress_window_minutes`: a long silent command may stop a healthy run) also give a warning. Adding working days, a longer day or up to 20 holidays a year gives no warning.
 
