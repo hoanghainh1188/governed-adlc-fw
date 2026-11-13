@@ -29,6 +29,7 @@ import type { DockerClient } from '../docker/client.js';
 import { assertSafeNetworkConnect } from '../docker/guard.js';
 import { RunnerError } from '../errors.js';
 import { runLabels, runNames } from '../names.js';
+import { runNetworkHosts } from '../sandbox/hosts.js';
 import { ensureImage, teardownSandbox } from '../sandbox/lifecycle.js';
 import { planEgress, runNetworkSpec } from '../sandbox/network.js';
 import { buildScoringSpec } from '../sandbox/scoring-spec.js';
@@ -148,9 +149,11 @@ export async function scoreEvaluationRun(
       assertSafeNetworkConnect(names.network, service.container, attachable);
       await docker.networkConnect(names.network, service.container, [service.alias]);
     }
+    // H06: gVisor has no Docker DNS; the package proxy's name goes into /etc/hosts.
+    const hosts = settings.sandboxRuntime ? await runNetworkHosts(docker, names.network) : [];
     const installId = await docker.scoringContainerCreate(
       names.container,
-      buildScoringSpec({ names, labels, image: input.image, phase: 'install' }, settings),
+      buildScoringSpec({ names, labels, image: input.image, phase: 'install', hosts }, settings),
       'install',
     );
     await docker.putArchive(installId, '/workspace', tar);

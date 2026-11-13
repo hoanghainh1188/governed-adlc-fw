@@ -18,6 +18,11 @@ export interface SandboxSpecInput {
   readonly labels: Readonly<Record<string, string>>;
   /** Project image pinned by digest (config `sandbox.image`, QUESTIONS #59). */
   readonly image: string;
+  /**
+   * Task H06: `name:ip` of the containers on the run's network (`sandbox/hosts.ts`), used only with a
+   * sandbox runtime: gVisor cannot use Docker's embedded DNS.
+   */
+  readonly hosts?: readonly string[];
   /** Random per run; authenticates the runner to the Agent Server (ADR-M10 §2.2). */
   readonly sessionApiKey: string;
   /** Random per run; the Agent Server encrypts its own state with it. */
@@ -80,6 +85,9 @@ export function buildSandboxSpec(input: SandboxSpecInput, settings: RunnerSettin
       Init: true,
       // Task H06 (ADR-M25 §2.12): gVisor or Kata when the operator chose one.
       ...(settings.sandboxRuntime ? { Runtime: settings.sandboxRuntime } : {}),
+      ...(settings.sandboxRuntime && input.hosts && input.hosts.length > 0
+        ? { ExtraHosts: [...input.hosts] }
+        : {}),
     },
   };
 }

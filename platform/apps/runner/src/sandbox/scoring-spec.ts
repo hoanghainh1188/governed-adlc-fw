@@ -26,6 +26,11 @@ export interface ScoringSpecInput {
   readonly labels: Readonly<Record<string, string>>;
   /** The sandbox image pinned by digest. */
   readonly image: string;
+  /**
+   * Task H06: `name:ip` of the containers on the run's network (`sandbox/hosts.ts`), used only with a
+   * sandbox runtime: gVisor cannot use Docker's embedded DNS.
+   */
+  readonly hosts?: readonly string[];
   readonly phase: ScoringPhase;
 }
 
@@ -89,6 +94,9 @@ export function buildScoringSpec(
       Init: true,
       // Task H06 (ADR-M25 §2.12): the agent's code runs here too, under the same runtime.
       ...(settings.sandboxRuntime ? { Runtime: settings.sandboxRuntime } : {}),
+      ...(settings.sandboxRuntime && input.hosts && input.hosts.length > 0
+        ? { ExtraHosts: [...input.hosts] }
+        : {}),
     },
   };
 }

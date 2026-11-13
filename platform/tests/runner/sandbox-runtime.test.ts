@@ -19,6 +19,7 @@ import {
   buildToolSpec,
   evaluateAuthz,
   isAllowedEndpoint,
+  isPrivateIpv4,
   parseEngineInfo,
   RunnerError,
   runLabels,
@@ -138,6 +139,66 @@ describe('the guard and the runtime (H06 AC1)', () => {
     refusedWith('unknown_host_option')(() =>
       assertSafeToolSpec(name, spec as unknown as ToolContainerSpec),
     );
+  });
+});
+
+describe('names in /etc/hosts under gVisor (H06; gVisor has no Docker DNS)', () => {
+  const HOSTS = ['litellm:172.20.0.2', 'sdlc-litellm-1:172.20.0.2', 'npm-proxy:172.20.0.3'];
+  const withHosts = (runtime: SandboxRuntime | undefined, hosts: readonly string[]) =>
+    buildSandboxSpec(
+      { names, labels, image: IMAGE, sessionApiKey: KEY, agentSecretKey: KEY, hosts },
+      runtime ? withRuntime(runtime) : settings(),
+    );
+
+  it('adds the names of the run network only with a runtime', () => {
+    const spec = withHosts('runsc', HOSTS);
+    expect(spec.HostConfig.ExtraHosts).toEqual(HOSTS);
+    expect(() => assertSafeContainerSpec(names.container, spec, 'runsc')).not.toThrow();
+    expect('ExtraHosts' in withHosts(undefined, HOSTS).HostConfig).toBe(false);
+    expect('ExtraHosts' in withHosts('runsc', []).HostConfig).toBe(false);
+  });
+
+  it('the install step of scoring gets them too', () => {
+    const spec = buildScoringSpec(
+      { names, labels, image: IMAGE, phase: 'install', hosts: HOSTS },
+      withRuntime('runsc'),
+    );
+    expect(spec.HostConfig.ExtraHosts).toEqual(HOSTS);
+    expect(() => assertSafeScoringSpec(names.container, spec, 'install', 'runsc')).not.toThrow();
+  });
+
+  it.each<[string, unknown]>([
+    ['host-gateway', ['litellm:host-gateway']],
+    ['a public address', ['litellm:8.8.8.8']],
+    ['IPv6', ['litellm:fd00::2']],
+    ['a bad name', ['-x:172.20.0.2']],
+    ['not a list', 'litellm:172.20.0.2'],
+    ['too many', Array.from({ length: 65 }, (_, i) => `h${String(i)}:10.0.0.1`)],
+  ])('refuses %s', (_label, value) => {
+    const spec = structuredClone(withHosts('runsc', HOSTS)) as unknown as {
+      HostConfig: Record<string, unknown>;
+    };
+    spec.HostConfig.ExtraHosts = value;
+    refusedWith('extra_hosts')(() =>
+      assertSafeContainerSpec(names.container, spec as unknown as ContainerSpec, 'runsc'),
+    );
+  });
+
+  it('refuses them without a runtime', () => {
+    const spec = structuredClone(sandbox()) as unknown as { HostConfig: Record<string, unknown> };
+    spec.HostConfig.ExtraHosts = HOSTS;
+    refusedWith('extra_hosts')(() =>
+      assertSafeContainerSpec(names.container, spec as unknown as ContainerSpec),
+    );
+  });
+
+  it('knows the private IPv4 ranges of Docker bridges', () => {
+    for (const ip of ['10.0.0.1', '172.16.0.1', '172.31.255.254', '192.168.1.2']) {
+      expect(isPrivateIpv4(ip)).toBe(true);
+    }
+    for (const ip of ['172.32.0.1', '127.0.0.1', '8.8.8.8', '10.0.0.256', '10.0.0', '']) {
+      expect(isPrivateIpv4(ip)).toBe(false);
+    }
   });
 });
 

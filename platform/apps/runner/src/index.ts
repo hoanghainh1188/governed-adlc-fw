@@ -20,6 +20,7 @@ export {
   assertSafeToolSpec,
   GATEWAY_COMMAND,
   GATEWAY_USER,
+  isPrivateIpv4,
   TOOL_USER,
   SANDBOX_ENV_ALLOWLIST,
   SCORING_COMMANDS,
@@ -138,6 +139,7 @@ export {
 } from './sandbox/lifecycle.js';
 export { planEgress, runNetworkSpec, type EgressPlan } from './sandbox/network.js';
 export { buildSandboxSpec, type SandboxSpecInput } from './sandbox/spec.js';
+export { runNetworkHosts } from './sandbox/hosts.js';
 export {
   argumentRuleCel,
   buildGatewayConfig,
