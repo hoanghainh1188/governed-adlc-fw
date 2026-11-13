@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import {
   AUTONOMY_LEVELS,
   RUN_CONTRACT_SCHEMA_FOLDER,
+  RUN_CONTRACT_SCHEMA_MEMORY,
   RUN_CONTRACT_SCHEMA_VERSION,
   signatureKeyVersion,
   type AgentAdapterCode,
@@ -19,6 +20,7 @@ import {
   type RunContract,
   type RunContractAutonomy,
   type RunContractEnvelope,
+  type RunContractMemory,
   type RunContractSigner,
   type ToolGrant,
 } from '@sdlc/contracts';
@@ -65,6 +67,11 @@ export interface IssueRunContract {
   readonly egressAllowlist: readonly string[];
   /** The G3/G4 approver who allowed the run; null when the system did (G4 POLICY). */
   readonly triggeredBy: string | null;
+  /**
+   * X13 (ADR-M74 §2.6, QUESTIONS #712): the memory G4 found at `base_sha`, for a project whose
+   * `memory.mode` is not `off`. Present: the contract is schema 5. Absent: schema 3 or 4 as before.
+   */
+  readonly memory?: RunContractMemory;
 }
 
 export interface IssueDeps {
@@ -139,8 +146,16 @@ export async function issueRunContract(
   // pinned file; every other contract stays schema 3.
   const rootSha256 = input.agent.rootInstructionsSha256 ?? null;
   const folder = project.repo_path !== '' || rootSha256 !== null;
+  // X13 (QUESTIONS #712): schema 5 = schema 4's fields plus `memory`, only with memory on.
+  const memory = input.memory;
+  const schema =
+    memory !== undefined
+      ? RUN_CONTRACT_SCHEMA_MEMORY
+      : folder
+        ? RUN_CONTRACT_SCHEMA_FOLDER
+        : RUN_CONTRACT_SCHEMA_VERSION;
   const draft: RunContract = {
-    schema_version: folder ? RUN_CONTRACT_SCHEMA_FOLDER : RUN_CONTRACT_SCHEMA_VERSION,
+    schema_version: schema,
     run_id: randomUUID(),
     intent_id: intent.id,
     tenant_id: scope.tenantId,
@@ -159,7 +174,10 @@ export async function issueRunContract(
     tool_grants: [...(input.toolGrants ?? [])].sort((a, b) =>
       a.tool_key < b.tool_key ? -1 : a.tool_key > b.tool_key ? 1 : 0,
     ),
-    ...(folder ? { repo_path: project.repo_path, root_instructions_sha256: rootSha256 } : {}),
+    ...(folder || memory !== undefined
+      ? { repo_path: project.repo_path, root_instructions_sha256: rootSha256 }
+      : {}),
+    ...(memory !== undefined ? { memory: { ...memory } } : {}),
     autonomy_level: input.autonomyLevel,
     max_budget_usd: input.maxBudgetUsd,
     max_iterations: input.maxIterations,

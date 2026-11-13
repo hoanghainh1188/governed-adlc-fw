@@ -408,6 +408,21 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
       expect(envelope.contract).not.toHaveProperty('repo_path');
     });
 
+    it('X13 PR 2: memory on gives schema 5 with the folder fields and memory; the runner accepts it', async () => {
+      const s = await seed();
+      const memory = { reason: 'approved' as const, version: 2, set_sha256: SHA('f') };
+      const { envelope } = await issue(s, { memory });
+      expect(envelope.contract).toMatchObject({
+        schema_version: 5,
+        repo_path: '',
+        root_instructions_sha256: null,
+        memory,
+      });
+      expect(await verifyAt(envelope, NOW)).toMatchObject({ ok: true });
+      const none = { reason: 'unapproved' as const, version: null, set_sha256: null };
+      expect((await issue(s, { memory: none })).envelope.contract.memory).toEqual(none);
+    });
+
     it('still accepts a contract signed with an older key version after a rotation', async () => {
       const s = await seed();
       const before = (await issue(s)).envelope;

@@ -162,6 +162,8 @@ export {
 export {
   buildContextSnapshot,
   documentsOf,
+  memoryOf,
+  SNAPSHOT_SCHEMA_MEMORY,
   recordContextSnapshot,
   SNAPSHOT_SCHEMA_VERSION,
   specAtStart,

@@ -17,6 +17,20 @@ import { validateRunContract, type AgentFileReads, type EvidenceStore } from '@s
 import type { RunEventRow, SpecRef, TenantScope } from '@sdlc/core';
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
+/**
+ * X13 PR 2 (ADR-M74 §2.8): schema 1 plus `memory`, for a run with a `memory_read` event. Every
+ * other snapshot stays schema 1, byte for byte.
+ */
+export const SNAPSHOT_SCHEMA_MEMORY = 2;
+
+/** What `memory_read` recorded: which approved version the agent read, or why none. */
+export interface SnapshotMemory {
+  readonly reason: string;
+  readonly version: number | null;
+  readonly set_sha256: string | null;
+  readonly files: number;
+  readonly truncated: boolean;
+}
 
 export type FileListSource = 'agent_log' | 'unavailable';
 
@@ -40,6 +54,8 @@ export interface SnapshotInput {
   } | null;
   readonly reads: AgentFileReads | undefined;
   readonly documents: readonly SnapshotDocuments[];
+  /** X13: the run's `memory_read`, when it has one. */
+  readonly memory?: SnapshotMemory | undefined;
 }
 
 export interface ContextSnapshot {
@@ -82,9 +98,20 @@ export function buildContextSnapshot(input: SnapshotInput): ContextSnapshot {
       unattributed_calls: input.reads?.unattributed ?? 0,
     },
     intent_id: input.intentId,
+    ...(input.memory === undefined
+      ? {}
+      : {
+          memory: {
+            files: input.memory.files,
+            reason: input.memory.reason,
+            set_sha256: input.memory.set_sha256,
+            truncated: input.memory.truncated,
+            version: input.memory.version,
+          },
+        }),
     plan: { plan_id: input.plan.planId, plan_sha256: input.plan.planSha256 },
     run_id: input.runId,
-    schema_version: SNAPSHOT_SCHEMA_VERSION,
+    schema_version: input.memory === undefined ? SNAPSHOT_SCHEMA_VERSION : SNAPSHOT_SCHEMA_MEMORY,
     spec:
       input.spec === null
         ? null
@@ -130,6 +157,21 @@ export function documentsOf(events: readonly RunEventRow[]): SnapshotDocuments[]
     });
   }
   return [...byTool.values()];
+}
+
+/** The run's `memory_read` (the first one), as the snapshot lists it; undefined without one. */
+export function memoryOf(events: readonly RunEventRow[]): SnapshotMemory | undefined {
+  const event = events.find((e) => e.event_type === 'memory_read');
+  if (!event) return undefined;
+  const p = event.payload;
+  if (typeof p.reason !== 'string' || typeof p.files !== 'number') return undefined;
+  return {
+    reason: p.reason,
+    version: typeof p.version === 'number' ? p.version : null,
+    set_sha256: typeof p.set_sha256 === 'string' ? p.set_sha256 : null,
+    files: p.files,
+    truncated: p.truncated === 'yes',
+  };
 }
 
 /** The intent's spec version the run started with: the newest one linked before its start. */
@@ -178,6 +220,7 @@ export async function recordContextSnapshot(
       : null,
     reads,
     documents,
+    memory: memoryOf(events),
   });
   let item:
     { readonly uri: string; readonly sha256: string; readonly sizeBytes: number } | undefined;

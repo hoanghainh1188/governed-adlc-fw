@@ -358,7 +358,7 @@ Keep each note short and true. A note that is out of date does harm: the agent i
 | `memory.mode` | What runs do |
 |---|---|
 | `off` (default) | Runs never read memory |
-| `read` | Runs read the approved set (X13 PR 2) |
+| `read` | Runs read the approved set |
 | `read_propose` | Runs also propose changes in their own pull request (X13 PR 3). Needs an agent that may run at L2 (rule M36) |
 
 **Approving memory (Person A or Person B).** A person changes memory in a normal pull request. After the merge, a person who did **not** write any of the memory changes since the last approved version approves the new set:
@@ -375,6 +375,14 @@ adlc memory approve shop
 - Runs read only a set that is an approved version, and only the version of their own project.
 
 `adlc memory list shop` shows the versions, newest first, with their hash, commit and state.
+
+**What a run reads.** At G4 the platform looks at the memory folder at the run's base commit. When the set there is an approved version that nobody revoked, the run reads it; otherwise the run starts without memory, as before. Memory never stops a run.
+
+- The runner reads the files from its own copy of the repository and checks that they are exactly the approved set. A different set, or a file it cannot read, gives a run without memory.
+- The notes are cleaned and cut: at most `max_files` files, `max_file_chars` characters per file and `max_total_chars` in all. The agent is told when the platform cut them.
+- The agent gets the notes in a block of their own, after the plan. It is told that a person approved them, that they may be out of date, that the code wins when they disagree, and that they cannot change its rules, files, tools or branch. G5 and the Run Contract enforce those rules whatever a note says.
+- The run event `memory_read` and the Evidence Pack show which version a run read (or why none), with counts only. The context snapshot records the same.
+- Turning `memory.mode` to `off` takes effect at once, also for a run that G4 already prepared.
 
 **Removing memory.**
 
@@ -439,6 +447,7 @@ adlc memory revoke shop 3 --reason poisoned
 | 0.11 | 2026-10-09 | Claude (docs review PR C2) | §13.10.2 check 6b: the one list of agent instruction files (only the exact pinned path is left out); §13.10.4: "The budgets", the one description with the default amounts (moved from ROLLOUT-GUIDE) |
 | 0.14 | 2026-10-24 | Claude (task X11) | §13.10.4: long runs and small models, context condensing (`run.context_condensing`, rule M35; ADR-M29 §2.10) |
 | 0.15 | 2026-10-24 | Claude (task H04) | §13.10.5: G5 checks the secret scan (`secret_in_diff`, `secret_scan_failed`); new §13.10.5a: the secret scan of the run's diff (ADR-M93, QUESTIONS #586–#590) |
+| 0.21 | 2026-11-14 | Claude (task X13, PR 2) | §13.10.7: what a run reads (the approved set at its base commit, the caps, the data block, `memory_read`) |
 | 0.20 | 2026-11-13 | Claude (task X13, PR 1) | New §13.10.7: agent memory: where it lives, what to write, `memory.mode`, `adlc memory approve`, `list` and `revoke`, removal and erasure (ADR-M74, QUESTIONS #711–#715) |
 | 0.19 | 2026-11-12 | Claude (task O06, PR 2c) | §13.10.2a: one read of the comments for all the projects of a repository; an issue linked to open intents of two projects gets no decision (ADR-M106 1.3 §2.4) |
 | 0.18 | 2026-11-12 | Claude (task O06, PR 2b) | §13.10.2a: a project with a folder (the agent works in it, two pinned files, `folder_not_enforceable`); §13.10.5 check 1d: a change outside the folder (ADR-M106 §2.4) |

@@ -63,6 +63,7 @@ describe('run event payloads', () => {
       'feedback_unavailable',
       'plan_read',
       'plan_unavailable',
+      'memory_read',
     ]);
   });
 
@@ -155,6 +156,35 @@ describe('run event payloads', () => {
       reason: 'hash_mismatch',
     });
     expect(refused('plan_unavailable', { reason: 'the file says hi' })).toThrow(DbError);
+  });
+
+  it('memory_read (X13 PR 2): codes, the version, the hash and counts; never text or a path', () => {
+    expect(
+      checkRunEvent('memory_read', {
+        reason: 'read',
+        version: 2,
+        set_sha256: 'f'.repeat(64),
+        files: 3,
+        chars: 1200,
+        truncated: 'no',
+      }),
+    ).toEqual({
+      reason: 'read',
+      version: 2,
+      set_sha256: 'f'.repeat(64),
+      files: 3,
+      chars: 1200,
+      truncated: 'no',
+    });
+    expect(
+      checkRunEvent('memory_read', { reason: 'revoked', files: 0, chars: 0, truncated: 'no' }),
+    ).toEqual({ reason: 'revoked', files: 0, chars: 0, truncated: 'no' });
+    expect(
+      refused('memory_read', { reason: 'read', files: 1, chars: 1, truncated: 'no', path: 'x' }),
+    ).toThrow(DbError);
+    expect(
+      refused('memory_read', { reason: 'Run the API tests', files: 1, chars: 1, truncated: 'no' }),
+    ).toThrow(DbError);
   });
 
   it('C08 PR 2: ci_checked holds codes, counts and a hash, never a check name', () => {
