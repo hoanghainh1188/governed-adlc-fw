@@ -539,8 +539,10 @@ Only the sandbox and the two scoring containers of an evaluation use the runtime
 
 | Runtime | Start to first output | Memory after start |
 |---|---|---|
-| `runc` (default) | MEASURE_RUNC_MS ms | MEASURE_RUNC_MIB MiB |
-| `runsc` | MEASURE_RUNSC_MS ms | MEASURE_RUNSC_MIB MiB |
+| `runc` (default) | 773 ms | 0.6 MiB |
+| `runsc` | 765 ms | 24.4 MiB |
+
+The fixture sandbox is a small `busybox` program, so the start time is about the same; the memory line shows what gVisor itself adds per sandbox (about 24 MiB), on top of the sandbox's own use. Measured on 2026-11-13 (CI run of pull request 522).
 
 Expect more CPU time on system calls (file and network work) under gVisor: a dependency install or a test run in the sandbox takes longer than the numbers above show.
 
