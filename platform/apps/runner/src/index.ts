@@ -1,8 +1,14 @@
 // Runner: provisions sandboxes and runs the agent. See design/D-03 section 5.1 and ADR-M25.
-export { ALLOWED_ENDPOINTS, DockerClient, isAllowedEndpoint } from './docker/client.js';
+export {
+  ALLOWED_ENDPOINTS,
+  DockerClient,
+  isAllowedEndpoint,
+  parseEngineInfo,
+} from './docker/client.js';
 export type {
   ContainerInfo,
   DockerClientOptions,
+  EngineInfo,
   NetworkSpec,
   NetworkSummary,
 } from './docker/client.js';
@@ -14,6 +20,7 @@ export {
   assertSafeToolSpec,
   GATEWAY_COMMAND,
   GATEWAY_USER,
+  isPrivateIpv4,
   TOOL_USER,
   SANDBOX_ENV_ALLOWLIST,
   SCORING_COMMANDS,
@@ -132,6 +139,7 @@ export {
 } from './sandbox/lifecycle.js';
 export { planEgress, runNetworkSpec, type EgressPlan } from './sandbox/network.js';
 export { buildSandboxSpec, type SandboxSpecInput } from './sandbox/spec.js';
+export { runNetworkHosts } from './sandbox/hosts.js';
 export {
   argumentRuleCel,
   buildGatewayConfig,
@@ -274,14 +282,18 @@ export {
   type WorkspaceEntry,
 } from './workspace/untar.js';
 export {
+  isSandboxRuntime,
   parseEgressServices,
   RUNNER_ENV,
   runnerSettingsFromEnv,
+  SANDBOX_RUNTIMES,
   type AgentSettings,
   type EgressService,
   type RunnerSettings,
   type SandboxLimits,
+  type SandboxRuntime,
 } from './settings.js';
+export { assertEngineRuntime, type EngineInfoReader } from './docker/runtime.js';
 export { EVALUATION_AGENT_BRANCH, agentContractOf } from './evaluation/agent-contract.js';
 export {
   driveEvaluationAgent,

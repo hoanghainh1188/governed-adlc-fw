@@ -59,6 +59,8 @@ import {
   startStub,
   waitForProbes,
   type FixtureImage,
+  liveRuntimeEnv,
+  liveRuntimeOption,
 } from './live-helpers';
 
 const TOKEN = `ghs_c04Live${crypto.randomBytes(12).toString('hex')}`;
@@ -104,8 +106,13 @@ describe.skipIf(!liveEnabled || !process.env.SDLC_TEST_DATABASE_URL)(
       const runnerKey = runner.transit();
       deps = {
         db: t.app as unknown as RunnerDeps['db'],
-        docker: new DockerClient({ socketPath: dockerSocket(), timeoutMs: 120_000 }),
+        docker: new DockerClient({
+          socketPath: dockerSocket(),
+          timeoutMs: 120_000,
+          ...liveRuntimeOption(),
+        }),
         settings: runnerSettingsFromEnv({
+          ...liveRuntimeEnv(),
           SDLC_RUNNER_DOCKER_SOCKET: dockerSocket(),
           SDLC_RUNNER_INSTANCE: instance,
           SDLC_RUNNER_SANDBOX_MEMORY_MB: '256',

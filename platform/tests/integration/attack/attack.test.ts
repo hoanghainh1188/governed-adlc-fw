@@ -35,7 +35,13 @@ import { g5Breach } from '../../../packages/core/src/workflow/g5.js';
 import { gatherG5Facts } from '../../../packages/core/src/workflow/g5-facts.js';
 import { createTestDatabase, type TestDatabase } from '../db/helpers.js';
 import { changesStep, here, NODE_IMAGE, secret, startAgentRun } from '../agent/helpers';
-import { docker, dockerSocket, quietly, startStub } from '../runner/live-helpers';
+import {
+  docker,
+  dockerSocket,
+  liveRuntimeOption,
+  quietly,
+  startStub,
+} from '../runner/live-helpers';
 import { buildSandboxImage, VERDACCIO } from '../sandbox-image/helpers';
 import { repoRoot } from '../../workspace/helpers';
 
@@ -139,7 +145,11 @@ describe.skipIf(!enabled)('H01: attacks from inside a sandbox (ADR-M80)', () => 
     }
     t = await createTestDatabase();
     image = process.env.SDLC_SANDBOX_IMAGE || (await buildSandboxImage(names.registry));
-    client = new DockerClient({ socketPath: dockerSocket(), timeoutMs: 120_000 });
+    client = new DockerClient({
+      socketPath: dockerSocket(),
+      timeoutMs: 120_000,
+      ...liveRuntimeOption(),
+    });
     docker('pull', '-q', NODE_IMAGE);
     docker('pull', '-q', VERDACCIO);
     docker('network', 'create', names.platformNet);
@@ -518,9 +528,15 @@ describe.skipIf(!enabled)('H01: attacks from inside a sandbox (ADR-M80)', () => 
       expect(status).toContain('capeff=0000000000000000');
       expect(status).toContain('nonewprivs=1');
       const cgroup = a.lines.find((l) => l.startsWith('PROBE cgroup ')) ?? '';
-      expect(cgroup).toMatch(/memory\.max=2147483648/);
-      expect(cgroup).toMatch(/pids\.max=512/);
-      expect(cgroup).toMatch(/swap\.max=0/);
+      expect(cgroup).not.toBe('');
+      // H06 (ADR-M25 §2.12): under gVisor the cgroup files inside the box are gVisor's own; the
+      // host's cgroup holds the whole sandbox. The limits are then checked from outside
+      // (`test:runner`, egress.test.ts) and by A-10 (the process flood stops).
+      if (liveRuntimeOption().sandboxRuntime === undefined) {
+        expect(cgroup).toMatch(/memory\.max=2147483648/);
+        expect(cgroup).toMatch(/pids\.max=512/);
+        expect(cgroup).toMatch(/swap\.max=0/);
+      }
       await expectNoLeaks(a);
     },
   );

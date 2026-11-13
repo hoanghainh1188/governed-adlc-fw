@@ -35,6 +35,8 @@ import {
   liveEnabled,
   quietly,
   type FixtureImage,
+  liveRuntimeEnv,
+  liveRuntimeOption,
 } from './live-helpers';
 
 const GATEWAY =
@@ -119,12 +121,17 @@ describe.skipIf(!liveEnabled)('X04 live: register tools behind the run MCP gatew
     tool = await buildFixtureImage(suffix, { dir: 'fixture-tool', name: 'x04-tool' });
     sandboxImage = await buildFixtureImage(suffix);
     settings = runnerSettingsFromEnv({
+      ...liveRuntimeEnv(),
       SDLC_RUNNER_DOCKER_SOCKET: dockerSocket(),
       SDLC_RUNNER_INSTANCE: instance,
       SDLC_RUNNER_SANDBOX_MEMORY_MB: '256',
       SDLC_RUNNER_EGRESS_SERVICES: '',
     });
-    client = new DockerClient({ socketPath: settings.dockerSocket, timeoutMs: 120_000 });
+    client = new DockerClient({
+      socketPath: settings.dockerSocket,
+      timeoutMs: 120_000,
+      ...liveRuntimeOption(),
+    });
     grant = {
       tool_key: 'project-docs',
       tool_version: '1.0.0',

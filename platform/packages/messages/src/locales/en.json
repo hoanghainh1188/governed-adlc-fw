@@ -874,6 +874,8 @@
   "runner.docker.api_error": "Docker answered a {method} request with HTTP {status}.",
   "runner.docker.timeout": "Docker did not answer a {method} request in time.",
   "runner.docker.unreachable": "The runner cannot reach the Docker socket ({code}).",
+  "runner.docker.runtime_missing": "The Docker Engine does not list the sandbox runtime \"{runtime}\" (SDLC_RUNNER_SANDBOX_RUNTIME). Install it on the runner host, or leave the setting empty. See the deploy README (stronger sandbox runtime).",
+  "runner.docker.runtime_rootless": "The sandbox runtime \"{runtime}\" needs a rootful Docker Engine; this Engine is rootless. Use a rootful runner Engine in its own virtual machine, or leave SDLC_RUNNER_SANDBOX_RUNTIME empty.",
   "runner.docker.response_too_large": "Docker sent an answer larger than the runner accepts.",
   "runner.slot_wait_aborted": "The run stopped waiting for a free sandbox slot.",
   "runner.scoring_failed": "Scoring of an evaluation run failed ({reason}).",

@@ -20,6 +20,8 @@ for limit in memory.max memory.swap.max pids.max cpu.max; do
 done
 echo "probe:cap_eff:$(awk '/^CapEff:/ {print $2}' /proc/self/status)"
 echo "probe:no_new_privs:$(awk '/^NoNewPrivs:/ {print $2}' /proc/self/status)"
+# H06 (ADR-M25 §2.12): the kernel the sandbox sees; under gVisor it is not the Engine's kernel.
+echo "probe:kernel:$(uname -r)"
 branch=$(sed 's#^ref: refs/heads/##' /workspace/.git/HEAD 2>/dev/null)
 echo "probe:branch:${branch:-none}"
 if grep -qiE 'extraheader|authorization' /workspace/.git/config 2>/dev/null; then echo "probe:git_auth:present"; else echo "probe:git_auth:absent"; fi

@@ -14,6 +14,7 @@ import { RunnerError } from '../errors.js';
 import { LABELS, runLabels, runNames, type RunNames } from '../names.js';
 import type { RunnerSettings } from '../settings.js';
 import { teardownTools } from '../tools/teardown.js';
+import { runNetworkHosts } from './hosts.js';
 import { planEgress, runNetworkSpec } from './network.js';
 import { buildSandboxSpec } from './spec.js';
 
@@ -159,8 +160,17 @@ export async function createSandbox(
       await docker.networkConnect(names.network, service.container, [service.alias]);
     }
     const toolKey = input.startTools ? await input.startTools(names, labels) : undefined;
+    // H06: gVisor has no Docker DNS; the names of the run network go into /etc/hosts.
+    const hosts = settings.sandboxRuntime ? await runNetworkHosts(docker, names.network) : [];
     const spec = buildSandboxSpec(
-      { names, labels, image: input.image, sessionApiKey, agentSecretKey: randomKey() },
+      {
+        names,
+        labels,
+        image: input.image,
+        sessionApiKey,
+        agentSecretKey: randomKey(),
+        hosts,
+      },
       settings,
     );
     const containerId = await docker.containerCreate(names.container, spec);

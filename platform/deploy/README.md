@@ -512,6 +512,42 @@ The runner's settings do not change: it reaches `postgres`, `openbao`, `temporal
 
 **Tested.** `pnpm test:runner` runs on a rootless Engine, and `pnpm test:runner-split` runs the same-server set-up with two Engines in CI. The VM with WireGuard is not tested in CI.
 
+### A stronger sandbox runtime (gVisor or Kata)
+
+By default a sandbox runs on the host's kernel, with the hardening of ADR-M25 §2.4; a kernel bug is then a sandbox escape (ADR-M80 gap G-6). A stronger runtime gives the sandbox a kernel of its own (task H06, [ADR-M25 §2.12](../../design/ADR-M25-runner-sandbox.md)):
+
+| Runtime | What it is | Needs | Tested in CI |
+|---|---|---|---|
+| `runsc` ([gVisor](https://gvisor.dev/docs/user_guide/docker/)) | A kernel in user space between the sandbox and the host | A rootful Engine | Yes (job `sandbox-runsc`: `pnpm test:runner`, `pnpm test:attack`) |
+| `kata` ([Kata Containers](https://katacontainers.io/)) | A small virtual machine per container | A rootful Engine and `/dev/kvm` | No (GitHub's runners have no nested virtualisation) |
+
+**When to use it.** When the runner host is shared with other work, or when the repositories come from people you do not trust (for example a client's code you have not reviewed). On a runner VM that holds nothing else and runs your own team's repositories, the default runtime with the rootless Engine is enough.
+
+**Rootful only (QUESTIONS #701).** gVisor and Kata need a rootful Docker Engine for each run's own network; rootless gVisor has no network namespace of its own ([gVisor: rootless](https://gvisor.dev/docs/user_guide/rootless/)). So the stronger runtime **replaces** the rootless Engine; it is not added to it. Use it only on a runner host that is **a separate VM**, never on the platform's server: there a rootful Engine would run as root next to the platform. The runner refuses to start with a runtime on a rootless Engine (`runner.docker.runtime_rootless`) and when the Engine does not list it (`runner.docker.runtime_missing`).
+
+**Set it up** (on the runner VM, as root, in your own terminal):
+
+1. Install Docker's packages (rootful) instead of step 1 of [Set it up](#set-it-up) (`runner-host-setup.sh` makes a rootless Engine). The other steps stay: the link, the platform host's settings, the credentials. `SDLC_DOCKER_SOCKET` in the runner host's `.env` is `/var/run/docker.sock`.
+2. Install the runtime from its own release and register it. gVisor: download the release archive, check its SHA-512 against the release's `.sha512` file, unpack it into `/opt/gvisor`, then `/opt/gvisor/runsc install` and `systemctl restart docker`. The CI job `sandbox-runsc` does the same with a pinned release (`GVISOR_RELEASE`, `GVISOR_SHA512` in `.github/workflows/ci.yml`).
+3. Check: `docker info --format '{{json .Runtimes}}'` lists `runsc` (or `kata`).
+4. The AuthZ plugin, rootful, with the runtime required for every container that gets a run's workspace: build it (`pnpm exec tsc -b platform/deploy/docker-authz`), then `sudo SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME=runsc platform/deploy/docker-authz/scripts/enable.sh`.
+5. In `platform/deploy/runner-host/.env`: `SDLC_RUNNER_SANDBOX_RUNTIME=runsc` (or `kata`), then `platform/deploy/scripts/runner-host.sh up` (or `restart`).
+
+Only the sandbox and the two scoring containers of an evaluation use the runtime. The tool and MCP gateway containers keep the Engine's own runtime (QUESTIONS #704).
+
+**The cost.** The CI job `sandbox-runsc` measures it on every run (`platform/tests/integration/runner/runtime-cost.test.ts`, the median of three starts of the fixture sandbox, in the job summary). Measured on GitHub's `ubuntu-24.04` runner (4 CPUs, 16 GiB), gVisor release 20261026.0:
+
+| Runtime | Start to first output | Memory after start |
+|---|---|---|
+| `runc` (default) | 773 ms | 0.6 MiB |
+| `runsc` | 765 ms | 24.4 MiB |
+
+The fixture sandbox is a small `busybox` program, so the start time is about the same; the memory line shows what gVisor itself adds per sandbox (about 24 MiB), on top of the sandbox's own use. Measured on 2026-11-13 (CI run of pull request 522).
+
+Expect more CPU time on system calls (file and network work) under gVisor: a dependency install or a test run in the sandbox takes longer than the numbers above show.
+
+**Turn it off.** Empty `SDLC_RUNNER_SANDBOX_RUNTIME`, `runner-host.sh restart`, and run the plugin's `enable.sh` again without the variable.
+
 ## Secrets and `.env`
 
 - `.env` holds every password and key. It is ignored by Git and has mode 600. **Never commit it and never paste it into chat, issues or email.**

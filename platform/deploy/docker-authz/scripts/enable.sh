@@ -13,6 +13,10 @@
 #
 # Does not restart dockerd when SDLC_DOCKER_AUTHZ_NO_RESTART=1 (caller restarts).
 #
+# Stronger sandbox runtime (task H06, ADR-M25 §2.12): SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME=runsc (or
+# kata) makes the plugin refuse every create with a run's workspace volume that does not name it.
+# Set it to the runner's SDLC_RUNNER_SANDBOX_RUNTIME on a rootful runner Engine.
+#
 # Operator key (QUESTIONS #661): the runner host's own Compose project and `openbao:bootstrap
 # runner-credentials` need binds and capabilities the denylist refuses. The operator's Docker CLI
 # sends the header X-Sdlc-Operator with a key; the plugin skips the denylist only for that key.
@@ -103,6 +107,7 @@ Before=docker.service
 [Service]
 Type=simple
 Environment=SDLC_DOCKER_AUTHZ_SOCKET=$socket
+Environment=SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME=${SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME:-}
 ExecStart=$(command -v node) $dist --socket $socket --operator-key-file $key_file
 Restart=on-failure
 

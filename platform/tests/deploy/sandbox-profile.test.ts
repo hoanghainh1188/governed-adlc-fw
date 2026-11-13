@@ -117,6 +117,8 @@ describe('Docker access (ADR-M25 §2.5)', () => {
   const CORPUS: readonly [string, string][] = [
     // Allowed by the runner.
     ['GET', '/_ping'],
+    // Task H06: the runner reads the Engine's runtimes at start.
+    ['GET', '/info'],
     ['GET', `/images/${IMAGE}/json`],
     ['GET', '/images/busybox:1.37.0/json'],
     ['POST', '/images/create'],
@@ -151,7 +153,7 @@ describe('Docker access (ADR-M25 §2.5)', () => {
     ['GET', `/containers/sdlc-sandbox-${RUN}x/archive`],
     ['POST', '/build'],
     ['POST', '/commit'],
-    ['GET', '/info'],
+    ['GET', '/info/x'],
     ['GET', '/version'],
     ['GET', '/system/df'],
     ['GET', '/events'],
@@ -218,6 +220,8 @@ describe('sdlc-runner service', () => {
       'knowledge-db=${COMPOSE_PROJECT_NAME:-sdlc}-knowledge-db-1:5432,litellm=${COMPOSE_PROJECT_NAME:-sdlc}-litellm-1:4000',
     );
     expect(env.SDLC_RUNNER_MAX_SANDBOXES).toBe('${SDLC_RUNNER_MAX_SANDBOXES:-1}');
+    // H06 (ADR-M25 §2.12): empty by default, the Engine's own runtime.
+    expect(env.SDLC_RUNNER_SANDBOX_RUNTIME).toBe('${SDLC_RUNNER_SANDBOX_RUNTIME:-}');
     expect(env.SDLC_RUNNER_MAX_EVAL_SANDBOXES).toBe('${SDLC_RUNNER_MAX_EVAL_SANDBOXES:-1}');
     expect(env.SDLC_RUNNER_SWEEP_INTERVAL_SECONDS).toBe(
       '${SDLC_RUNNER_SWEEP_INTERVAL_SECONDS:-300}',

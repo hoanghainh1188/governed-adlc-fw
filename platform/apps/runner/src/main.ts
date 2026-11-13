@@ -24,6 +24,7 @@ import { NativeConnection, Worker } from '@temporalio/worker';
 import { createRunnerActivities } from './activities.js';
 import { createEvaluationActivities } from './evaluation/activities.js';
 import { DockerClient } from './docker/client.js';
+import { assertEngineRuntime } from './docker/runtime.js';
 import { RunnerError } from './errors.js';
 import {
   DB_PASSWORD_FIELD,
@@ -117,8 +118,12 @@ async function main(): Promise<void> {
   const openbao = OpenBaoClient.fromEnv(process.env, logger);
   await openbao.assertReady();
   const db = await connectDatabase(openbao, proc.db);
-  const docker = new DockerClient({ socketPath: settings.dockerSocket });
+  const docker = new DockerClient({
+    socketPath: settings.dockerSocket,
+    ...(settings.sandboxRuntime ? { sandboxRuntime: settings.sandboxRuntime } : {}),
+  });
   await docker.ping();
+  await assertEngineRuntime(docker, settings.sandboxRuntime);
   const evidence = await evidenceStores(openbao, proc.evidence);
   // The runner reads its runs' spend with each run's own key (C07, ADR-M34 §2.6).
   const spendReader = new LiteLLMKeySpendReader({ baseUrl: settings.agent.llmBaseUrl });

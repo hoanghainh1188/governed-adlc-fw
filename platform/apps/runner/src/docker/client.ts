@@ -9,6 +9,7 @@
 import http from 'node:http';
 
 import { RunnerError } from '../errors.js';
+import type { SandboxRuntime } from '../settings.js';
 import {
   assertSafeContainerSpec,
   assertSafeGatewaySpec,
@@ -34,6 +35,8 @@ const SANDBOX = 'sdlc-sandbox-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 /** Every endpoint the runner may call. Anything else is refused before it reaches the socket. */
 export const ALLOWED_ENDPOINTS: readonly (readonly [Method, RegExp])[] = [
   ['GET', /^\/_ping$/],
+  // Task H06 (ADR-M25 §2.12): at start, the runner checks the Engine lists its sandbox runtime.
+  ['GET', /^\/info$/],
   [
     'GET',
     new RegExp(
@@ -138,6 +141,33 @@ export interface ImageInfo {
 export interface DockerClientOptions {
   readonly socketPath: string;
   readonly timeoutMs?: number;
+  /**
+   * The runtime every sandbox and scoring container must name (task H06, `SDLC_RUNNER_SANDBOX_RUNTIME`);
+   * undefined: none, the Engine's default.
+   */
+  readonly sandboxRuntime?: SandboxRuntime;
+}
+
+/** What the runner reads of `GET /info` (task H06): the runtimes and the security options only. */
+export interface EngineInfo {
+  /** The names of the runtimes the Engine knows (`runc`, `runsc`, `kata`…). */
+  readonly runtimes: readonly string[];
+  /** True when the Engine runs rootless (`name=rootless` in `SecurityOptions`). */
+  readonly rootless: boolean;
+}
+
+/** Reads the two fields the runner needs from a `GET /info` answer; anything else is ignored. */
+export function parseEngineInfo(body: unknown): EngineInfo {
+  const info = (body !== null && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  const runtimes =
+    info.Runtimes !== null && typeof info.Runtimes === 'object' && !Array.isArray(info.Runtimes)
+      ? Object.keys(info.Runtimes)
+      : [];
+  const options = Array.isArray(info.SecurityOptions) ? info.SecurityOptions : [];
+  const rootless = options.some(
+    (opt) => typeof opt === 'string' && opt.split(',').includes('name=rootless'),
+  );
+  return { runtimes, rootless };
 }
 
 /** A filter for the list endpoints: `label=key=value` pairs, all required. */
@@ -154,14 +184,22 @@ function labelFilter(labels: LabelFilter): Record<string, string> {
 export class DockerClient {
   readonly #socketPath: string;
   readonly #timeoutMs: number;
+  readonly #sandboxRuntime: SandboxRuntime | undefined;
 
   constructor(options: DockerClientOptions) {
     this.#socketPath = options.socketPath;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.#sandboxRuntime = options.sandboxRuntime;
   }
 
   async ping(): Promise<void> {
     await this.#expect('GET', '/_ping', [200]);
+  }
+
+  /** The Engine's runtimes and whether it is rootless (task H06). Nothing else is kept. */
+  async engineInfo(): Promise<EngineInfo> {
+    const res = await this.#expect('GET', '/info', [200]);
+    return parseEngineInfo(JSON.parse(res.body.toString('utf8')) as unknown);
   }
 
   /**
@@ -206,7 +244,7 @@ export class DockerClient {
 
   /** Creates a container from a guarded spec (guard.ts). Returns its ID. */
   async containerCreate(name: string, spec: ContainerSpec): Promise<string> {
-    assertSafeContainerSpec(name, spec);
+    assertSafeContainerSpec(name, spec, this.#sandboxRuntime);
     const res = await this.#expect('POST', '/containers/create', [201], spec, { name });
     return (JSON.parse(res.body.toString('utf8')) as { Id: string }).Id;
   }
@@ -220,7 +258,7 @@ export class DockerClient {
     spec: ScoringContainerSpec,
     phase: ScoringPhase,
   ): Promise<string> {
-    assertSafeScoringSpec(name, spec, phase);
+    assertSafeScoringSpec(name, spec, phase, this.#sandboxRuntime);
     const res = await this.#expect('POST', '/containers/create', [201], spec, { name });
     return (JSON.parse(res.body.toString('utf8')) as { Id: string }).Id;
   }
