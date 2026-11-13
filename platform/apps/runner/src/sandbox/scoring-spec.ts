@@ -87,6 +87,8 @@ export function buildScoringSpec(
       RestartPolicy: { Name: 'no' },
       AutoRemove: false,
       Init: true,
+      // Task H06 (ADR-M25 §2.12): the agent's code runs here too, under the same runtime.
+      ...(settings.sandboxRuntime ? { Runtime: settings.sandboxRuntime } : {}),
     },
   };
 }

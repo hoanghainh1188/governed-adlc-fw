@@ -54,6 +54,10 @@ env:
   DOCKER_ROOTLESS_EXTRAS_SHA256: 707ebf6a5afd88104086e7b6749997b2366e816aeaf2c3ef2305b08fde9ee007
   # runner-rootless, test:runner-split: the link address between the two Engines (O01 PR 2).
   RUNNER_LINK_ADDR: 10.203.0.1
+  # H06 (design/ADR-M25 §2.12): gVisor for the job sandbox-runsc, the release archive (never apt).
+  # gVisor publishes SHA-512 digests only; this one is the release's own `.sha512` file.
+  GVISOR_RELEASE: '20261026.0' # quoted: YAML would read a number and drop the .0
+  GVISOR_SHA512: 26e4a327565f5da0f73261a6387e2c20f4695a232e330095a3111b70efd604fdf09d734e8cc8f714dbb5c5607ce8c87ea80b26df549d83a146f2efd5a1af448a
   SEMGREP_IMAGE: semgrep/semgrep:1.178.0@sha256:32e459968daabe7ab86968184a29109b9564aa00392401156f9788452b42786b
   # Infrastructure owned by task A02. The compose job runs only when this file exists.
   COMPOSE_FILE_PATH: platform/deploy/docker-compose.yml
@@ -72,6 +76,7 @@ jobs:
       run_db: ${{ steps.decide.outputs.run_db }}
       run_pilot: ${{ steps.decide.outputs.run_pilot }}
       run_compose: ${{ steps.decide.outputs.run_compose }}
+      run_runsc: ${{ steps.decide.outputs.run_runsc }}
       run_sandbox_image: ${{ steps.decide.outputs.run_sandbox_image }}
       run_dashboard: ${{ steps.decide.outputs.run_dashboard }}
       run_fresh_deploy: ${{ steps.decide.outputs.run_fresh_deploy }}
@@ -151,6 +156,13 @@ jobs:
           decide_heavy run_compose "Compose integration job" \
             "platform/deploy/, the OpenBao client, the LiteLLM adapter, the Cost Controller, the runner, the intent workflow or a live test" \
             platform/deploy/ platform/packages/secrets/ platform/tests/integration/openbao/ platform/packages/adapters/model-litellm/ platform/packages/core/src/cost/ platform/tests/integration/litellm/ platform/apps/runner/ platform/tests/integration/runner/ platform/tests/integration/attack/ platform/apps/worker/src/workflows/ platform/apps/worker/src/temporal.ts platform/packages/workflow-client/ platform/tests/integration/workflow/compose-smoke.test.ts platform/tests/integration/deploy/seaweedfs-access.test.ts platform/tests/integration/deploy/access.test.ts platform/tests/integration/deploy/vllm-link.test.ts platform/tests/integration/backup/
+
+          # H06 (design/ADR-M25 §2.12): the runner's live tests and the attack tests under gVisor. Only
+          # the sandbox's Docker code, the AuthZ plugin and these tests start it (Actions minutes);
+          # the weekly and manual runs always run it.
+          decide_heavy run_runsc "Sandbox under gVisor job" \
+            "the runner's Docker or sandbox code, the AuthZ plugin, or the runner or attack live tests" \
+            platform/apps/runner/src/docker/ platform/apps/runner/src/sandbox/ platform/deploy/docker-authz/ platform/tests/integration/runner/ platform/tests/integration/attack/
 
           # C04: the sandbox images, the runner and the package proxy (design/ADR-M25 §2.9).
           decide_heavy run_sandbox_image "Sandbox image job" \
@@ -455,6 +467,56 @@ jobs:
       - name: Show the rootless Engine's log
         if: failure()
         run: XDG_RUNTIME_DIR="/run/user/$(id -u)" journalctl --user -u docker.service --no-pager -n 300 || true
+
+  sandbox-runsc:
+    # H06 (design/ADR-M25 §2.12, QUESTIONS #701–#704, D-08 H06 AC2): the runner's live tests and the
+    # attack tests with the sandbox under gVisor (`runsc`) on the machine's own rootful Engine, the
+    # set-up the deploy README describes (gVisor needs a rootful Engine). Then the cost: start time
+    # and memory, runc against runsc (the job summary; the deploy README keeps the values).
+    name: sandbox under gVisor
+    needs: [scan, checks]
+    if: needs.scan.outputs.run_runsc == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      SDLC_RUNNER_SANDBOX_RUNTIME: runsc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (reads packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # H04 (ADR-M93): the pinned Gitleaks of the runner's secret scan, on PATH (the in-process
+      # runners of the tests find it there) and named for the scanner tests; a missing scanner
+      # holds every run at G5.
+      - run: |
+          gitleaks="$(sh platform/deploy/scripts/gitleaks.sh)"
+          dirname "$gitleaks" >> "$GITHUB_PATH"
+          echo "SDLC_RUNNER_GITLEAKS_PATH=$gitleaks" >> "$GITHUB_ENV"
+      - name: Install gVisor (release archive, pinned by SHA-512) and register runsc with Docker
+        run: |
+          archive="$RUNNER_TEMP/gvisor.tar.bz2"
+          curl -fsSLo "$archive" --proto '=https' --retry 3 \
+            "https://storage.googleapis.com/gvisor/releases/release/${GVISOR_RELEASE}/x86_64/gvisor.tar.bz2"
+          echo "$GVISOR_SHA512  $archive" | sha512sum -c -
+          sudo mkdir -p /opt/gvisor
+          sudo tar -xjf "$archive" -C /opt/gvisor
+          rm -f "$archive"
+          sudo /opt/gvisor/runsc install
+          sudo systemctl restart docker
+          docker info --format '{{json .Runtimes}}' | grep -q '"runsc"'
+          docker run --rm --runtime=runsc docker.io/library/busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e uname -r
+      # The same live tests as the compose job, every sandbox and scoring container under runsc.
+      - run: pnpm test:runner
+      # H01 (design/ADR-M80): the attacks from inside the sandbox, under runsc.
+      - run: pnpm test:attack
+      - name: Show the Docker daemon's log
+        if: failure()
+        run: sudo journalctl -u docker.service --no-pager -n 300 || true
 
   sandbox-image:
     # C04 (design/ADR-M25 §2.9, QUESTIONS #54): build the sandbox image node24, scan it with Trivy
@@ -766,6 +828,7 @@ jobs:
         checks,
         compose,
         runner-rootless,
+        sandbox-runsc,
         sandbox-image,
         fresh-deploy,
         upgrade,

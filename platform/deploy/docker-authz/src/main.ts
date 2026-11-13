@@ -20,7 +20,15 @@ const operatorKeyFile =
   process.env.SDLC_DOCKER_AUTHZ_OPERATOR_KEY_FILE ??
   join(dirname(socket), 'operator-key');
 
-const plugin = await startAuthzPlugin({ socketPath: socket, operatorKeyFile });
+// Task H06 (ADR-M25 §2.12): `runsc` or `kata`; a create with a run's workspace must name it.
+const requireRuntime =
+  arg('--require-runtime') ?? process.env.SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME ?? undefined;
+
+const plugin = await startAuthzPlugin({
+  socketPath: socket,
+  operatorKeyFile,
+  ...(requireRuntime ? { requireRuntime } : {}),
+});
 process.stdout.write(`sdlc-docker-authz listening on ${socket}\n`);
 
 const stop = () => {

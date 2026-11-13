@@ -78,6 +78,8 @@ export function buildSandboxSpec(input: SandboxSpecInput, settings: RunnerSettin
       RestartPolicy: { Name: 'no' },
       AutoRemove: false,
       Init: true,
+      // Task H06 (ADR-M25 §2.12): gVisor or Kata when the operator chose one.
+      ...(settings.sandboxRuntime ? { Runtime: settings.sandboxRuntime } : {}),
     },
   };
 }

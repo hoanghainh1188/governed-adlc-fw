@@ -184,7 +184,8 @@ describe('workflow hardening (all workflows)', () => {
       expect(ciEnv[`${tool}_SHA256`]).toMatch(/^[0-9a-f]{64}$/);
     }
     const all = Object.keys(ci.jobs).map(runText).join('\n');
-    expect(all.match(/curl -fsSLo/g)?.length).toBe(all.match(/sha256sum -c -/g)?.length);
+    // H06: gVisor publishes SHA-512 digests only.
+    expect(all.match(/curl -fsSLo/g)?.length).toBe(all.match(/sha(256|512)sum -c -/g)?.length);
     expect(ciEnv.SEMGREP_IMAGE).toMatch(/@sha256:[0-9a-f]{64}$/);
   });
 
@@ -369,6 +370,28 @@ describe('AC2: integration job runs the Compose core profile', () => {
     expect(link).toBeGreaterThan(start);
     expect(order.indexOf('pnpm test:runner-split')).toBeGreaterThan(link);
     expect(job('ci-ok').needs).toContain('runner-rootless');
+  });
+
+  it('H06: the runner and attack tests also run under gVisor, from the pinned release (ADR-M25 §2.12)', () => {
+    const runsc = job('sandbox-runsc');
+    expect(runsc.needs).toEqual(['scan', 'checks']);
+    expect(runsc.if).toBe("needs.scan.outputs.run_runsc == 'true'");
+    expect(job('scan').outputs?.run_runsc).toBeDefined();
+    expect(ciEnv.GVISOR_RELEASE).toMatch(/^\d{8}\.\d+$/);
+    expect(ciEnv.GVISOR_SHA512).toMatch(/^[0-9a-f]{128}$/);
+    const text = runText('sandbox-runsc');
+    expect(text).toContain('$GVISOR_SHA512  $archive" | sha512sum -c -');
+    expect(text).not.toMatch(/apt-get install/);
+    // runsc is registered before the tests, and the tests are the compose job's and H01's.
+    const order = runs('sandbox-runsc');
+    const install = order.findIndex((r) => r.includes('runsc install'));
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('pnpm test:runner')).toBeGreaterThan(install);
+    expect(order.indexOf('pnpm test:attack')).toBeGreaterThan(install);
+    expect((runsc as { env?: Record<string, string> }).env).toEqual({
+      SDLC_RUNNER_SANDBOX_RUNTIME: 'runsc',
+    });
+    expect(job('ci-ok').needs).toContain('sandbox-runsc');
   });
 
   it('heavy jobs run on the weekly schedule and on demand, never on the daily run or a draft (ADR-M25 §2.9)', () => {

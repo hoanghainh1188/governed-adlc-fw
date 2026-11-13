@@ -194,6 +194,19 @@ Deployment settings come from the environment (`SDLC_RUNNER_*`), not from the pr
 - `runner.hcl` loses `kv/data/shared/github-app`; `worker.hcl` gets `sys/wrapping/wrap`; `@sdlc/secrets` gets `wrapping()` (`wrap`, `unwrap`; interfaces `SecretWrapper`, `SecretUnwrapper` in `@sdlc/contracts`).
 - **Found in the live OpenBao test:** OpenBao's built-in `default` policy, which every AppRole token carries (the client needs it for its own token lookup, renewal and revocation), already allows `sys/wrapping/wrap` for every token. This is harmless: wrapping packages only data the caller already holds and grants no access. The `worker.hcl` line keeps the handoff working if the default policy is ever tightened.
 
+### 2.12. A stronger sandbox runtime: gVisor or Kata (task H06, QUESTIONS #701–#704)
+
+The hardening of §2.4 runs the sandbox on the host's kernel; a kernel bug is a sandbox escape (ADR-M80 gap G-6). An operator can give the sandbox a kernel of its own.
+
+- **Setting.** `SDLC_RUNNER_SANDBOX_RUNTIME`: empty (the default: the Engine's own runtime, `runc`), `runsc` (gVisor, a kernel in user space) or `kata` (Kata Containers, a small virtual machine per container). The list is closed in code; any other value stops the runner at start (`runner.config.invalid_setting`).
+- **Which containers.** The sandbox and both scoring containers (§2.5, ADR-M81 §2.5) get `HostConfig.Runtime`: the code of a repository runs only there. Tool and gateway containers (ADR-M69, ADR-M87) keep the Engine's runtime: they run platform images, not a repository's code, and the runner connects them to more than one network (the gateway to the run's network, a tool to its service network); moving them to gVisor would need its own test of those connections (QUESTIONS #704). Their guard keeps refusing a `Runtime` key.
+- **Guard.** `Runtime` is on the sandbox allowlist only. The spec must name exactly the configured runtime, or none when there is none; another value is refused with the check code `runtime`. The DockerClient gets the configured runtime and passes it to the guard.
+- **Start check.** With a runtime set, the runner reads `GET /info` once at start (one more endpoint in `ALLOWED_ENDPOINTS` and the socket proxy allowlist, kept equal by the test). It keeps only the runtime names and the rootless flag. It refuses to start when the Engine does not list the runtime (`runner.docker.runtime_missing`) or when the Engine is rootless (`runner.docker.runtime_rootless`).
+- **Rootful only (QUESTIONS #701).** gVisor and Kata need a rootful Engine for the run's own network: rootless gVisor has no network namespace of its own, and Kata needs `/dev/kvm`. So the stronger runtime is an **alternative** to the rootless Engine of ADR-M91 and ADR-M107, not an addition: a rootful Engine **in its own virtual machine**, with the AuthZ plugin (ADR-M105). On the same server as the platform, keep the rootless Engine and the default runtime.
+- **AuthZ (QUESTIONS #703).** The plugin takes `--require-runtime` (or `SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME`): every create that gives a container a run's workspace (a `sdlc-ws-…` volume in `Mounts` or `Binds`, or any `VolumesFrom`) must name that runtime (`runtime_required`). Without the option nothing changes. Limit: a runner that is taken over can still start a container on the default runtime without the workspace, and copy files into it through the archive endpoint; the plugin stops runner bugs, not a full takeover (the runner on its own Engine, ADR-M91, still limits what that reaches).
+- **Kata (QUESTIONS #702).** Accepted by the setting, the guard and the plugin, and described in the deploy README, but not run in CI (GitHub's runners have no nested virtualisation). gVisor is tested in CI (job `sandbox-runsc`): `pnpm test:runner` and `pnpm test:attack` with `runsc`, and the cost (start time, memory) against `runc`.
+- **What the tests check under gVisor.** The probes of `test:runner` see gVisor's own kernel and cgroup files: the test checks that the sandbox's kernel is not the Engine's, and checks the limits from outside (`docker inspect`: memory, swap, processes, CPUs, runtime). The host's cgroup holds the whole sandbox, so the kernel still applies the limits.
+
 ## 3. Rules and where they live
 
 | Rule | Source | Where |
@@ -209,6 +222,7 @@ Deployment settings come from the environment (`SDLC_RUNNER_*`), not from the pr
 | Package proxy address | QUESTIONS #59 | Runner settings `SDLC_RUNNER_NPM_REGISTRY`, `SDLC_RUNNER_EGRESS_SERVICES` (Compose) |
 | Sweep interval | Deployment | Runner setting `SDLC_RUNNER_SWEEP_INTERVAL_SECONDS` |
 | Docker endpoints the runner may call | D-03 §13 | Code (`ALLOWED_ENDPOINTS`) and the socket proxy allowlist (Compose), kept equal by a test. Not configurable |
+| Sandbox runtime (H06) | Deployment, QUESTIONS #701–#704 | Runner setting `SDLC_RUNNER_SANDBOX_RUNTIME` (`runsc`, `kata` or empty); AuthZ plugin `--require-runtime`. The list of runtimes is code |
 
 C04 adds no handbook threshold. Budget, iteration and loop limits belong to C05 and C11 and are already configuration.
 
@@ -251,3 +265,4 @@ C04 adds no handbook threshold. Budget, iteration and loop limits belong to C05 
 | 0.8 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
 | 0.9 | 2026-10-24 | Claude (task O01), approved by Harry | §2.5: mitigations 1 and 2 are task O01 (ADR-M91), item 3 is task H07 (was: A10, MVP+1) |
 | 1.0 | 2026-11-10 | Claude (task H07), approved by Harry | §2.5 item 3: Docker AuthZ plugin built (ADR-M105); shared denylist with the guard |
+| 1.1 | 2026-11-13 | Claude (task H06), plan approved by Harry | §2.12: optional gVisor or Kata runtime for the sandbox and scoring containers, rootful Engine in its own VM only, `GET /info` at start, AuthZ `--require-runtime`; §3 row (QUESTIONS #701–#704) |

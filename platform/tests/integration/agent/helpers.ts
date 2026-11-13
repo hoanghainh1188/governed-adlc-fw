@@ -40,7 +40,7 @@ import { Registry } from '../../../packages/core/src/registry/registry.js';
 import { issueRunContract } from '../../../packages/core/src/run-contract/index.js';
 import { seedAgent } from '../agent-seed.js';
 import type { TestDatabase } from '../db/helpers.js';
-import { docker, dockerSocket } from '../runner/live-helpers';
+import { docker, dockerSocket, liveRuntimeEnv } from '../runner/live-helpers';
 import { repoRoot } from '../../workspace/helpers';
 
 export const NODE_IMAGE =
@@ -258,6 +258,7 @@ export async function startAgentRun(input: StartAgentRun): Promise<AgentRunFixtu
   const port = docker('port', relay, '8000/tcp').split('\n')[0]!.split(':').pop()!;
 
   const settings = runnerSettingsFromEnv({
+    ...liveRuntimeEnv(),
     SDLC_RUNNER_DOCKER_SOCKET: dockerSocket(),
     SDLC_RUNNER_INSTANCE: `c05-${input.suffix}`,
     SDLC_RUNNER_EGRESS_SERVICES: input.npmProxyContainer

@@ -178,7 +178,7 @@ describe('sandbox lifecycle (stub Docker)', () => {
       ['POST', '/exec/abc/start'],
       ['POST', '/build'],
       ['POST', '/commit'],
-      ['GET', '/info'],
+      ['GET', '/info/x'],
       ['POST', '/swarm/init'],
       ['POST', '/plugins/pull'],
       ['GET', '/containers/../info/json'],

@@ -137,7 +137,7 @@ services:
       - -logjson
       - -loglevel=WARN
       - -shutdowngracetime=5
-      - '-allowGET=/v1\.44/(_ping|images/[a-zA-Z0-9][a-zA-Z0-9_.-]*(:[0-9]{1,5})?(/[a-zA-Z0-9][a-zA-Z0-9_.-]*)*(:[\w.-]+)?(@sha256:[0-9a-f]{64})?/json|containers/json|containers/[a-zA-Z0-9][a-zA-Z0-9_.-]*/(json|logs)|containers/sdlc-sandbox-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/archive|networks|networks/[a-zA-Z0-9][a-zA-Z0-9_.-]*|volumes)'
+      - '-allowGET=/v1\.44/(_ping|info|images/[a-zA-Z0-9][a-zA-Z0-9_.-]*(:[0-9]{1,5})?(/[a-zA-Z0-9][a-zA-Z0-9_.-]*)*(:[\w.-]+)?(@sha256:[0-9a-f]{64})?/json|containers/json|containers/[a-zA-Z0-9][a-zA-Z0-9_.-]*/(json|logs)|containers/sdlc-sandbox-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/archive|networks|networks/[a-zA-Z0-9][a-zA-Z0-9_.-]*|volumes)'
       - '-allowPOST=/v1\.44/(images/create|containers/create|containers/[a-zA-Z0-9][a-zA-Z0-9_.-]*/(start|wait)|containers/sdlc-sandbox-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/kill|networks/create|networks/[a-zA-Z0-9][a-zA-Z0-9_.-]*/(connect|disconnect)|volumes/create)'
       - '-allowPUT=/v1\.44/containers/[a-zA-Z0-9][a-zA-Z0-9_.-]*/archive'
       - '-allowDELETE=/v1\.44/(containers|networks|volumes)/[a-zA-Z0-9][a-zA-Z0-9_.-]*'
@@ -215,6 +215,8 @@ services:
       SDLC_RUNNER_MAX_SANDBOXES: ${SDLC_RUNNER_MAX_SANDBOXES:-1}
       # L04 (ADR-M81 §2.3): free slots only, never above the line before; 0 turns evaluations off.
       SDLC_RUNNER_MAX_EVAL_SANDBOXES: ${SDLC_RUNNER_MAX_EVAL_SANDBOXES:-1}
+      # H06 (ADR-M25 §2.12): runsc or kata on a rootful runner Engine only; empty = the Engine default.
+      SDLC_RUNNER_SANDBOX_RUNTIME: ${SDLC_RUNNER_SANDBOX_RUNTIME:-}
       SDLC_RUNNER_SWEEP_INTERVAL_SECONDS: ${SDLC_RUNNER_SWEEP_INTERVAL_SECONDS:-300}
       SDLC_RUNNER_EGRESS_SERVICES: litellm=${COMPOSE_PROJECT_NAME:-sdlc}-litellm-1:4000,npm-proxy=${COMPOSE_PROJECT_NAME:-sdlc}-npm-proxy-1:4873
       SDLC_RUNNER_NPM_REGISTRY: http://npm-proxy:4873/

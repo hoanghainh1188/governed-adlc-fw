@@ -4,10 +4,28 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
-import type { DockerClient } from '../../../apps/runner/src/index.js';
+import {
+  isSandboxRuntime,
+  type DockerClient,
+  type SandboxRuntime,
+} from '../../../apps/runner/src/index.js';
 import { repoRoot } from '../../workspace/helpers';
 
 export const liveEnabled = process.env.SDLC_RUNNER_TEST === '1';
+
+/**
+ * Task H06 (ADR-M25 §2.12): the sandbox runtime of the live tests, from `SDLC_RUNNER_SANDBOX_RUNTIME`
+ * (CI job `sandbox-runsc`: `runsc`). Empty: the Engine's default. Spread into the runner settings.
+ */
+export function liveRuntimeEnv(): NodeJS.ProcessEnv {
+  return { SDLC_RUNNER_SANDBOX_RUNTIME: process.env.SDLC_RUNNER_SANDBOX_RUNTIME ?? '' };
+}
+
+/** The same runtime for a test's DockerClient, so its guard expects it. */
+export function liveRuntimeOption(): { sandboxRuntime?: SandboxRuntime } {
+  const runtime = process.env.SDLC_RUNNER_SANDBOX_RUNTIME;
+  return isSandboxRuntime(runtime) ? { sandboxRuntime: runtime } : {};
+}
 
 export const BUSYBOX =
   'docker.io/library/busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e';

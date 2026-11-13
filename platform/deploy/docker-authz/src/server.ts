@@ -7,7 +7,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { chmodSync, mkdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { evaluateAuthzRaw, type AuthzDecision } from './authz-eval.js';
+import {
+  AUTHZ_RUNTIMES,
+  evaluateAuthzRaw,
+  type AuthzDecision,
+  type AuthzOptions,
+} from './authz-eval.js';
 
 /**
  * The header the operator's Docker CLI sends (`HttpHeaders` in its Docker configuration file). The
@@ -26,6 +31,11 @@ export interface AuthzPluginOptions {
    * by others: no request skips the denylist.
    */
   readonly operatorKeyFile?: string;
+  /**
+   * Task H06 (ADR-M25 §2.12, QUESTIONS #703): every create with a run's workspace volume must name
+   * this runtime. Only `runsc` or `kata`; anything else refuses to start the plugin.
+   */
+  readonly requireRuntime?: string;
 }
 
 interface AuthzRequest {
@@ -105,7 +115,7 @@ function decodeRequestBody(encoded: string | undefined): string | null {
   }
 }
 
-function decide(req: AuthzRequest): AuthzDecision {
+function decide(req: AuthzRequest, options: AuthzOptions): AuthzDecision {
   const method = req.RequestMethod ?? '';
   const uri = requestUri(req);
   const raw = decodeRequestBody(req.RequestBody);
@@ -118,13 +128,14 @@ function decide(req: AuthzRequest): AuthzDecision {
   ) {
     return { allow: false, reason: 'invalid_body_encoding' };
   }
-  return evaluateAuthzRaw(method, uri, raw);
+  return evaluateAuthzRaw(method, uri, raw, options);
 }
 
 async function handle(
   req: IncomingMessage,
   res: ServerResponse,
   operatorKeyHash: Buffer | null,
+  options: AuthzOptions,
 ): Promise<void> {
   const url = req.url ?? '/';
   if (req.method === 'POST' && (url === '/Plugin.Activate' || url.endsWith('/Plugin.Activate'))) {
@@ -152,7 +163,7 @@ async function handle(
       return;
     }
     const operator = isOperator(parsed, operatorKeyHash);
-    const decision: AuthzDecision = operator ? { allow: true } : decide(parsed);
+    const decision: AuthzDecision = operator ? { allow: true } : decide(parsed, options);
     // Codes only (R031): method, URI path shape, allow/deny reason — never body text or a header.
     const pathShape = requestUri(parsed).replace(/\?.*/, '');
     process.stderr.write(
@@ -179,6 +190,15 @@ export async function startAuthzPlugin(options: AuthzPluginOptions): Promise<{
 }> {
   const { socketPath } = options;
   const operatorKeyHash = loadOperatorKeyHash(options.operatorKeyFile);
+  const required = options.requireRuntime;
+  if (
+    required !== undefined &&
+    required !== '' &&
+    !(AUTHZ_RUNTIMES as readonly string[]).includes(required)
+  ) {
+    throw new Error('authz.invalid_runtime');
+  }
+  const evalOptions: AuthzOptions = required ? { requireRuntime: required } : {};
   mkdirSync(dirname(socketPath), { recursive: true });
   try {
     unlinkSync(socketPath);
@@ -187,7 +207,7 @@ export async function startAuthzPlugin(options: AuthzPluginOptions): Promise<{
   }
 
   const server = createServer((req, res) => {
-    void handle(req, res, operatorKeyHash).catch(() => {
+    void handle(req, res, operatorKeyHash, evalOptions).catch(() => {
       if (!res.headersSent) sendJson(res, 500, { Allow: false, Err: 'internal' });
       else res.end();
     });

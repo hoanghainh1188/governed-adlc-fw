@@ -11,6 +11,7 @@ import { evaluateAuthz } from '@sdlc/docker-authz';
 
 import { RunnerError } from '../errors.js';
 import { LABELS, MANAGED_BY } from '../names.js';
+import { isSandboxRuntime, type SandboxRuntime } from '../settings.js';
 
 /** Environment variables a sandbox may receive (FR-33, ADR-M10 §2.4). Values are never secrets. */
 export const SANDBOX_ENV_ALLOWLIST = [
@@ -82,6 +83,8 @@ export interface ContainerSpec {
     readonly RestartPolicy: { readonly Name: 'no' };
     readonly AutoRemove: false;
     readonly Init: true;
+    /** Task H06: only when the runner is configured with a stronger runtime (`runsc`, `kata`). */
+    readonly Runtime?: SandboxRuntime;
   };
 }
 
@@ -116,6 +119,8 @@ const HOST_KEYS = new Set([
   'AutoRemove',
   'Init',
 ]);
+/** Sandbox and scoring containers only (task H06): tool and gateway containers keep the default. */
+const SANDBOX_HOST_KEYS = new Set([...HOST_KEYS, 'Runtime']);
 const PINNED = /@sha256:[0-9a-f]{64}$/;
 const SANDBOX_NAME = /^sdlc-sandbox-[0-9a-f-]{36}$/;
 const RUN_NETWORK = /^sdlc-run-[0-9a-f-]{36}$/;
@@ -142,9 +147,17 @@ function positiveInt(value: unknown): boolean {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 }
 
-/** Throws `runner.docker.spec_refused` unless the container is a hardened sandbox of one run. */
-export function assertSafeContainerSpec(name: string, spec: ContainerSpec): void {
-  checkHardening(name, spec, undefined);
+/**
+ * Throws `runner.docker.spec_refused` unless the container is a hardened sandbox of one run.
+ * `runtime` is the runner's configured sandbox runtime (task H06): the spec must name exactly that
+ * runtime, or none when there is none.
+ */
+export function assertSafeContainerSpec(
+  name: string,
+  spec: ContainerSpec,
+  runtime?: SandboxRuntime,
+): void {
+  checkHardening(name, spec, undefined, runtime);
 }
 
 /**
@@ -158,8 +171,24 @@ export function assertSafeScoringSpec(
   name: string,
   spec: ScoringContainerSpec,
   phase: ScoringPhase,
+  runtime?: SandboxRuntime,
 ): void {
-  checkHardening(name, spec, phase);
+  checkHardening(name, spec, phase, runtime);
+}
+
+/**
+ * Task H06 (ADR-M25 §2.12): with a configured runtime, the container must name it, and nothing else;
+ * without one, it must name none (the Engine's default). Any other value is refused, so a code
+ * change cannot pick a runtime the operator did not choose.
+ */
+function checkRuntime(host: Readonly<Record<string, unknown>>, runtime?: SandboxRuntime): void {
+  const configured = runtime === undefined ? undefined : isSandboxRuntime(runtime) ? runtime : null;
+  if (configured === null) refuse('runtime');
+  if (!('Runtime' in host)) {
+    if (configured !== undefined) refuse('runtime');
+    return;
+  }
+  if (configured === undefined || host.Runtime !== configured) refuse('runtime');
 }
 
 function assertAuthzAllows(method: string, path: string, body: unknown): void {
@@ -171,6 +200,7 @@ function checkHardening(
   name: string,
   spec: ContainerSpec,
   scoring: ScoringPhase | undefined,
+  runtime: SandboxRuntime | undefined,
 ): void {
   assertAuthzAllows('POST', '/containers/create', spec);
   const raw = spec as unknown as Record<string, unknown>;
@@ -182,7 +212,8 @@ function checkHardening(
     if (!sameList(raw.Entrypoint, SCORING_ENTRYPOINT)) refuse('scoring_entrypoint');
     if (!sameList(raw.Cmd, [SCORING_COMMANDS[scoring]])) refuse('scoring_command');
   }
-  if (Object.keys(host).some((key) => !HOST_KEYS.has(key))) refuse('unknown_host_option');
+  if (Object.keys(host).some((key) => !SANDBOX_HOST_KEYS.has(key))) refuse('unknown_host_option');
+  checkRuntime(host, runtime);
   if (typeof spec.Image !== 'string' || !PINNED.test(spec.Image)) refuse('image_not_pinned');
   if (spec.User !== SANDBOX_USER) refuse('user');
   if (spec.WorkingDir !== WORKSPACE_PATH) refuse('working_dir');

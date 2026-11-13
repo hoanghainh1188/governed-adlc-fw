@@ -40,6 +40,8 @@ import {
   psqlIn,
   quietly,
   type FixtureImage,
+  liveRuntimeEnv,
+  liveRuntimeOption,
 } from './live-helpers';
 
 const GATEWAY =
@@ -261,13 +263,18 @@ CREATE ROLE ${login} WITH LOGIN PASSWORD ${sqlLiteral(LOGIN_PASSWORD)} NOSUPERUS
       );
 
       settings = runnerSettingsFromEnv({
+        ...liveRuntimeEnv(),
         SDLC_RUNNER_DOCKER_SOCKET: dockerSocket(),
         SDLC_RUNNER_INSTANCE: instance,
         SDLC_RUNNER_SANDBOX_MEMORY_MB: '256',
         SDLC_RUNNER_EGRESS_SERVICES: '',
         SDLC_RUNNER_TOOL_SERVICES: `knowledge-db=${db}:5432,litellm=${llm}:4000`,
       });
-      client = new DockerClient({ socketPath: settings.dockerSocket, timeoutMs: 120_000 });
+      client = new DockerClient({
+        socketPath: settings.dockerSocket,
+        timeoutMs: 120_000,
+        ...liveRuntimeOption(),
+      });
       grant = {
         tool_key: 'project-docs',
         tool_version: '1.0.0',

@@ -35,7 +35,13 @@ import { g5Breach } from '../../../packages/core/src/workflow/g5.js';
 import { gatherG5Facts } from '../../../packages/core/src/workflow/g5-facts.js';
 import { createTestDatabase, type TestDatabase } from '../db/helpers.js';
 import { changesStep, here, NODE_IMAGE, secret, startAgentRun } from '../agent/helpers';
-import { docker, dockerSocket, quietly, startStub } from '../runner/live-helpers';
+import {
+  docker,
+  dockerSocket,
+  liveRuntimeOption,
+  quietly,
+  startStub,
+} from '../runner/live-helpers';
 import { buildSandboxImage, VERDACCIO } from '../sandbox-image/helpers';
 import { repoRoot } from '../../workspace/helpers';
 
@@ -139,7 +145,11 @@ describe.skipIf(!enabled)('H01: attacks from inside a sandbox (ADR-M80)', () => 
     }
     t = await createTestDatabase();
     image = process.env.SDLC_SANDBOX_IMAGE || (await buildSandboxImage(names.registry));
-    client = new DockerClient({ socketPath: dockerSocket(), timeoutMs: 120_000 });
+    client = new DockerClient({
+      socketPath: dockerSocket(),
+      timeoutMs: 120_000,
+      ...liveRuntimeOption(),
+    });
     docker('pull', '-q', NODE_IMAGE);
     docker('pull', '-q', VERDACCIO);
     docker('network', 'create', names.platformNet);

@@ -19,6 +19,7 @@ export const RUNNER_ENV = {
   cpus: 'SDLC_RUNNER_SANDBOX_CPUS',
   pids: 'SDLC_RUNNER_SANDBOX_PIDS',
   tmpMb: 'SDLC_RUNNER_SANDBOX_TMP_MB',
+  sandboxRuntime: 'SDLC_RUNNER_SANDBOX_RUNTIME',
   egressServices: 'SDLC_RUNNER_EGRESS_SERVICES',
   toolServices: 'SDLC_RUNNER_TOOL_SERVICES',
   npmRegistry: 'SDLC_RUNNER_NPM_REGISTRY',
@@ -53,6 +54,19 @@ export interface EgressService {
   readonly alias: string;
   readonly container: string;
   readonly port: number;
+}
+
+/**
+ * A container runtime stronger than the Engine's default (task H06, ADR-M25 §2.12): gVisor (`runsc`)
+ * or Kata Containers (`kata`). It gives the sandbox and the scoring containers a kernel of their
+ * own, so code from a repository does not run on the host's kernel. The list is closed: a runtime
+ * is a host program the Engine starts.
+ */
+export const SANDBOX_RUNTIMES = ['runsc', 'kata'] as const;
+export type SandboxRuntime = (typeof SANDBOX_RUNTIMES)[number];
+
+export function isSandboxRuntime(value: unknown): value is SandboxRuntime {
+  return typeof value === 'string' && (SANDBOX_RUNTIMES as readonly string[]).includes(value);
 }
 
 export interface SandboxLimits {
@@ -121,6 +135,12 @@ export interface RunnerSettings {
    */
   readonly maxEvalSandboxes: number;
   readonly limits: SandboxLimits;
+  /**
+   * The runtime of the sandbox and scoring containers (task H06), or undefined for the Engine's
+   * default (`runc`). Tool and gateway containers always use the default: they run platform images
+   * and join more than one network (ADR-M25 §2.12, QUESTIONS #704).
+   */
+  readonly sandboxRuntime: SandboxRuntime | undefined;
   readonly egressServices: readonly EgressService[];
   /**
    * X04 PR 3b (ADR-M69 §2.4): the backing services a register tool may reach on its own service
@@ -402,6 +422,7 @@ export function runnerSettingsFromEnv(env: NodeJS.ProcessEnv = process.env): Run
       pids: intSetting(env, RUNNER_ENV.pids, DEFAULTS.pids, 64, 32_768),
       tmpBytes: intSetting(env, RUNNER_ENV.tmpMb, DEFAULTS.tmpMb, 64, 16_384) * MIB,
     },
+    sandboxRuntime: sandboxRuntime(env[RUNNER_ENV.sandboxRuntime]),
     egressServices,
     toolServices: parseEgressServices(env[RUNNER_ENV.toolServices], RUNNER_ENV.toolServices),
     npmRegistry: npmRegistry(env[RUNNER_ENV.npmRegistry], egressServices),
@@ -419,6 +440,12 @@ export function runnerSettingsFromEnv(env: NodeJS.ProcessEnv = process.env): Run
     evaluation: evaluationSettings(env),
     secretScan: secretScanSettings(env),
   };
+}
+
+function sandboxRuntime(raw: string | undefined): SandboxRuntime | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  if (!isSandboxRuntime(raw)) throw invalid(RUNNER_ENV.sandboxRuntime);
+  return raw;
 }
 
 function secretScanSettings(env: NodeJS.ProcessEnv): SecretScanSettings {

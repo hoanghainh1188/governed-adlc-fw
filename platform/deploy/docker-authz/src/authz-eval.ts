@@ -33,6 +33,18 @@ export interface AuthzRules {
   };
 }
 
+/**
+ * Options of one Engine (task H06, ADR-M25 §2.12, QUESTIONS #703). `requireRuntime`: every create
+ * that gives a container a run's workspace volume (`sdlc-ws-…`) must name this runtime (`runsc` or
+ * `kata`), so a runner bug cannot start a repository's code on the host's kernel. Unset: no check.
+ */
+export interface AuthzOptions {
+  readonly requireRuntime?: string;
+}
+
+/** The runtimes the plugin may require (the same closed list as the runner's settings). */
+export const AUTHZ_RUNTIMES = ['runsc', 'kata'] as const;
+
 /** The denylist file both callers must use (AC2). */
 export const AUTHZ_RULES: AuthzRules = rulesJson;
 
@@ -72,7 +84,27 @@ function isHostBind(entry: unknown): boolean {
   return !VOLUME_NAME.test(entry.slice(0, colon));
 }
 
-function checkContainerCreate(body: unknown): AuthzDecision {
+/** The volume of a run's workspace (runner `names.ts`): where a repository's code lives. */
+const WORKSPACE_VOLUME = /^sdlc-ws-/;
+
+/**
+ * True when the create gives the container a run's workspace: a `sdlc-ws-…` volume in `Mounts` or
+ * `Binds`, or any `VolumesFrom` (it could take the volumes of a sandbox).
+ */
+function touchesWorkspace(host: Record<string, unknown>): boolean {
+  const mounts: readonly unknown[] = Array.isArray(host.Mounts) ? host.Mounts : [];
+  for (const mount of mounts) {
+    const source = asRecord(mount)?.Source;
+    if (typeof source === 'string' && WORKSPACE_VOLUME.test(source)) return true;
+  }
+  const binds: readonly unknown[] = Array.isArray(host.Binds) ? host.Binds : [];
+  if (binds.some((entry) => typeof entry === 'string' && WORKSPACE_VOLUME.test(entry))) {
+    return true;
+  }
+  return Array.isArray(host.VolumesFrom) && host.VolumesFrom.length > 0;
+}
+
+function checkContainerCreate(body: unknown, options: AuthzOptions): AuthzDecision {
   const cfg = AUTHZ_RULES.containerCreate;
   const top = asRecord(body) ?? {};
   const host = asRecord(top.HostConfig) ?? {};
@@ -145,6 +177,10 @@ function checkContainerCreate(body: unknown): AuthzDecision {
     }
   }
 
+  if (options.requireRuntime !== undefined && touchesWorkspace(host)) {
+    if (host.Runtime !== options.requireRuntime) return deny('runtime_required');
+  }
+
   return { allow: true };
 }
 
@@ -163,10 +199,15 @@ function checkNetworkCreate(body: unknown): AuthzDecision {
  * Decide whether Docker may accept this API call. Only create bodies are inspected; everything
  * else is allowed so the runner can pull, start, log and remove.
  */
-export function evaluateAuthz(method: string, requestUri: string, body: unknown): AuthzDecision {
+export function evaluateAuthz(
+  method: string,
+  requestUri: string,
+  body: unknown,
+  options: AuthzOptions = {},
+): AuthzDecision {
   const path = pathOnly(requestUri);
   if (method.toUpperCase() !== 'POST') return { allow: true };
-  if (CREATE_CONTAINER.test(path)) return checkContainerCreate(body);
+  if (CREATE_CONTAINER.test(path)) return checkContainerCreate(body, options);
   if (CREATE_NETWORK.test(path)) return checkNetworkCreate(body);
   return { allow: true };
 }
@@ -176,6 +217,7 @@ export function evaluateAuthzRaw(
   method: string,
   requestUri: string,
   rawBody: string | Uint8Array | null | undefined,
+  options: AuthzOptions = {},
 ): AuthzDecision {
   const path = pathOnly(requestUri);
   const isCreate =
@@ -191,5 +233,5 @@ export function evaluateAuthzRaw(
   } catch {
     return deny('invalid_json');
   }
-  return evaluateAuthz(method, requestUri, parsed);
+  return evaluateAuthz(method, requestUri, parsed, options);
 }

@@ -1,6 +1,6 @@
 # T11 Runbook: operating OpenBao (unseal, root token, the processes' credentials, backup, restore)
 
-> Status: **v0.49. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) gives the commands; the drill on the real server is task A10 PR 3.
+> Status: **v0.55. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) gives the commands; the drill on the real server is task A10 PR 3.
 > Readers: key holders, infrastructure operator, the OpenBao admin (the operator who holds the admin token, section 5.1).
 > The real initialisation on the internal server **has not been done**. It waits until leadership names the three key holders.
 
@@ -520,6 +520,16 @@ The socket proxy limits method and path, not the body of `containers/create` or 
 **Update:** rebuild the plugin (`pnpm exec tsc -b platform/deploy/docker-authz`), restart the user service `sdlc-docker-authz`, then `systemctl --user restart docker.service`.
 
 **When the plugin refuses a legitimate run:** the create body hit the shared denylist (`platform/deploy/docker-authz/src/authz-rules.json`). Do not disable the plugin. Fix the runner/spec so the body has no privileged flag, host namespace, CapAdd, devices, host-path binds or non-internal network (a named volume is allowed, also in `Binds`). If a new safe option must be allowed, change the denylist and the guard together (ADR-M105 AC2) in one pull request. Developer machines without the plugin only get a doctor warning.
+
+### 5g-2. A stronger sandbox runtime: gVisor or Kata (H06, ADR-M25 §2.12)
+
+By default a sandbox runs on the host's kernel. gVisor (`runsc`) or Kata Containers (`kata`) give it a kernel of its own. Use one when the runner host is shared with other work, or when the repositories come from people you do not trust. Steps, settings and the measured cost: deploy README "A stronger sandbox runtime".
+
+1. Only on a **rootful** runner Engine **in its own virtual machine**, never on the rootless Engine of section 5g-1 and never on the platform's Engine. The runner refuses to start with a runtime on a rootless Engine (`runner.docker.runtime_rootless`) or when the Engine does not list it (`runner.docker.runtime_missing`).
+2. Install the runtime on the runner host and register it with Docker (for gVisor: `runsc install`, then restart Docker). `docker info` must list it under `Runtimes`.
+3. Set `SDLC_RUNNER_SANDBOX_RUNTIME=runsc` (or `kata`) in the runner host's `.env`, then `platform/deploy/scripts/runner-host.sh restart`.
+4. The AuthZ plugin: install it as root with the same value, `sudo SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME=runsc platform/deploy/docker-authz/scripts/enable.sh`. Every create with a run's workspace must then name the runtime (`authz.denied:runtime_required`).
+5. Turn it off: empty `SDLC_RUNNER_SANDBOX_RUNTIME`, restart the runner, and install the plugin again without the variable.
 
 ### First set-up
 
@@ -1147,6 +1157,7 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 | 0.52 | 2026-11-12 | Claude Code (task V18) | Section 5g-1: `runner-host-setup.sh` does the install of the AuthZ plugin with the rest of the runner host (ADR-M107) |
 | 0.53 | 2026-11-12 | Claude Code (task V19) | Section 3.2 step 6: `pnpm server:setup` goes on with "Fresh deployment" steps 8–13 when its settings name the tenant, the admin, the project file and the sandbox image |
 | 0.54 | 2026-11-13 | Claude Code (task X06, PR 2) | Section 5o step 7: the code tool `read_code` uses the same set-up (its own schema per project, the OpenBao role `kdocs-<run_id>-code`, no model) |
+| 0.55 | 2026-11-13 | Claude Code (task H06) | New section 5g-2: a stronger sandbox runtime (gVisor or Kata) on a rootful runner Engine, and the AuthZ plugin option `SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME` |
 | 0.44 | 2026-10-24 | Claude Code (task O01, PR 2) | Section 5g step 3: the runner on its own Docker Engine (`SDLC_RUNNER_DOCKER_HOST`, `SDLC_RUNNER_SOURCE_CIDR`, `runner-host.sh restart`; ADR-M91) |
 | 0.39 | 2026-10-12 | Claude Code (task V08) | New section 3.1b: the trial stack's key file (the two shares encrypted with a passphrase, `pnpm trial:start`, its limits; never on a server; QUESTIONS #356, #415–#419, ADR-M76) |
 | 0.38 | 2026-10-12 | Claude Code (task V09, PR 2) | New section 3d: the team access proxy's certificate (company CA `import`, internal CA `server`, throw-away `dev`, `check`, renewal with `reload` without a restart, the 30-day reminder). Tested with throw-away certificates (`pnpm test:access`, `access-static.test.ts`) |

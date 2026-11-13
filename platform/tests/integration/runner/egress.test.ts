@@ -36,6 +36,8 @@ import {
   startStub,
   waitForProbes,
   type FixtureImage,
+  liveRuntimeEnv,
+  liveRuntimeOption,
 } from './live-helpers';
 
 const CANARY = `sk-c04-canary-${crypto.randomBytes(8).toString('hex')}`;
@@ -102,6 +104,14 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
   let hostNsServer: net.Server;
   let hostPort: number;
   let hostAddresses: string[];
+  /** The Engine's kernel; a sandbox under gVisor reports another one (H06). */
+  let engineKernel: string;
+  const runtime = liveRuntimeOption().sandboxRuntime;
+  const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const anyText = () => expect.any(String) as unknown as string;
+  /** Any text but `text` (the Engine's kernel version). */
+  const notText = (text: string): unknown =>
+    expect.not.stringMatching(new RegExp(`^${escapeRegExp(text)}$`));
   const runA = crypto.randomUUID();
   const runB = crypto.randomUUID();
 
@@ -121,17 +131,23 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
     hostPort = (hostServer.address() as net.AddressInfo).port;
     hostNsServer = await listen(HOST_NS_PORT);
     hostAddresses = hostIpv4Addresses();
+    engineKernel = docker('info', '--format', '{{.KernelVersion}}');
 
     // The canary is in the runner's own environment: it must never reach a sandbox (AC4).
     process.env.ANTHROPIC_API_KEY = CANARY;
     settings = runnerSettingsFromEnv({
+      ...liveRuntimeEnv(),
       SDLC_RUNNER_DOCKER_SOCKET: dockerSocket(),
       SDLC_RUNNER_INSTANCE: instance,
       SDLC_RUNNER_SANDBOX_MEMORY_MB: '256',
       SDLC_RUNNER_EGRESS_SERVICES: `litellm=${names.litellm}:4000,npm-proxy=${names.npm}:4873`,
       SDLC_RUNNER_NPM_REGISTRY: 'http://npm-proxy:4873/',
     });
-    client = new DockerClient({ socketPath: settings.dockerSocket, timeoutMs: 120_000 });
+    client = new DockerClient({
+      socketPath: settings.dockerSocket,
+      timeoutMs: 120_000,
+      ...liveRuntimeOption(),
+    });
   }, 300_000);
 
   afterAll(async () => {
@@ -224,10 +240,24 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
       uid: '10001',
       // O01 (ADR-M91): the limits are enforced by the kernel, also on rootless Docker (256 MiB,
       // swap = memory so no extra swap, 512 processes, 1.5 CPUs), and no capability is left.
-      memory_max: String(256 * 1024 * 1024),
-      memory_swap_max: '0',
-      pids_max: '512',
-      cpu_max: '150000/100000',
+      // H06 (ADR-M25 §2.12): under gVisor the host's cgroup holds the whole sandbox, outside the
+      // sandbox's own kernel; its cgroup files are gVisor's, so the limits are checked from
+      // outside below, and the sandbox must run on another kernel than the Engine's.
+      ...(runtime === undefined
+        ? {
+            memory_max: String(256 * 1024 * 1024),
+            memory_swap_max: '0',
+            pids_max: '512',
+            cpu_max: '150000/100000',
+            kernel: engineKernel,
+          }
+        : {
+            memory_max: anyText(),
+            memory_swap_max: anyText(),
+            pids_max: anyText(),
+            cpu_max: anyText(),
+            kernel: notText(engineKernel),
+          }),
       cap_eff: '0000000000000000',
       no_new_privs: '1',
       branch: 'none', // no repository in this test (see provision.test.ts)
@@ -247,6 +277,12 @@ describe.skipIf(!liveEnabled)('C04 live: sandbox egress and hardening on Docker'
       CapDrop: ['ALL'],
       Privileged: false,
       NetworkMode: `sdlc-run-${runA}`,
+      // H06: the Engine applies the limits and the runtime the runner asked for.
+      Memory: 256 * 1024 * 1024,
+      MemorySwap: 256 * 1024 * 1024,
+      PidsLimit: 512,
+      NanoCpus: 1_500_000_000,
+      Runtime: runtime ?? 'runc',
     });
     expect((await client.networkInspect(`sdlc-run-${runA}`))?.Internal).toBe(true);
 

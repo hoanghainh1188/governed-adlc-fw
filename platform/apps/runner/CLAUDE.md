@@ -15,6 +15,7 @@ Rules for `platform/apps/runner`, the agent and model adapters (`platform/packag
 - Context condensing only for OpenHands work runs whose model has a known context size, and only with the run's own model, LiteLLM URL and virtual key; a summary never leaves the adapter as text: counts in run events, its SHA-256 and length in the log (ADR-M29 §2.10). [R139]
 - Every run's added lines are scanned for secrets outside the sandbox, with the Gitleaks pinned in `platform/deploy/scripts/gitleaks.sh` and only the base commit's `.gitleaks.toml`; `secrets_scanned` holds codes and counts, never a match or a path; G5 holds a run on a finding, a failed scan or no scan (ADR-M93). [R140]
 - Every run's change is measured outside the sandbox (`review-size.ts`): lock files and only the base commit's `linguist-generated` files count apart, never a `.gitattributes` the run changed; `diff_measured` holds counts, never a path; over `run.review_limits`, or not measured, G5 is HITL (ADR-M95). [R142]
+- A stronger sandbox runtime only from `SDLC_RUNNER_SANDBOX_RUNTIME` (`runsc`, `kata`), only on sandbox and scoring containers, never on tool or gateway containers, never on a rootless Engine (ADR-M25 §2.12). [R150]
 
 ## Commands
 Run from the repo root.
