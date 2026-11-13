@@ -257,14 +257,35 @@ export async function computeProposal(
 ): Promise<Proposal> {
   if (!SHA.test(baseSha)) throw new RunnerError('runner.workspace.proposal_failed');
   await gitIn(repoDir, home, ['add', '-A', '-f', '--', '.'], options);
+  return diffIndex(repoDir, home, baseSha, options);
+}
+
+/**
+ * The binary diff of the clone's index against `baseSha`, and its changed paths; with `paths`,
+ * of those paths only (X13 PR 3a: the memory part, ADR-M74 §2.5).
+ */
+export async function diffIndex(
+  repoDir: string,
+  home: string,
+  baseSha: string,
+  options: ProposalGitOptions,
+  paths?: readonly string[],
+): Promise<Proposal> {
+  if (!SHA.test(baseSha)) throw new RunnerError('runner.workspace.proposal_failed');
   const diffArgs = ['diff', '--cached', '--no-renames', '--no-ext-diff', '--no-textconv'];
+  const only = paths === undefined ? [] : ['--', ...paths];
   const patch = await gitIn(
     repoDir,
     home,
-    [...diffArgs, '--binary', '--full-index', baseSha],
+    [...diffArgs, '--binary', '--full-index', baseSha, ...only],
     options,
   );
-  const names = await gitIn(repoDir, home, [...diffArgs, '--name-only', '-z', baseSha], options);
+  const names = await gitIn(
+    repoDir,
+    home,
+    [...diffArgs, '--name-only', '-z', baseSha, ...only],
+    options,
+  );
   const changedFiles = names
     .toString('utf8')
     .split('\0')

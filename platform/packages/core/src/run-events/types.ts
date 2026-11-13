@@ -198,6 +198,8 @@ export const RUN_EVENT_TYPES = {
     paths_sha256: 'sha256',
     // O06 (ADR-M106 §2.4): changed paths outside the project's folder; absent before O06.
     outside_folder: 'count?',
+    // X13 PR 3a (ADR-M74 §2.5): the paths split out as the memory part; absent without a split.
+    memory_files: 'count?',
   },
   /**
    * The runner's secret scan of the run's added lines, outside the sandbox (H04, ADR-M93 §2.3):
@@ -378,6 +380,36 @@ export const RUN_EVENT_TYPES = {
     chars: 'count',
     truncated: 'code',
   },
+  /**
+   * X13 PR 3a (ADR-M74 §2.5, §2.8): the runner split the memory part out of the run's change
+   * (`read_propose`, L2+). Counts of the memory files added, changed and removed, and of the paths
+   * under `.sdlc/memory/` left in the code change (G5 fails them `out_of_scope`); `set_sha256` of
+   * the memory set the proposal makes; `memory_sha256` of the stored `memory_diff` and
+   * `paths_sha256` of its sorted paths (the push checks both). Never a path, a name or a text.
+   */
+  memory_proposed: {
+    files_added: 'count',
+    files_changed: 'count',
+    files_removed: 'count',
+    kept_in_change: 'count',
+    set_sha256: 'sha256',
+    memory_sha256: 'sha256',
+    paths_sha256: 'sha256',
+  },
+  /**
+   * X13 PR 3a (ADR-M74 §2.5 step 4): after the code push, the runner pushed the memory part as one
+   * commit on `base_sha` to the run's memory branch `agent/INT-…-memory-<attempt>` (`head_sha`).
+   */
+  memory_branch_pushed: {
+    head_sha: 'code',
+    parent_sha: 'code',
+    memory_sha256: 'sha256',
+  },
+  /**
+   * X13 PR 3a: the memory branch was not pushed (`reason`: the same codes as `publish_refused`
+   * and `publish_failed`). Never a pause or an escalation: memory never blocks a gate (§2.5 step 6).
+   */
+  memory_publish_failed: { reason: 'code' },
 } as const satisfies Readonly<Record<string, Readonly<Record<string, RunEventFieldSpec>>>>;
 
 export type RunEventType = keyof typeof RUN_EVENT_TYPES;

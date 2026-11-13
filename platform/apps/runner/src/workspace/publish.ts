@@ -23,6 +23,11 @@
 //  7. records `branch_pushed` and sets `runs.head_sha` once (migration 0017), in one transaction;
 //  8. (C11, ADR-M42 §2.4) revokes the push token, whatever the outcome (`token_revoked`). A
 //     wrapping token that cannot be opened is recorded as `wrap_token_reused`.
+//  9. (X13 PR 3a, ADR-M74 §2.5 step 4) when the run proposed memory (`memory_proposed`), pushes
+//     the stored `memory_diff` the same way to the run's memory branch
+//     `agent/INT-…-memory-<attempt>`: one commit on `base_sha`, the memory paths checked against
+//     what the runner split out. Recorded as `memory_branch_pushed`, or `memory_publish_failed`
+//     with a code: it never changes the outcome of the code push and never blocks a gate.
 // Final refusals are recorded as `publish_refused` (a person decides, QUESTIONS #156); causes that
 // may pass (the token, the Git host, the evidence store) as `publish_failed`. Codes only: never a
 // path, git's text or the token.
@@ -49,7 +54,7 @@ import {
   revokeAfterUse,
   type GitTokenRevoker,
 } from '../tokens.js';
-import { cloneForPush, PushError, pushCommit, remoteBranchHead } from './git.js';
+import { cloneForPush, MEMORY_BRANCH, PushError, pushCommit, remoteBranchHead } from './git.js';
 import { gitArgs, gitEnv } from './proposal.js';
 
 export interface PublishDeps {
@@ -110,6 +115,8 @@ interface Facts {
   readonly baseSha: string;
   readonly agentId: string;
   readonly finishedAt: Date;
+  /** The run's attempt number: names its memory branch (X13 PR 3a). */
+  readonly attempt: number;
   readonly diffSha256: string;
   readonly diffUri: string;
   readonly pathsSha256: string;
@@ -134,8 +141,11 @@ export async function publishRun(
     const dir = fs.mkdtempSync(path.join(deps.settings.workDir, 'publish-'));
     try {
       const patch = await readPatch(deps.diffEvidence, facts);
-      const head = await pushChanges(deps, facts, patch, token, dir);
+      const repoDir = await cloneForPush(deps.settings.git, { repo: facts.repo, token, dir });
+      const head = await pushChanges(deps, facts, patch, token, dir, repoDir);
       await record(scope, input.runId, facts, head);
+      // X13 PR 3a: the memory part goes to its own branch; never changes the outcome above.
+      await publishMemory(deps, scope, facts, token, dir, repoDir);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
       // The push token ends with the push, whatever the outcome (C11).
@@ -218,6 +228,7 @@ async function readFacts(scope: TenantScope, runId: string): Promise<Facts> {
     baseSha,
     agentId,
     finishedAt: new Date(run.finished_at),
+    attempt: run.attempt,
     diffSha256,
     diffUri: item.storage_uri,
     pathsSha256,
@@ -240,14 +251,23 @@ async function unwrapToken(
 }
 
 async function readPatch(store: Pick<EvidenceStore, 'get'>, facts: Facts): Promise<Buffer> {
+  return readStored(store, facts.diffUri, facts.diffSha256);
+}
+
+/** Reads a stored diff back and checks its SHA-256 against what the runner recorded. */
+async function readStored(
+  store: Pick<EvidenceStore, 'get'>,
+  uri: string,
+  expectedSha256: string,
+): Promise<Buffer> {
   let patch: Buffer;
   try {
-    patch = await store.get(facts.diffUri);
+    patch = await store.get(uri);
   } catch {
     throw new Failed('evidence_unavailable');
   }
   const sha256 = crypto.createHash('sha256').update(patch).digest('hex');
-  if (sha256 !== facts.diffSha256) throw new Refused('diff_mismatch');
+  if (sha256 !== expectedSha256) throw new Refused('diff_mismatch');
   if (patch.length === 0) throw new Refused('empty_diff');
   return patch;
 }
@@ -259,22 +279,52 @@ async function pushChanges(
   patch: Buffer,
   token: RedactedSecret,
   dir: string,
+  repoDir: string,
+): Promise<string> {
+  const home = path.join(dir, 'home');
+  const commit = await buildCommit(
+    deps,
+    {
+      ...facts,
+      patch,
+      pathsSha256: facts.pathsSha256,
+      message: `sdlc: ${facts.intentCode} run ${facts.runId}`,
+    },
+    repoDir,
+    home,
+    dir,
+  );
+  const target = { repo: facts.repo, branch: facts.branch, baseSha: facts.baseSha };
+  return pushTo(deps, target, { repoDir, home, token, commit });
+}
+
+/**
+ * Pushes `commit` to `target.branch` with an explicit refspec, no force. The branch must be
+ * absent, at `baseSha` or already at the commit; anything else → `branch_moved`.
+ */
+async function pushTo(
+  deps: PublishDeps,
+  target: { readonly repo: string; readonly branch: string; readonly baseSha: string },
+  local: {
+    readonly repoDir: string;
+    readonly home: string;
+    readonly token: RedactedSecret;
+    readonly commit: string;
+  },
 ): Promise<string> {
   const git = deps.settings.git;
-  const repoDir = await cloneForPush(git, { repo: facts.repo, token, dir });
-  const home = path.join(dir, 'home');
-  const commit = await buildCommit(deps, facts, patch, repoDir, home, dir);
-  const remote = { repo: facts.repo, branch: facts.branch, token, home };
+  const { commit } = local;
+  const remote = { repo: target.repo, branch: target.branch, token: local.token, home: local.home };
   const before = await remoteBranchHead(git, remote);
   if (before === commit) return commit;
-  if (before !== null && before !== facts.baseSha) throw new Refused('branch_moved');
+  if (before !== null && before !== target.baseSha) throw new Refused('branch_moved');
   try {
-    await pushCommit(git, { ...remote, repoDir, commit });
+    await pushCommit(git, { ...remote, repoDir: local.repoDir, commit });
   } catch (error) {
     // Someone else may have changed the branch between the read and the push.
     const now = await remoteBranchHead(git, remote).catch(() => undefined);
     if (now === commit) return commit;
-    if (now !== undefined && now !== null && now !== facts.baseSha) {
+    if (now !== undefined && now !== null && now !== target.baseSha) {
       throw new Refused('branch_moved');
     }
     throw error;
@@ -282,6 +332,98 @@ async function pushChanges(
   const after = await remoteBranchHead(git, remote);
   if (after !== commit) throw new Refused('branch_moved');
   return commit;
+}
+
+interface MemoryFacts {
+  readonly branch: string;
+  readonly uri: string;
+  readonly memorySha256: string;
+  readonly pathsSha256: string;
+}
+
+/** The run's memory proposal to push, or null (none, or already pushed). */
+async function readMemoryFacts(scope: TenantScope, facts: Facts): Promise<MemoryFacts | null> {
+  let memorySha256: string | null = null;
+  let pathsSha256: string | null = null;
+  for (const event of await scope.runEvents.list(facts.runId)) {
+    if (event.event_type === 'memory_branch_pushed') return null;
+    if (event.event_type === 'memory_proposed') {
+      memorySha256 = String(event.payload.memory_sha256);
+      pathsSha256 = String(event.payload.paths_sha256);
+    }
+  }
+  if (memorySha256 === null || pathsSha256 === null) return null;
+  const run = await scope.runs.getById(facts.runId);
+  const item = run
+    ? (await scope.evidenceItems.listForIntent(run.intent_id)).find(
+        (e) => e.run_id === facts.runId && e.kind === 'memory_diff',
+      )
+    : undefined;
+  const suffix = `/diffs/${scope.tenantId}/${run?.intent_id ?? ''}/${facts.runId}.memory.patch`;
+  const branch = `${facts.branch}-memory-${String(facts.attempt)}`;
+  if (
+    !SHA256.test(memorySha256) ||
+    !SHA256.test(pathsSha256) ||
+    !item ||
+    item.sha256 !== memorySha256 ||
+    !item.storage_uri.endsWith(suffix) ||
+    !MEMORY_BRANCH.test(branch)
+  ) {
+    throw new Refused('changes_missing');
+  }
+  return { branch, uri: item.storage_uri, memorySha256, pathsSha256 };
+}
+
+/**
+ * Pushes the run's memory part to its memory branch (step 9 of the header). Never throws: a
+ * failure is the run event `memory_publish_failed`; the code push stays as it is.
+ */
+async function publishMemory(
+  deps: PublishDeps,
+  scope: TenantScope,
+  facts: Facts,
+  token: RedactedSecret,
+  dir: string,
+  repoDir: string,
+): Promise<void> {
+  try {
+    const memory = await readMemoryFacts(scope, facts);
+    if (!memory) return;
+    if (!deps.diffEvidence) throw new Failed('evidence_unavailable');
+    const patch = await readStored(deps.diffEvidence, memory.uri, memory.memorySha256);
+    const work = path.join(dir, 'memory');
+    fs.mkdirSync(work, { mode: 0o700 });
+    const home = path.join(dir, 'home');
+    const commit = await buildCommit(
+      deps,
+      {
+        ...facts,
+        patch,
+        pathsSha256: memory.pathsSha256,
+        message: `sdlc: ${facts.intentCode} run ${facts.runId} memory`,
+      },
+      repoDir,
+      home,
+      work,
+    );
+    const target = { repo: facts.repo, branch: memory.branch, baseSha: facts.baseSha };
+    const head = await pushTo(deps, target, { repoDir, home, token, commit });
+    await scope.runEvents.append(facts.runId, 'memory_branch_pushed', {
+      head_sha: head,
+      parent_sha: facts.baseSha,
+      memory_sha256: memory.memorySha256,
+    });
+  } catch (error) {
+    const reason =
+      error instanceof Refused || error instanceof Failed || error instanceof PushError
+        ? error.reason
+        : 'internal';
+    // Recording the failure may fail too (the database): the code push is recorded already, and
+    // a run without `memory_branch_pushed` gets no memory pull request. Never thrown.
+    await scope.runEvents
+      .append(facts.runId, 'memory_publish_failed', { reason })
+      .catch(() => undefined);
+  }
 }
 
 /** Local git in the push clone: hardened (`gitArgs`), with a private index and fixed identity. */
@@ -311,10 +453,19 @@ function localGit(
   });
 }
 
+/** What one commit is made of: the stored diff on the run's base, and its checked paths. */
+interface CommitInput {
+  readonly baseSha: string;
+  readonly agentId: string;
+  readonly finishedAt: Date;
+  readonly patch: Buffer;
+  readonly pathsSha256: string;
+  readonly message: string;
+}
+
 async function buildCommit(
   deps: PublishDeps,
-  facts: Facts,
-  patch: Buffer,
+  facts: CommitInput,
   repoDir: string,
   home: string,
   dir: string,
@@ -342,7 +493,7 @@ async function buildCommit(
     throw new Refused('base_not_found');
   }
   const patchFile = path.join(dir, 'change.patch');
-  fs.writeFileSync(patchFile, patch, { mode: 0o600 });
+  fs.writeFileSync(patchFile, facts.patch, { mode: 0o600 });
   try {
     await run(['apply', '--cached', '--binary', '--', patchFile]);
   } catch {
@@ -362,8 +513,7 @@ async function buildCommit(
     .digest('hex');
   if (pathsSha256 !== facts.pathsSha256) throw new Refused('diff_mismatch');
   const tree = (await run(['write-tree'])).toString('utf8').trim();
-  const message = `sdlc: ${facts.intentCode} run ${facts.runId}`;
-  const commit = (await run(['commit-tree', tree, '-p', facts.baseSha, '-m', message]))
+  const commit = (await run(['commit-tree', tree, '-p', facts.baseSha, '-m', facts.message]))
     .toString('utf8')
     .trim();
   if (!SHA.test(commit)) throw new RunnerError('runner.workspace.proposal_failed');

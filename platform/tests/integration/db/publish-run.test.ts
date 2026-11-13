@@ -9,7 +9,10 @@
 // - refusals (final): a diff that is not the one G5 checked, the paths G5 checked differ, an
 //   empty change, a branch someone else moved; failures (may pass): an unusable token;
 // - the token travels only as a header, never in a URL, and is never stored;
-// - the Git host refuses a push to `main` (N6) even with a `contents: write` token.
+// - the Git host refuses a push to `main` (N6) even with a `contents: write` token;
+// - X13 PR 3a (ADR-M74 §2.5 step 4): a run that proposed memory gets its memory part pushed after
+//   the code, as one commit on `base_sha` to `agent/INT-…-memory-<attempt>`; a memory failure is
+//   `memory_publish_failed` and never changes the outcome of the code push.
 import { execFile, execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -164,7 +167,10 @@ describeDb('C08: the runner pushes the checked changes (stub Git host, PostgreSQ
   /** A succeeded run of a new intent, with its stored and checked diff (as the runner leaves it). */
   async function succeededRun(
     diff: ReturnType<typeof makeDiff>,
-    options: { pathsSha256?: string } = {},
+    options: {
+      pathsSha256?: string;
+      memory?: ReturnType<typeof makeDiff> & { readonly storedSha256?: string };
+    } = {},
   ): Promise<{ intent: Intent; runId: string; branch: string }> {
     const intent = await atG4(t, 'medium');
     for (let i = 0; i < 12; i += 1) {
@@ -213,6 +219,28 @@ describeDb('C08: the runner pushes the checked changes (stub Git host, PostgreSQ
         generated_lines: 0,
         binary_files: 0,
       });
+      const memory = options.memory;
+      if (memory) {
+        const memoryUri = `s3://evidence/diffs/${t.f.target.tenantId}/${intent.id}/${runId}.memory.patch`;
+        evidence.files.set(memoryUri, memory.patch);
+        await tx.evidenceItems.record({
+          intentId: intent.id,
+          runId,
+          kind: 'memory_diff',
+          storageUri: memoryUri,
+          sha256: memory.storedSha256 ?? memory.sha256,
+          sizeBytes: memory.patch.length,
+        });
+        await tx.runEvents.append(runId, 'memory_proposed', {
+          files_added: 1,
+          files_changed: 0,
+          files_removed: 0,
+          kept_in_change: 0,
+          set_sha256: 'c'.repeat(64),
+          memory_sha256: memory.storedSha256 ?? memory.sha256,
+          paths_sha256: memory.pathsSha256,
+        });
+      }
     });
     await t.f.scope.runs.transition(runId, {
       from: ['running'],
@@ -373,6 +401,88 @@ describeDb('C08: the runner pushes the checked changes (stub Git host, PostgreSQ
     // The next attempt with a new token works.
     expect(await publishRun(deps(), input(runId))).toEqual({ outcome: 'pushed' });
   });
+
+  const memoryEvents = async (runId: string) =>
+    (await t.f.scope.runEvents.list(runId))
+      .filter((e) => e.event_type.startsWith('memory_') && e.event_type !== 'memory_proposed')
+      .map((e) => [e.event_type, e.payload]);
+  const bare = () => path.join(host.root, `${REPO}.git`);
+  const note = (name: string, text: string) => (dir: string) => {
+    fs.mkdirSync(path.join(dir, '.sdlc/memory'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.sdlc/memory', name), text);
+  };
+
+  it('X13 PR 3a: pushes the memory part to its own branch after the code', async () => {
+    const diff = makeDiff(bare(), base, (dir) =>
+      fs.writeFileSync(path.join(dir, 'src/main.ts'), 'export const a = 7;\n'),
+    );
+    const memory = makeDiff(bare(), base, note('build.md', 'Run pnpm test.\n'));
+    const { runId, branch, intent } = await succeededRun(diff, { memory });
+    expect(await publishRun(deps(), input(runId))).toEqual({ outcome: 'pushed' });
+
+    const memoryBranch = `${branch}-memory-1`;
+    const head = host.branchHead(REPO, memoryBranch);
+    expect(head).toMatch(/^[0-9a-f]{40}$/);
+    expect(host.gitIn(REPO, 'rev-parse', `${head!}^{tree}`)).toBe(memory.tree);
+    expect(host.gitIn(REPO, 'rev-parse', `${head!}^`)).toBe(base);
+    expect(host.gitIn(REPO, 'log', '-1', '--format=%s', head!)).toBe(
+      `sdlc: ${intent.code} run ${runId} memory`,
+    );
+    // The code branch never holds a memory path.
+    const code = host.branchHead(REPO, branch)!;
+    expect(host.gitIn(REPO, 'ls-tree', '-r', '--name-only', code)).not.toContain('.sdlc/memory');
+    expect(await memoryEvents(runId)).toEqual([
+      ['memory_branch_pushed', { head_sha: head, parent_sha: base, memory_sha256: memory.sha256 }],
+    ]);
+    // A repeated activity: nothing new.
+    expect(await publishRun(deps(), input(runId))).toEqual({ outcome: 'pushed' });
+    expect((await memoryEvents(runId)).length).toBe(1);
+  }, 60_000);
+
+  it('X13 PR 3a: a run without a memory proposal pushes no memory branch', async () => {
+    const diff = makeDiff(bare(), base, (dir) =>
+      fs.writeFileSync(path.join(dir, 'src/main.ts'), 'export const a = 8;\n'),
+    );
+    const { runId, branch } = await succeededRun(diff);
+    expect(await publishRun(deps(), input(runId))).toEqual({ outcome: 'pushed' });
+    expect(host.branchHead(REPO, `${branch}-memory-1`)).toBeNull();
+    expect(await memoryEvents(runId)).toEqual([]);
+  });
+
+  it('X13 PR 3a: a memory failure is recorded and never changes the code push', async () => {
+    const code = (text: string) => (dir: string) =>
+      fs.writeFileSync(path.join(dir, 'src/main.ts'), text);
+    // Paths that are not the ones the runner split out.
+    const one = await succeededRun(makeDiff(bare(), base, code('one\n')), {
+      memory: { ...makeDiff(bare(), base, note('a.md', 'a\n')), pathsSha256: 'd'.repeat(64) },
+    });
+    expect(await publishRun(deps(), input(one.runId))).toEqual({ outcome: 'pushed' });
+    expect(await memoryEvents(one.runId)).toEqual([
+      ['memory_publish_failed', { reason: 'diff_mismatch' }],
+    ]);
+    expect(host.branchHead(REPO, `${one.branch}-memory-1`)).toBeNull();
+
+    // A stored memory diff that is not the recorded one.
+    const two = await succeededRun(makeDiff(bare(), base, code('two\n')), {
+      memory: { ...makeDiff(bare(), base, note('b.md', 'b\n')), storedSha256: 'e'.repeat(64) },
+    });
+    expect(await publishRun(deps(), input(two.runId))).toEqual({ outcome: 'pushed' });
+    expect(await memoryEvents(two.runId)).toEqual([
+      ['memory_publish_failed', { reason: 'diff_mismatch' }],
+    ]);
+
+    // Someone else moved the memory branch: never forced.
+    const three = await succeededRun(makeDiff(bare(), base, code('three\n')), {
+      memory: makeDiff(bare(), base, note('c.md', 'c\n')),
+    });
+    const second = host.gitIn(REPO, 'rev-parse', 'refs/heads/main');
+    host.gitIn(REPO, 'update-ref', `refs/heads/${three.branch}-memory-1`, second);
+    expect(await publishRun(deps(), input(three.runId))).toEqual({ outcome: 'pushed' });
+    expect(await memoryEvents(three.runId)).toEqual([
+      ['memory_publish_failed', { reason: 'branch_moved' }],
+    ]);
+    expect(host.branchHead(REPO, `${three.branch}-memory-1`)).toBe(second);
+  }, 60_000);
 
   it('N6: the Git host refuses a push to main, even with a write token', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-c08-n6-'));

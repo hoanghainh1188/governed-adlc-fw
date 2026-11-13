@@ -51,5 +51,6 @@
   "0050-intent-effort-estimate.ts": "3e54362fa6a8b1da20848ac0f71601e08b8cc615c0c2bec02517f8432c2695a0",
   "0051-code-index.ts": "24c259cb16427b42763a9b433043ff1c452c679ce3a209327f1a8e8835564ccc",
   "0052-read-code-permission.ts": "48f61e5496fbb5c357115d524020612ae5cab91625440b56f99bc25bff0f2e8a",
-  "0053-memory-versions.ts": "394ad5933e7e533cf46fbf3fa49e50eee62ca7e3cd474eaad3c357ae9c6905c8"
+  "0053-memory-versions.ts": "394ad5933e7e533cf46fbf3fa49e50eee62ca7e3cd474eaad3c357ae9c6905c8",
+  "0054-memory-diff-evidence.ts": "3aad59e94a3e53bfd29aa7d7c7265278284dd7a4f9e53ae2dacdd9406aa7c918"
 }

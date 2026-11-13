@@ -47,6 +47,9 @@ export const PACK_RUN_EVENTS = [
   'context_snapshot',
   // X13 (ADR-M74 §2.8): which approved memory version the run's agent read (hash and counts).
   'memory_read',
+  // X13 PR 3a (ADR-M74 §2.8): the memory a run proposed and its memory branch (hashes and counts).
+  'memory_proposed',
+  'memory_branch_pushed',
 ] as const;
 export type PackRunEvent = (typeof PACK_RUN_EVENTS)[number];
 
