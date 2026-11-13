@@ -244,7 +244,8 @@ export class Runner {
         const { config } = await loadEffectiveConfig(scope.projectConfigs, contract.project_id);
         const policy = createSimplePolicyEngine({ config });
         const checked = await storeChanges(
-          { db, docker, settings, evidence, policy },
+          // X13 PR 3a: the memory configuration decides whether the memory part is split out.
+          { db, docker, settings, evidence, policy, memory: config.memory },
           contract,
           cloneDir,
         );

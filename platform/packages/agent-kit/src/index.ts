@@ -23,6 +23,7 @@ export {
   INSTRUCTIONS_FILE,
   MAX_MEMORY_TEXT,
   memoryBlock,
+  memoryProposalLines,
   planTaskBlock,
   toolsOf,
   type TaskMessageOptions,

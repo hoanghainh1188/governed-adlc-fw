@@ -14,6 +14,7 @@ import {
   AGENT_TOOLS,
   isRegisterToolCode,
   AgentError,
+  MEMORY_DIR,
   type AgentTask,
   type AgentTool,
   type RunContract,
@@ -109,6 +110,20 @@ export function checkTask(contract: RunContract, task: AgentTask): void {
       typeof memory.truncated !== 'boolean')
   ) {
     throw new AgentError('invalid_input', { field: 'memory' });
+  }
+  // X13 PR 3a: only for a run that may commit (L2+), within the configuration's ranges.
+  const proposal = task.memoryProposal;
+  if (
+    proposal !== undefined &&
+    (contract.autonomy_level === 'L1' ||
+      !Number.isSafeInteger(proposal.maxFiles) ||
+      proposal.maxFiles < 1 ||
+      proposal.maxFiles > MAX_MEMORY_FILES ||
+      !Number.isSafeInteger(proposal.maxFileChars) ||
+      proposal.maxFileChars < 500 ||
+      proposal.maxFileChars > 8000)
+  ) {
+    throw new AgentError('invalid_input', { field: 'memoryProposal' });
   }
   const planned = contract.planned_files;
   if (
@@ -213,6 +228,25 @@ export function memoryBlock(
   ];
 }
 
+/**
+ * X13 PR 3a (ADR-M74 §2.5 step 1): the agent may propose memory notes. The platform splits them
+ * out of the change and a person reviews them in a pull request of their own.
+ */
+export function memoryProposalLines(limits: NonNullable<AgentTask['memoryProposal']>): string[] {
+  return [
+    `Project memory notes: you may also add, change or remove notes in ${MEMORY_DIR}/, even though ` +
+      'the folder is not in the list above. One Markdown file per topic, directly in that folder, ' +
+      'named with lowercase letters, digits and hyphens (for example build-and-test.md); at most ' +
+      `${limits.maxFiles} files in the folder and ${limits.maxFileChars} characters per file. ` +
+      'Write only short facts about this project that would help a later run: how to build and ' +
+      'test it, its conventions, traps you found. Never write secrets, credentials, personal data, ' +
+      'client names, or copied prompts or logs. The platform takes the notes out of your change; ' +
+      'a person reviews them in a separate pull request. A note that does not keep these rules ' +
+      'stays in your change and stops the run.',
+    '',
+  ];
+}
+
 function planLines(task: AgentTask, planNonce: string | undefined): string[] {
   if (task.plan.taskText !== undefined) return planTaskBlock(task.plan.taskText, planNonce);
   return [task.plan.summary.trim() === '' ? '(no summary)' : task.plan.summary.trim()];
@@ -264,6 +298,7 @@ export function buildTaskMessage(
     'Files and path patterns you may change (the platform stops the run if other files change):',
     files,
     '',
+    ...(task.memoryProposal === undefined ? [] : memoryProposalLines(task.memoryProposal)),
     // C08 PR 2 (QUESTIONS #158): a fixed instruction, never CI logs or check names.
     ...(task.ciFailed === true ? [CI_FAILED_INSTRUCTION, ''] : []),
     // E01 PR 2 (QUESTIONS #179): the feedback of the request for changes, delimited.

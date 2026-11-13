@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** with the merge of X13 PR 1 (Harry, 2026-11-13, QUESTIONS #711); 0.1 proposed by X12 (the plan approved by Harry on 2026-10-24 with the recommended answers to QUESTIONS #571–#575); 0.2 adds the details of QUESTIONS #712, #715 |
-| Date | 2026-10-24; 0.2 on 2026-11-13 |
+| Status | **Accepted** with the merge of X13 PR 1 (Harry, 2026-11-13, QUESTIONS #711); 0.1 proposed by X12 (the plan approved by Harry on 2026-10-24 with the recommended answers to QUESTIONS #571–#575); 0.2 adds the details of QUESTIONS #712, #715; 0.4 those of QUESTIONS #716 (the X13 PR 3 plan approved by Harry on 2026-11-14) |
+| Date | 2026-10-24; 0.2 on 2026-11-13; 0.4 on 2026-11-14 |
 | Decided by | Harry (to accept); X13 builds it |
 | Related | D-08 X12, X13, X07, X08; D-02 FR-11, FR-33, FR-40, FR-44; D-03 §8, §9; D-05 §6.4, §6.11 (proposed); ADR-M29 (OpenHands adapter, §2.10 condensing), ADR-M31 §2.5 (pinned instructions), ADR-M34 §2.4 (`instructions_unpinned`), ADR-M38 (push and pull request), ADR-M40 §2.7 (the plan in the prompt), ADR-M41 (G7 producers), ADR-M69 and ADR-M89 (tools, `read_documents`), ADR-M80 ASI06 (memory and context poisoning), ADR-M88 (OpenCode adapter), ADR-M90 (context snapshot); QUESTIONS #94, #395, #571–#575, #711–#715 |
 
@@ -64,6 +64,16 @@ The platform pins what a person approved, as it pins the plan and the agent's in
 5. **Pull request**: the worker opens the memory pull request **after the code pull request is merged** at G7, so memory describes merged code. The text is codes only (`MEMORY INT-… run <attempt>`, like the code pull request on the public pilot). When the intent closes without a merge, no memory pull request is opened and the worker deletes the memory branch. When a later run of the same intent proposes memory again (after a request for changes at G7), only the last succeeded run's memory branch gets a pull request.
 6. **Never blocks**: the memory pull request is not part of any gate. G7 and G8 never wait for it; a failure to push or open it is a run event or an audit code, never a pause or an escalation.
 
+**As built (0.4, QUESTIONS #716).** X13 PR 3 is two pull requests:
+
+- **PR 3a, the runner** (steps 1–4):
+  - Step 1: the task message tells the agent of a run at L2 or higher, with `read_propose`, that it may add, change or remove notes in `.sdlc/memory/`, with the caps (`max_files`, `max_file_chars`) and the writing rules (`memoryProposalLines`, `@sdlc/agent-kit`). L1 runs and evaluation runs never get it.
+  - Step 2: after `computeProposal` staged the whole change in the runner's clone, the runner resets each path of the memory part in the index to `base_sha` (`git reset`), so the diff G5 checks, the review size (ADR-M95) and the dependency scan (ADR-M96) see the code part only. The secret scan (ADR-M93) reads the whole change: a secret in a note also holds the run at G5. A path qualifies when its base state is no file or a memory file and its new state is a memory file of valid UTF-8 within `max_file_chars`, or it was removed. New files are taken only when the resulting set stays within `max_files`; otherwise they all stay in the change (fail closed).
+  - The memory part is stored as the evidence kind `memory_diff` (D-05 §6.6, migration `0054-memory-diff-evidence`) at `s3://evidence/diffs/{tenant}/{intent}/{run}.memory.patch`, next to the run's `diff`. The run event `memory_proposed` holds its SHA-256 (`memory_sha256`) and the SHA-256 of its sorted paths (`paths_sha256`) besides the counts and the proposed set's hash (§2.8).
+  - Step 4: the runner pushes the memory branch in the same `publishRun` activity as the code, with the same token, right after the code branch is pushed and recorded. The commit is made the same way as the code commit (`apply --cached` on `base_sha` in a private index; same author and dates; message `sdlc: <INT-…> run <run_id> memory`), and its paths must hash to `paths_sha256`. The branch must be absent, at `base_sha` or at the commit (`branch_moved` otherwise; no force). A failure is the run event `memory_publish_failed` with the code of `publish_refused` or `publish_failed`; the push of the code keeps its outcome.
+  - A run that changed only memory has an empty code change: the push refuses it (`empty_diff`) as before, and its memory is not pushed.
+- **PR 3b, the worker** (steps 5–6 and §2.3 "A memory pull request"): a mutable table `memory_proposals` (one row per memory branch pushed: codes, IDs and hashes; each change of state is audited) and a worker loop, not the poller, because each step calls the Git host outside the poll's transaction. The loop opens the memory pull request after the code pull request's merge at G7 (the last succeeded run's branch only), deletes the other memory branches of the intent and those of an intent closed without a merge (a new Git host method `deleteBranch`, D-03 §7.1), and records a version, or `memory.approval_refused`, when the memory pull request is merged.
+
 ### 2.6. How a run reads memory (`read` and `read_propose`)
 
 1. **At G4** the worker lists `.sdlc/memory/` at the run's `base_sha` (`GitHostAdapter.listFolder`, 0.2), computes `set_sha256`, and looks it up in `project_memory_versions` **of the same tenant and project** (`forTenant`). The Run Contract (D-03 §8, **schema 5**, 0.2, QUESTIONS #712: schema 4's fields plus `memory`, issued only when `memory.mode` is not `off`; every other contract stays schema 3 or 4) gains `memory`: `{ version, set_sha256 }` when the set is an approved, not revoked version; otherwise `memory` is `null` with a reason (`none`, `unapproved`, `revoked`, `tree_truncated`, `off`). G4 never fails for memory.
@@ -86,11 +96,13 @@ The platform pins what a person approved, as it pins the plan and the agent's in
 | Where | Content |
 |---|---|
 | Run event `memory_read` (once per run with memory on, before its agent starts; 0.3: none for a contract without `memory`) | `version` and `set_sha256` only with `read`, `reason` (`read`, `off` (memory turned off since G4), `none`, `unapproved`, `revoked`, `tree_truncated`, `hash_mismatch`, `unreadable`), `files`, `chars`, `truncated` (`yes`, `no`) |
-| Run event `memory_proposed` (`read_propose`, after the split) | `files_added`, `files_changed`, `files_removed`, `set_sha256` of the proposed set, `kept_in_change` (memory paths left in the code change) |
-| Run event `memory_branch_pushed`, `memory_publish_failed` | The branch's commit SHA; a failure code |
+| Run event `memory_proposed` (`read_propose`, after the split) | `files_added`, `files_changed`, `files_removed`, `set_sha256` of the proposed set, `kept_in_change` (memory paths left in the code change); 0.4: `memory_sha256` (the evidence item `memory_diff`) and `paths_sha256` (its sorted paths), which the push checks |
+| Run event `memory_branch_pushed`, `memory_publish_failed` | The branch's commit SHA (0.4: `head_sha`, `parent_sha`, `memory_sha256`); a failure code |
+| `changes_checked` (0.4) | `memory_files`: the paths taken out as the memory part, only when there is one |
 | Audit | `memory.approved`, `memory.approval_refused`, `memory.revoked`, `memory.pr_opened` (pull request number) |
 | Context snapshot (ADR-M90, `schema_version` 2 only for a run with `memory_read`; others stay 1) | `memory`: `reason`, `version`, `set_sha256`, `files`, `truncated` (0.3: no `path_sha256`; `set_sha256` already names every path and blob) |
-| Evidence Pack | The `memory_read` and `memory_proposed` events of each run (`PACK_RUN_EVENTS`) and the memory pull request number as a reference |
+| Evidence Pack | The `memory_read`, `memory_proposed` and (0.4) `memory_branch_pushed` events of each run (`PACK_RUN_EVENTS`) and the memory pull request number as a reference |
+| Evidence (0.4) | `memory_diff`: the memory part of a run's change (client text, in the evidence store like the run's diff; purged with it after the retention period) |
 
 ### 2.9. Retention (FR-44)
 
@@ -141,4 +153,5 @@ The platform pins what a person approved, as it pins the plan and the agent's in
 |---|---|---|---|
 | 0.1 | 2026-10-24 | Claude (task X12) | First version, proposed (QUESTIONS #571–#575) |
 | 0.2 | 2026-11-13 | Claude (task X13 PR 1), accepted by Harry with the merge | Accepted (QUESTIONS #711); the contract schema 5 (QUESTIONS #712); which files are memory, the commit `adlc memory approve` records, `not_head`, `unchanged`, `no_git_identity`, the Git host methods `listFolder` and `listPathCommits` (QUESTIONS #715); the CLI is `adlc` (ADR-M100) |
+| 0.4 | 2026-11-14 | Claude (task X13 PR 3a), approved by Harry in the X13 PR 3 plan | §2.5 "As built": PR 3a (the split in the runner's index, the evidence kind `memory_diff`, the memory push in the same activity after the code) and PR 3b (the table `memory_proposals`, a worker loop instead of the poller, `GitHostAdapter.deleteBranch`); §2.8 the fields `memory_sha256`, `paths_sha256` and `changes_checked.memory_files` (QUESTIONS #716) |
 | 0.3 | 2026-11-14 | Claude (task X13 PR 2) | As built: the contract's `memory` is `{ reason, version, set_sha256 }` (`approved` or why not); `memory_read` before the agent starts, `off` when memory was turned off since G4; the runner reads at most `max_files` files of at most 32 KiB each; the snapshot's `memory` without `path_sha256` (QUESTIONS #712) |

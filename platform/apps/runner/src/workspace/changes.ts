@@ -16,11 +16,17 @@
 // 5. The size a person must review is measured (`review-size.ts`, H05, ADR-M95): the run event
 //    `diff_measured` holds counts only. A failed measurement is recorded, never thrown: G5 holds
 //    the run on it (QUESTIONS #603).
+// 6. X13 PR 3a (ADR-M74 §2.5): with `memory.mode` `read_propose` and a run at L2 or higher, the
+//    memory part is split out of the staged change first (`memory-split.ts`): stored apart as
+//    evidence `memory_diff` (`<intent>/<run>.memory.patch`) with the run event `memory_proposed`
+//    (counts and hashes); `changes_checked.memory_files` counts its paths. The secret scan reads
+//    the whole change, memory part included, so a secret in a note also holds the run at G5.
 // G5 (PR 2) decides from `changes_checked`, `secrets_scanned` and `diff_measured`; the runner
 // only records. Any other
 // failure throws: the caller fails the run (`agent_changes_unavailable`), so no run reaches G5
 // without its checked changes.
 import crypto from 'node:crypto';
+import path from 'node:path';
 
 import {
   isAgentInstructionPath,
@@ -28,6 +34,7 @@ import {
   readsAsInstructions,
   type EvidenceStore,
   type PolicyEngine,
+  type ProjectConfig,
   type RunContract,
 } from '@sdlc/contracts';
 import { parseTenantId, type PlatformDatabase, type RunEventPayload } from '@sdlc/core';
@@ -35,6 +42,8 @@ import { parseTenantId, type PlatformDatabase, type RunEventPayload } from '@sdl
 import type { DockerClient } from '../docker/client.js';
 import type { RunnerSettings } from '../settings.js';
 import { computeRunPatch } from './export.js';
+import { splitMemory, type MemorySplit } from './memory-split.js';
+import { diffIndex, type Proposal } from './proposal.js';
 import { measureReviewSize, type ReviewSize } from './review-size.js';
 import { scanDiffForSecrets, type SecretScan } from './secrets.js';
 import { scanDependencies, type DependencyScan } from './dependencies.js';
@@ -47,6 +56,11 @@ export interface ChangesDeps {
   readonly evidence: EvidenceStore;
   /** The scope check of the project's policy engine. */
   readonly policy: Pick<PolicyEngine, 'checkScope'>;
+  /**
+   * X13 PR 3a: the project's `memory` configuration at the end of the run. With `read_propose`,
+   * the memory part of an L2+ run's change is split out (ADR-M74 §2.5).
+   */
+  readonly memory?: ProjectConfig['memory'];
 }
 
 export interface CheckedChanges {
@@ -61,6 +75,8 @@ export interface CheckedChanges {
   readonly secrets: SecretScan;
   readonly reviewSize: ReviewSize;
   readonly dependencies: DependencyScan;
+  /** X13 PR 3a: the paths split out as the memory part (0 without a split). */
+  readonly memoryFiles: number;
 }
 
 /** Counts of the changed paths; the paths stay in memory. */
@@ -70,7 +86,7 @@ export function checkChangedPaths(
   changedFiles: readonly string[],
   /** O06: the project's folder ('' = the whole repository). */
   repoPath = '',
-): Omit<CheckedChanges, 'diffSha256' | 'secrets' | 'reviewSize' | 'dependencies'> {
+): Omit<CheckedChanges, 'diffSha256' | 'secrets' | 'reviewSize' | 'dependencies' | 'memoryFiles'> {
   const sorted = [...changedFiles].sort();
   const scope = policy.checkScope({ plannedFiles, changedFiles: sorted });
   return {
@@ -92,7 +108,9 @@ export async function storeChanges(
   contract: RunContract,
   cloneDir: string,
 ): Promise<CheckedChanges> {
-  const patch = await computeRunPatch(deps, contract, cloneDir);
+  const whole = await computeRunPatch(deps, contract, cloneDir);
+  const memory = await memoryPart(deps, contract, cloneDir, whole);
+  const patch = memory ? await codePart(deps, contract, cloneDir) : whole;
   const checked = checkChangedPaths(
     deps.policy,
     contract.planned_files,
@@ -112,12 +130,21 @@ export async function storeChanges(
     patch.patch,
     'text/x-diff',
   );
+  const storedMemory = memory
+    ? await deps.evidence.put(
+        contract.tenant_id,
+        `${contract.intent_id}/${contract.run_id}.memory.patch`,
+        memory.patch,
+        'text/x-diff',
+      )
+    : undefined;
   const secrets = await scanDiffForSecrets({
     settings: deps.settings.secretScan,
     cloneDir,
     baseSha: contract.base_sha,
     gitTimeoutMs: deps.settings.git.timeoutMs,
-    patch: patch.patch,
+    // The whole change: a secret in a memory note holds the run too.
+    patch: whole.patch,
   });
   const dependencies = await scanDependencies({
     cloneDir,
@@ -146,7 +173,27 @@ export async function storeChanges(
       instruction_files: checked.instructionFiles,
       paths_sha256: checked.pathsSha256,
       ...(checked.outsideFolder > 0 ? { outside_folder: checked.outsideFolder } : {}),
+      ...(memory ? { memory_files: memory.paths.length } : {}),
     });
+    if (memory && storedMemory) {
+      await tx.evidenceItems.record({
+        intentId: contract.intent_id,
+        runId: contract.run_id,
+        kind: 'memory_diff',
+        storageUri: storedMemory.uri,
+        sha256: storedMemory.sha256,
+        sizeBytes: storedMemory.sizeBytes,
+      });
+      await tx.runEvents.append(contract.run_id, 'memory_proposed', {
+        files_added: memory.added,
+        files_changed: memory.changed,
+        files_removed: memory.removed,
+        kept_in_change: memory.kept,
+        set_sha256: memory.setSha256,
+        memory_sha256: storedMemory.sha256,
+        paths_sha256: memoryPathsSha256(memory.paths),
+      });
+    }
     await tx.runEvents.append(contract.run_id, 'secrets_scanned', secretsScannedPayload(secrets));
     await tx.runEvents.append(contract.run_id, 'diff_measured', diffMeasuredPayload(reviewSize));
     await tx.runEvents.append(
@@ -155,7 +202,47 @@ export async function storeChanges(
       dependenciesScannedPayload(dependencies),
     );
   });
-  return { ...checked, diffSha256: stored.sha256, secrets, reviewSize, dependencies };
+  return {
+    ...checked,
+    diffSha256: stored.sha256,
+    secrets,
+    reviewSize,
+    dependencies,
+    memoryFiles: memory?.paths.length ?? 0,
+  };
+}
+
+/** SHA-256 of the RFC 8785 JSON of the sorted memory paths (the push checks it again). */
+export function memoryPathsSha256(paths: readonly string[]): string {
+  const sorted = [...paths].sort();
+  return crypto.createHash('sha256').update(JSON.stringify(sorted), 'utf8').digest('hex');
+}
+
+/** Splits the memory part out of the staged change when the project lets runs propose memory. */
+async function memoryPart(
+  deps: ChangesDeps,
+  contract: RunContract,
+  cloneDir: string,
+  whole: Proposal,
+): Promise<MemorySplit | null> {
+  // L1 runs never get here (they store a proposal); evaluation runs never use this step.
+  if (deps.memory?.mode !== 'read_propose' || contract.autonomy_level === 'L1') return null;
+  return splitMemory(
+    path.join(cloneDir, 'repo'),
+    path.join(cloneDir, 'home'),
+    contract.base_sha,
+    whole.changedFiles,
+    deps.memory,
+    { timeoutMs: deps.settings.git.timeoutMs, maxPatchBytes: deps.settings.workspaceMaxBytes },
+  );
+}
+
+/** The diff of the index once the memory part is out: the code part. */
+function codePart(deps: ChangesDeps, contract: RunContract, cloneDir: string): Promise<Proposal> {
+  return diffIndex(path.join(cloneDir, 'repo'), path.join(cloneDir, 'home'), contract.base_sha, {
+    timeoutMs: deps.settings.git.timeoutMs,
+    maxPatchBytes: deps.settings.workspaceMaxBytes,
+  });
 }
 
 /** The payload of the run event `secrets_scanned`: codes and counts only (ADR-M93 §2.3). */

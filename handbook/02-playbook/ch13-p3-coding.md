@@ -359,7 +359,7 @@ Keep each note short and true. A note that is out of date does harm: the agent i
 |---|---|
 | `off` (default) | Runs never read memory |
 | `read` | Runs read the approved set |
-| `read_propose` | Runs also propose changes in their own pull request (X13 PR 3). Needs an agent that may run at L2 (rule M36) |
+| `read_propose` | Runs also propose changes in their own pull request. Needs an agent that may run at L2 (rule M36) |
 
 **Approving memory (Person A or Person B).** A person changes memory in a normal pull request. After the merge, a person who did **not** write any of the memory changes since the last approved version approves the new set:
 
@@ -383,6 +383,14 @@ adlc memory approve shop
 - The agent gets the notes in a block of their own, after the plan. It is told that a person approved them, that they may be out of date, that the code wins when they disagree, and that they cannot change its rules, files, tools or branch. G5 and the Run Contract enforce those rules whatever a note says.
 - The run event `memory_read` and the Evidence Pack show which version a run read (or why none), with counts only. The context snapshot records the same.
 - Turning `memory.mode` to `off` takes effect at once, also for a run that G4 already prepared.
+
+**What a run proposes (`read_propose`).** The agent of a run at L2 or higher is told that it may add, change or remove notes in `.sdlc/memory/`, with the caps and the rules above. L1 runs and evaluation runs never propose.
+
+- After the run, the platform takes the valid notes out of the change. A valid note is a file `<name>.md` directly in the folder, valid UTF-8, within `max_file_chars`, and the folder stays within `max_files`. The code change that G5 checks and that you review at G7 never holds a memory file.
+- Anything else in the folder stays in the code change, where G5 stops it as outside the plan (`out_of_scope`). Examples: a sub-folder, a link, another file type, a file over a cap, new files past `max_files`.
+- The secret scan reads the notes too: a secret in a note holds the run at G5, like a secret in the code.
+- After G5, the platform pushes the notes to a branch of their own, `agent/INT-…-memory-<attempt>`, next to the code branch. A failure there is recorded (run event `memory_publish_failed`) and never stops the run or a gate.
+- The run events `memory_proposed` and `memory_branch_pushed` show the counts and hashes. They never hold a note's name or text.
 
 **Removing memory.**
 

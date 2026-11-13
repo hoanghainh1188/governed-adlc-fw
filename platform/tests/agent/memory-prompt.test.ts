@@ -4,7 +4,13 @@
 // is refused for a contract without an approved set; neither adapter loads the folder by itself.
 import { promptBody, globalConfig } from '@sdlc/adapter-agent-opencode';
 import { taskMessage } from '@sdlc/adapter-agent-openhands';
-import { buildTaskMessage, checkTask, MAX_MEMORY_TEXT, memoryBlock } from '@sdlc/agent-kit';
+import {
+  buildTaskMessage,
+  checkTask,
+  MAX_MEMORY_TEXT,
+  memoryBlock,
+  memoryProposalLines,
+} from '@sdlc/agent-kit';
 import {
   AgentError,
   isAgentInstructionPath,
@@ -106,6 +112,39 @@ describe('checkTask', () => {
     expect(bad({ ...MEMORY, files: 0 })).toThrow(AgentError);
     expect(bad({ ...MEMORY, files: 51 })).toThrow(AgentError);
     expect(bad({ ...MEMORY, text: 'x'.repeat(MAX_MEMORY_TEXT) })).not.toThrow();
+  });
+});
+
+describe('X13 PR 3a: the agent may propose memory (read_propose, L2+)', () => {
+  const PROPOSE: AgentTask = { ...TASK, memoryProposal: { maxFiles: 20, maxFileChars: 4000 } };
+
+  it('the rules for notes come after the file list, before the run rules', () => {
+    const message = buildTaskMessage(APPROVED, PROPOSE, '/workspace', { finishRule: '- finish' });
+    const at = message.indexOf('Project memory notes:');
+    expect(at).toBeGreaterThan(message.indexOf('Files and path patterns you may change'));
+    expect(message.indexOf('Rules:\n- Stay on the branch')).toBeGreaterThan(at);
+    const lines = memoryProposalLines({ maxFiles: 20, maxFileChars: 4000 }).join('\n');
+    expect(lines).toContain(`${MEMORY_DIR}/`);
+    expect(lines).toContain('at most 20 files');
+    expect(lines).toContain('4000 characters per file');
+    expect(lines).toContain('Never write secrets');
+    expect(lines).toContain('separate pull request');
+  });
+
+  it('a task without it has no such rules (memory off or read)', () => {
+    const message = buildTaskMessage(APPROVED, TASK, '/workspace', { finishRule: '- finish' });
+    expect(message).not.toContain('Project memory notes:');
+  });
+
+  it('checkTask refuses it for an L1 contract or out of the configuration ranges', () => {
+    expect(() => checkTask(APPROVED, PROPOSE)).not.toThrow();
+    expect(() => checkTask({ ...APPROVED, autonomy_level: 'L1' }, PROPOSE)).toThrow(AgentError);
+    const bad = (memoryProposal: AgentTask['memoryProposal']) => () =>
+      checkTask(APPROVED, { ...TASK, memoryProposal });
+    expect(bad({ maxFiles: 0, maxFileChars: 4000 })).toThrow(AgentError);
+    expect(bad({ maxFiles: 51, maxFileChars: 4000 })).toThrow(AgentError);
+    expect(bad({ maxFiles: 20, maxFileChars: 499 })).toThrow(AgentError);
+    expect(bad({ maxFiles: 20, maxFileChars: 8001 })).toThrow(AgentError);
   });
 });
 

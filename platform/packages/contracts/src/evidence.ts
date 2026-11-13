@@ -28,6 +28,8 @@ export const EVIDENCE_KINDS = [
   'knowledge_read',
   /** X07 (ADR-M90 §2.2): what the agent of one run read, hashes and counts only. */
   'context_snapshot',
+  /** X13 PR 3a (ADR-M74 §2.5): the memory part of a run's change, pushed to its memory branch. */
+  'memory_diff',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 

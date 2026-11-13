@@ -462,7 +462,19 @@ export async function driveAgent(
     const loaded = await loadAgentTask(scope, contract, feedback, deps.planFile);
     // X13 PR 2 (ADR-M74 §2.6): approved memory notes, or none; never fails the run.
     const memory = await loadMemory(scope, contract, config.memory, deps.memoryFiles);
-    const task = memory === undefined ? loaded : { ...loaded, memory };
+    const task = {
+      ...loaded,
+      ...(memory === undefined ? {} : { memory }),
+      // X13 PR 3a (ADR-M74 §2.5): L1 runs never propose; evaluation runs never get here.
+      ...(config.memory.mode === 'read_propose' && contract.autonomy_level !== 'L1'
+        ? {
+            memoryProposal: {
+              maxFiles: config.memory.max_files,
+              maxFileChars: config.memory.max_file_chars,
+            },
+          }
+        : {}),
+    };
     const endpoint = await attachRunner(
       deps.docker,
       deps.settings,

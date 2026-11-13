@@ -155,6 +155,18 @@ export interface AgentTask {
    * memory only: never in Temporal, logs, run events or tables.
    */
   readonly memory?: MemoryTextBlock;
+  /**
+   * X13 PR 3a (ADR-M74 §2.5 step 1): the project's `memory.mode` is `read_propose` and the run is
+   * at L2 or higher, so the agent may propose memory notes; the caps of the project configuration.
+   * Codes and numbers only.
+   */
+  readonly memoryProposal?: MemoryProposalLimits;
+}
+
+/** The caps an agent's memory proposal must keep (`memory.max_files`, `memory.max_file_chars`). */
+export interface MemoryProposalLimits {
+  readonly maxFiles: number;
+  readonly maxFileChars: number;
 }
 
 /** The memory notes of a run, rendered and capped by the runner. */

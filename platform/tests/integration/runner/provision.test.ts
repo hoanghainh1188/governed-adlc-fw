@@ -425,6 +425,76 @@ describe.skipIf(!liveEnabled || !process.env.SDLC_TEST_DATABASE_URL)(
       }
     }, 300_000);
 
+    it('X13 PR 3a: with read_propose, the memory part leaves the diff and is stored apart', async () => {
+      const { tenant, scope, envelope, wrapped } = await prepareRun('memory');
+      const result = await provisionRun(deps, { envelope, wrappedGitToken: wrapped });
+      if (!result.ok) throw new Error(`provisioning failed: ${result.reason}`);
+      const runId = envelope.contract.run_id;
+      const marker = 'canary-memory-3a91';
+      try {
+        // A note to propose, a note in a sub-folder (never memory) and a code change.
+        docker(
+          'exec',
+          '-u',
+          '10001',
+          result.sandbox.containerId,
+          'sh',
+          '-c',
+          'echo changed >> /workspace/README.md && mkdir -p /workspace/.sdlc/memory/sub && ' +
+            `echo "Run the tests. ${marker}" > /workspace/.sdlc/memory/build.md && ` +
+            'echo deep > /workspace/.sdlc/memory/sub/deep.md',
+        );
+        const puts: { path: string; content: Buffer }[] = [];
+        const evidence: EvidenceStore = {
+          put: (tenantId, p, content): Promise<StoredEvidence> => {
+            puts.push({ path: p, content });
+            return Promise.resolve({
+              uri: `s3://evidence/diffs/${tenantId}/${p}`,
+              sha256: crypto.createHash('sha256').update(content).digest('hex'),
+              sizeBytes: content.length,
+            });
+          },
+          get: () => Promise.reject(new Error('not used')),
+        };
+        const loaded = loadProjectConfig('memory:\n  mode: read_propose\n');
+        if (!loaded.ok) throw new Error('configuration refused');
+        const policy = createSimplePolicyEngine({ config: loaded.config });
+        const checked = await storeChanges(
+          { ...deps, evidence, policy, memory: loaded.config.memory },
+          envelope.contract,
+          result.cloneDir,
+        );
+        // README.md, `.write-test` and the sub-folder note stay; build.md is the memory part.
+        expect(checked).toMatchObject({ changedFiles: 3, memoryFiles: 1 });
+        expect(puts.map((p) => p.path)).toEqual([
+          `${envelope.contract.intent_id}/${runId}.patch`,
+          `${envelope.contract.intent_id}/${runId}.memory.patch`,
+        ]);
+        expect(puts[0]!.content.toString()).not.toContain('.sdlc/memory/build.md');
+        expect(puts[0]!.content.toString()).toContain('.sdlc/memory/sub/deep.md');
+        expect(puts[1]!.content.toString()).toContain(marker);
+        const items = await scope.evidenceItems.listForIntent(envelope.contract.intent_id);
+        expect(items.map((i) => i.kind).sort()).toEqual(['diff', 'memory_diff']);
+        const events = await scope.runEvents.list(runId);
+        expect(events.find((e) => e.event_type === 'changes_checked')?.payload).toMatchObject({
+          changed_files: 3,
+          memory_files: 1,
+        });
+        expect(events.find((e) => e.event_type === 'memory_proposed')?.payload).toMatchObject({
+          files_added: 1,
+          files_changed: 0,
+          files_removed: 0,
+          kept_in_change: 1,
+          memory_sha256: crypto.createHash('sha256').update(puts[1]!.content).digest('hex'),
+        });
+        // Never stored: the note's text, its name or a path.
+        expect(JSON.stringify(events)).not.toMatch(/canary|build\.md|\.sdlc/);
+      } finally {
+        await releaseSandbox(deps, tenant.id, runId, 'finished');
+        fs.rmSync(result.cloneDir, { recursive: true, force: true });
+      }
+    }, 300_000);
+
     it('C11 AC2: the kill switch stops a running run; sandbox, network, volume, key and tokens gone in under 5 minutes', async () => {
       const { tenant, scope, envelope, wrapped } = await prepareRun('kill');
       const runId = envelope.contract.run_id;

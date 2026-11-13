@@ -64,6 +64,9 @@ describe('run event payloads', () => {
       'plan_read',
       'plan_unavailable',
       'memory_read',
+      'memory_proposed',
+      'memory_branch_pushed',
+      'memory_publish_failed',
     ]);
   });
 
@@ -185,6 +188,35 @@ describe('run event payloads', () => {
     expect(
       refused('memory_read', { reason: 'Run the API tests', files: 1, chars: 1, truncated: 'no' }),
     ).toThrow(DbError);
+  });
+
+  it('X13 PR 3a: memory_proposed, memory_branch_pushed and changes_checked.memory_files: counts and hashes only', () => {
+    const proposed = {
+      files_added: 1,
+      files_changed: 2,
+      files_removed: 0,
+      kept_in_change: 1,
+      set_sha256: 'a'.repeat(64),
+      memory_sha256: 'b'.repeat(64),
+      paths_sha256: 'c'.repeat(64),
+    };
+    expect(checkRunEvent('memory_proposed', proposed)).toEqual(proposed);
+    expect(refused('memory_proposed', { ...proposed, path: '.sdlc/memory/a.md' })).toThrow(DbError);
+    expect(refused('memory_proposed', { ...proposed, set_sha256: 'not a hash' })).toThrow(DbError);
+    const pushed = { head_sha: 'd'.repeat(40), parent_sha: 'e'.repeat(40), memory_sha256: SHA };
+    expect(checkRunEvent('memory_branch_pushed', pushed)).toEqual(pushed);
+    expect(refused('memory_branch_pushed', { ...pushed, branch: 'agent/INT-1' })).toThrow(DbError);
+    expect(checkRunEvent('memory_publish_failed', { reason: 'branch_moved' })).toEqual({
+      reason: 'branch_moved',
+    });
+    const checked = {
+      changed_files: 2,
+      out_of_scope: 0,
+      instruction_files: 0,
+      paths_sha256: SHA,
+      memory_files: 3,
+    };
+    expect(checkRunEvent('changes_checked', checked)).toEqual(checked);
   });
 
   it('C08 PR 2: ci_checked holds codes, counts and a hash, never a check name', () => {

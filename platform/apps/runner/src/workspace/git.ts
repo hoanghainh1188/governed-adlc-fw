@@ -56,6 +56,8 @@ const REPO = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}\/[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$
 const SHA = /^[0-9a-f]{40}$/;
 /** A run's branch, or `evaluation`: the local branch of an evaluation run's clone (task L04). */
 const BRANCH = /^(?:agent\/INT-[0-9]{4}-[0-9]{4,9}|evaluation)$/;
+/** X13 PR 3a (ADR-M74 §2.5 step 4): the memory branch of one run, pushed only. */
+export const MEMORY_BRANCH = /^agent\/INT-[0-9]{4}-[0-9]{4,9}-memory-[1-9][0-9]{0,3}$/;
 
 /** Environment of every git process: nothing inherited but PATH. */
 function baseEnv(home: string): NodeJS.ProcessEnv {
@@ -112,7 +114,8 @@ function git(args: string[], env: NodeJS.ProcessEnv, timeoutMs: number): Promise
 
 /** Checks the inputs of a push: repository, branch (`agent/INT-…`) and commit. */
 function checkPushInput(repo: string, branch: string, commit?: string): void {
-  if (!REPO.test(repo) || !BRANCH.test(branch) || (commit !== undefined && !SHA.test(commit))) {
+  const named = BRANCH.test(branch) || MEMORY_BRANCH.test(branch);
+  if (!REPO.test(repo) || !named || (commit !== undefined && !SHA.test(commit))) {
     throw new PushError('push_rejected');
   }
 }
