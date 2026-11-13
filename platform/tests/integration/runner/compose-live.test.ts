@@ -252,11 +252,12 @@ describe.skipIf(!enabled)(
           '-e',
           `const h=require('http');const s=process.env.SDLC_RUNNER_DOCKER_SOCKET;
          const q=(m,p)=>new Promise(r=>h.request({socketPath:s,method:m,path:p},x=>{x.resume();r(x.statusCode)}).end());
-         (async()=>console.log([await q('GET','/v1.44/_ping'),await q('GET','/v1.44/info'),await q('POST','/v1.44/containers/x/exec')].join(' ')))()`,
+         (async()=>console.log([await q('GET','/v1.44/_ping'),await q('GET','/v1.44/info'),await q('GET','/v1.44/version'),await q('POST','/v1.44/containers/x/exec')].join(' ')))()`,
         ),
         'probe',
       ).stdout.trim();
-      expect(probe).toBe('200 403 403');
+      // H06 (ADR-M25 §2.12): GET /info is on the list (the runner reads the Engine's runtimes).
+      expect(probe).toBe('200 200 403 403');
     });
 
     it('listens on no port, so joining a run network gives the sandbox nothing to reach (C05)', () => {
