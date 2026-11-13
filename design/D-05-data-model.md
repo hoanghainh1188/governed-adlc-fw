@@ -904,6 +904,41 @@ Memory text lives only in the project's repository (`.sdlc/memory/*.md`); these 
 - Both tables are append-only (triggers and grants, like `agent_approvals`) and kept like the audit log; archiving a project keeps them. No text, no path in clear.
 - Audit actions: `memory.approved`, `memory.approval_refused` (cause `bot`, `producer`, `too_many_commits`), `memory.revoked`, `memory.pr_opened` (pull request number).
 
+### 6.12. Lessons (version 1.73, **proposed**, task X08, ADR-M109 §2.2–§2.5; built by X08b)
+
+The words of a lesson live only in a GitHub comment on the intent's issue or pull request; these tables hold codes, IDs and the comment link.
+
+**`intent_lessons`** (AO)
+
+| Column | Type | Notes |
+|---|---|---|
+| id | uuid PK | |
+| tenant_id, project_id, intent_id | uuid FK | Composite foreign key to `intents` |
+| category | text | A code: `gate`, `rework`, `agent_assumption`, `instructions`, `process`, `tooling`, `other` (CHECK) |
+| target | text | A code: `agents_md`, `memory`, `handbook`, `config`, `none` (CHECK) |
+| comment_url | text | The `https://` URL of the comment that holds the text (format CHECK, like `gate_decisions.reason_ref`) |
+| comment_id | bigint | The Git host's numeric comment ID; unique with `(tenant_id, project_id)`, so a comment records one lesson |
+| source | text | `github_comment`, `api`, `web` |
+| recorded_by | uuid FK users | Person A or Person B of the project, or a tenant admin; never a bot |
+| created_at | timestamptz | |
+
+**`intent_lesson_outcomes`** (AO)
+
+| Column | Type | Notes |
+|---|---|---|
+| tenant_id, lesson_id | uuid FK | FK to `intent_lessons` |
+| outcome | text | `applied` or `dropped` |
+| reason | text null | For `dropped`, a code: `duplicate`, `not_valid`, `record_only`, `other` |
+| link_url | text null | For `applied`: the `https://` URL of the merged pull request, the intent or the issue that applies it |
+| follow_up_intent_id | uuid FK null | The intent created with `--from-lesson` |
+| decided_by | uuid FK users | Person A, Person B or a tenant admin |
+| created_at | timestamptz | |
+
+- A lesson's state is its latest outcome; no outcome means `open`. Both tables are append-only (triggers and grants, like `agent_approvals`), listed in `platform/tests/db/append-only.test.ts`, and kept like the audit log; archiving a project keeps them. No text column.
+- Index (`tenant_id`, `project_id`, `created_at`) for the monthly list; `intents` gains no column (the `has_lessons` filter is an `EXISTS`).
+- Audit actions: `lesson.recorded`, `lesson.applied`, `lesson.dropped`, `lesson.refused` (cause `bot`, `user_not_linked`, `not_allowed`, `window_closed`, `syntax`).
+- Version 1.73 also proposes, for X08a, the generated column `intents.search_tsv` (`tsvector`, `to_tsvector('simple', title || ' ' || description)`, stored) and its GIN index scoped by tenant (ADR-M109 §2.1). It is derived from the two editable columns, so clearing them for a client data deletion (§10.1) clears it.
+
 ## 7. Audit log: hash chain
 
 [Doc] An earlier internal draft proposes an append-only table + hash chain, with an extra copy on locked object storage.
@@ -1117,6 +1152,7 @@ CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log
 | 1.63 | 2026-10-24 | Claude (task H04), approved by Harry on 2026-10-24 in the H04 plan (QUESTIONS #586–#590) | §5: G5 reason codes `secret_in_diff`, `secret_scan_failed`; §6.4: run event `secrets_scanned` and the value kind `codes`; migration `0042-diff-scan`; ADR-M93 |
 | 1.64 | 2026-10-26 | Claude (task H05), approved by Harry on 2026-10-26 in the H05 plan (QUESTIONS #456, #601–#605) | §5: five gate reason codes (`review_too_large`, `review_size_unknown`, `generated_change`, `mechanical_change`, `cannot_split`); §6.4: run event `diff_measured`, audit action `gate.g5_split_requested`; migration `0043-review-limits`; ADR-M95 |
 | 1.69 | 2026-11-12 | Claude Code (task U09, PR 1), approved by Harry in the U09 plan | §6.1 `passkey_challenges.action`: the admin step-up codes of U09 (one per area; no intent, escalation, gate or input hash); no migration (ADR-M73 1.7 §2.4b, QUESTIONS #685) |
+| 1.73 | 2026-11-13 | Claude Code (task X08), **proposed** with ADR-M109 | §6.12 (new): `intent_lessons` and `intent_lesson_outcomes`, codes and links only, append-only; the generated column `intents.search_tsv` for the intent search (QUESTIONS #706–#710) |
 | 1.72 | 2026-11-13 | Claude Code (task X06, PR 2), approved by Harry in the X06 plan (QUESTIONS #700) | §6.1 `tools.permissions`: the catalogue adds `read_code`, never with `read_documents` (migration `0052-read-code-permission`); the run event `knowledge_read` and the evidence kind `knowledge_read` also hold what a `read_code` tool returned (file IDs and content hashes) (ADR-M108 §2.8) |
 | 1.71 | 2026-11-12 | Claude Code (task X06, PR 1), approved by Harry in the X06 plan (QUESTIONS #696–#700) | §6.1 `knowledge_indexes.kind` (`docs` or `code`; migration `0051-code-index`); §10.1: retention and client data deletion of the code index; audit `knowledge.purged` gets `kind` (ADR-M108) |
 | 1.70 | 2026-11-12 | Claude Code (task V14), approved by Harry in the V14 plan (QUESTIONS #691–#693) | §6.2 `intents.human_effort_hours`: a person's estimate of the human effort in hours, null by default, 0.25 to 10000; changes only while the intent is open and never back to null (trigger `SDA29`); audit `intent.effort_estimated` (migration `0050-intent-effort-estimate`, ADR-M79 §2.6) |
