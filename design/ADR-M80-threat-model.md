@@ -129,7 +129,7 @@ Test names: **U-n** = unit test without Docker (`pnpm test`, PR 2, `platform/tes
 
 *Proof:* Exists: `platform/tests/contracts/agent-instructions.test.ts`, `platform/tests/workflow/gate-g5.test.ts`, `platform/tests/integration/db/gate-g4.test.ts` and `gate-g5.test.ts`. PR 2: A-9 the stub model edits `AGENTS.md`, adds a second spelling (`agents.md`), writes `.openhands/skills/x.md`, and edits `.sdlc/` plan and spec files; asserts the changes are in the diff outside the sandbox, G5 stops the run with `instructions_unpinned` (or out of scope for `.sdlc/`), nothing is pushed to the default branch and no later run sees the file.
 
-*Agent memory (version 0.7, **proposed** by X12, ADR-M74):* when a project turns memory on, approved notes in `.sdlc/memory/*.md` reach later runs. This is a second path to later runs, and the control for it is: a memory set is read only when its hash equals a version that a person who is not a producer approved (`project_memory_versions`); a revoked version is never read; the runner reads it at `base_sha` from its own clone, caps it and puts it in a nonce block framed as data; memory changes leave the run only in their own branch and pull request, after the code merge, and never in the code change. Proof (X13): the tests of ADR-M74 §5, among them an attack test like A-9 with a poisoned memory file, and the canary scan for memory text.
+*Agent memory (version 0.7, proposed by X12, ADR-M74; approved with X13 PR 1, QUESTIONS #711; the read path is built in X13 PR 2):* when a project turns memory on, approved notes in `.sdlc/memory/*.md` reach later runs. This is a second path to later runs, and the control for it is: a memory set is read only when its hash equals a version that a person who is not a producer approved (`project_memory_versions`); a revoked version is never read; the runner reads it at `base_sha` from its own clone, caps it and puts it in a nonce block framed as data; memory changes leave the run only in their own branch and pull request, after the code merge, and never in the code change. Proof (X13): the tests of ADR-M74 §5, among them an attack test like A-9 with a poisoned memory file, and the canary scan for memory text.
 
 *Gaps:* G-8 (instruction files under paths the base commit's ignore rules hide are not seen, ADR-M34 §2.3; they cannot reach Git, so they cannot persist: Low). G-5 (cache).
 
@@ -268,4 +268,5 @@ Optional, once, outside CI: one run with `gpt-oss:20b` (Ollama on the owner's ma
 | 0.10 | 2026-11-10 | Claude (task H07) | §5 gap G-7 closed: Docker AuthZ plugin (ADR-M105) |
 | 0.11 | 2026-11-12 | Claude Code (task X06) | §5 gap G-12: the worker parses client code for the code index (ADR-M108) |
 | 0.12 | 2026-11-13 | Claude (task H06) | §5 gap G-6: optional gVisor or Kata runtime (ADR-M25 §2.12) |
+| 0.13 | 2026-11-13 | Claude (task X13 PR 1) | ASI06: the agent memory text of 0.7 approved with ADR-M74 0.2 (QUESTIONS #711) |
 

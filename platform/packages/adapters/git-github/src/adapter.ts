@@ -7,12 +7,14 @@ import type {
   CheckSummary,
   CommitAuthors,
   EventCursor,
+  FolderEntry,
   GitActor,
   GitEvent,
   GitHostAdapter,
   IssueCommentText,
   MergedChange,
   NewPullRequest,
+  PathCommits,
   PullRequestInfo,
   RedactedSecret,
   ReviewDecision,
@@ -51,6 +53,7 @@ import { resolveOptions, type GitHubAdapterOptions, type ResolvedOptions } from 
 import { listPages } from './pages.js';
 import { Poller } from './polling.js';
 import { SecretString } from './secret-string.js';
+import { listFolderEntries, listPathCommits } from './folder.js';
 import { listTreePaths } from './tree.js';
 import { verifyWebhookRequest } from './webhook.js';
 
@@ -464,6 +467,21 @@ export class GitHubAdapter implements GitHostAdapter {
       ref,
       commitSha,
     );
+  }
+
+  /** Entries directly in a folder of a commit (task X13, ADR-M74 0.2); [] without the folder. */
+  listFolder(ref: RepoRef, commitSha: string, folder: string): Promise<FolderEntry[]> {
+    return listFolderEntries({ http: this.#http, auth: this.#auth }, ref, commitSha, folder);
+  }
+
+  /** The commits that changed a path, newest first (task X13, ADR-M74 0.2). */
+  listPathCommits(
+    ref: RepoRef,
+    head: string,
+    path: string,
+    options: { readonly stopAt?: string | undefined; readonly max: number },
+  ): Promise<PathCommits> {
+    return listPathCommits({ http: this.#http, auth: this.#auth }, ref, head, path, options);
   }
 
   /**

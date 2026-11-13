@@ -7,6 +7,7 @@
 // text; it lives in memory only. Append-only tables store IDs and URLs from these types, never
 // text (CLAUDE.md "Current constraints", ADR-M20).
 import type { EventSource, Severity } from './codes.js';
+import type { FolderEntry } from './memory.js';
 import type { RedactedSecret } from './secrets.js';
 
 /** A repository on the Git host: `owner/name`. */
@@ -198,6 +199,19 @@ export interface CommitAuthors {
   readonly withoutAccount: number;
 }
 
+/** One commit of `listPathCommits`: its SHA and its author's account (null without one). */
+export interface PathCommit {
+  readonly sha: string;
+  readonly author: GitActor | null;
+}
+
+/** The result of `listPathCommits`. */
+export interface PathCommits {
+  readonly commits: readonly PathCommit[];
+  /** False when the list was cut at `max` before it ended or reached `stopAt`. */
+  readonly complete: boolean;
+}
+
 export const GIT_TOKEN_PERMISSIONS = [
   'contents',
   'pull_requests',
@@ -329,6 +343,25 @@ export interface GitHostAdapter {
    * pin). Never a partial list: a tree the host lists only in part fails with `tree_truncated`.
    */
   listPaths(ref: RepoRef, sha: string): Promise<string[]>;
+  /**
+   * The entries directly in one folder of a commit's tree, sorted by name, with their kind and Git
+   * object ID (task X13, ADR-M74 0.2: the memory set). `folder` is a path of plain segments
+   * without a leading or trailing `/`. A missing folder, or a path that is not a folder, gives
+   * an empty list. Never a partial list (`tree_truncated`).
+   */
+  listFolder(ref: RepoRef, sha: string, folder: string): Promise<FolderEntry[]>;
+  /**
+   * The commits that changed `path` (a file or a folder) reachable from `head`, newest first
+   * (task X13, ADR-M74 0.2: the producers of a memory change). Stops before `stopAt` when it is
+   * one of them. `complete` is false when more than `max` commits (1–100) would be listed: the
+   * caller fails closed.
+   */
+  listPathCommits(
+    ref: RepoRef,
+    head: string,
+    path: string,
+    options: { readonly stopAt?: string | undefined; readonly max: number },
+  ): Promise<PathCommits>;
   issueShortLivedToken(ref: RepoRef, scope: TokenScope): Promise<ShortLivedToken>;
   /**
    * Revokes a token of `issueShortLivedToken` at once (task C11, ADR-M42 §2.4). Needs only the

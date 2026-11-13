@@ -79,7 +79,7 @@ async function main(): Promise<void> {
     settings,
     log,
     nestLogger: new NestJsonLogger(log),
-    ...(gitHost ? { gitHost, evalTaskGitHost: gitHost } : {}),
+    ...(gitHost ? { gitHost, evalTaskGitHost: gitHost, memoryGitHost: gitHost } : {}),
     ...(evidence ? { evidence } : {}),
     ...(dashboard ? { dashboard } : {}),
     ...(webSignIn ? { webSignIn } : {}),

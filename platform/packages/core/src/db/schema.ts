@@ -21,6 +21,8 @@ import type {
   GateReasonCode,
   IntentStatus,
   KnowledgeIndexKind,
+  MemoryRevocationReason,
+  MemorySource,
   ProjectRole,
   ProviderType,
   ResponseLevel,
@@ -1076,6 +1078,33 @@ export interface KnowledgeIndexUsesTable {
   created_at: CreatedAt;
 }
 
+/** Approved agent memory sets (task X13, migration 0053, ADR-M74 §2.3). Append-only. */
+export interface ProjectMemoryVersionsTable {
+  id: GeneratedId;
+  tenant_id: Immutable<string>;
+  project_id: Immutable<string>;
+  version: Immutable<number>;
+  set_sha256: Immutable<string>;
+  commit_sha: Immutable<string>;
+  source: Immutable<MemorySource>;
+  approved_by: Immutable<string>;
+  pr_number: ColumnType<number | null, number | null | undefined, never>;
+  intent_id: ColumnType<string | null, string | null | undefined, never>;
+  run_id: ColumnType<string | null, string | null | undefined, never>;
+  created_at: CreatedAt;
+}
+
+/** Revoked agent memory versions (task X13, migration 0053, ADR-M74 §2.7). Append-only. */
+export interface ProjectMemoryRevocationsTable {
+  id: GeneratedId;
+  tenant_id: Immutable<string>;
+  project_id: Immutable<string>;
+  version: Immutable<number>;
+  revoked_by: Immutable<string>;
+  reason: Immutable<MemoryRevocationReason>;
+  created_at: CreatedAt;
+}
+
 /** Outbox of the gate status comments (FR-22, B07, ADR-M30): codes and IDs only. */
 export interface IntentNoticesTable {
   /** bigint identity; `pg` returns int8 as a string. */
@@ -1143,6 +1172,8 @@ export interface Database {
   tool_approvals: ToolApprovalsTable;
   knowledge_indexes: KnowledgeIndexesTable;
   knowledge_index_uses: KnowledgeIndexUsesTable;
+  project_memory_versions: ProjectMemoryVersionsTable;
+  project_memory_revocations: ProjectMemoryRevocationsTable;
   web_sessions: WebSessionsTable;
   webauthn_credentials: WebauthnCredentialsTable;
   passkey_challenges: PasskeyChallengesTable;
@@ -1833,6 +1864,29 @@ export const TABLE_COLUMNS = {
     'intent_id',
     'created_at',
   ]),
+  project_memory_versions: columns<ProjectMemoryVersionsTable>()([
+    'id',
+    'tenant_id',
+    'project_id',
+    'version',
+    'set_sha256',
+    'commit_sha',
+    'source',
+    'approved_by',
+    'pr_number',
+    'intent_id',
+    'run_id',
+    'created_at',
+  ]),
+  project_memory_revocations: columns<ProjectMemoryRevocationsTable>()([
+    'id',
+    'tenant_id',
+    'project_id',
+    'version',
+    'revoked_by',
+    'reason',
+    'created_at',
+  ]),
   tool_approvals: columns<ToolApprovalsTable>()([
     'id',
     'tenant_id',
@@ -1940,6 +1994,8 @@ export const TENANT_COLUMN = {
   tool_approvals: 'tenant_id',
   knowledge_indexes: 'tenant_id',
   knowledge_index_uses: 'tenant_id',
+  project_memory_versions: 'tenant_id',
+  project_memory_revocations: 'tenant_id',
   web_sessions: 'tenant_id',
   webauthn_credentials: 'tenant_id',
   passkey_challenges: 'tenant_id',
@@ -1991,6 +2047,8 @@ export type Tool = Selectable<ToolsTable>;
 export type ToolApproval = Selectable<ToolApprovalsTable>;
 export type KnowledgeIndex = Selectable<KnowledgeIndexesTable>;
 export type KnowledgeIndexUse = Selectable<KnowledgeIndexUsesTable>;
+export type ProjectMemoryVersion = Selectable<ProjectMemoryVersionsTable>;
+export type ProjectMemoryRevocation = Selectable<ProjectMemoryRevocationsTable>;
 
 /** Insert input for a tenant table: the scope sets `tenant_id`, so callers never pass it. */
 export type TenantInsert<T extends Exclude<TableName, 'tenants'>> = Omit<

@@ -363,6 +363,19 @@ code_index:
   max_symbols: 500000
   parse_timeout_ms: 2000
 
+memory:
+  # Task X13, ADR-M74 §2.2, QUESTIONS #574 (Harry, 2026-10-24): agent memory across runs. Notes in
+  # `.sdlc/memory/<name>.md` of the repository that a person who is not their producer approved
+  # (`adlc memory approve`). `off`: runs never read memory. `read`: runs read the approved set.
+  # `read_propose`: runs also propose changes in a separate pull request (needs L2, rule M36).
+  # Files past `max_files` are not read; text is cut at `max_file_chars` per file and
+  # `max_total_chars` in total (about 3,000 tokens). Evaluation runs never use memory.
+  # [Proposal] default `off` until the owner measures it (QUESTIONS #714).
+  mode: off
+  max_files: 20
+  max_file_chars: 4000
+  max_total_chars: 12000
+
 tools:
   # Task X04, ADR-M69 §2.2: register tools (`tool:<key>`) are recertified like agents. Mandatory
   # rule M18: never more than 3 months. An overdue tool gives a warning; it does not block a run.

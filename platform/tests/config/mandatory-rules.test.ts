@@ -522,6 +522,21 @@ const CASES: Case[] = [
     key: 'config.rule.condensing_context_unknown',
     path: 'run.context_condensing.model_context_tokens',
   },
+  // M36: agent memory caps and proposals (X13, ADR-M74 §2.2, QUESTIONS #574).
+  {
+    name: 'a memory file cap above the total cap',
+    rule: 'M36',
+    yaml: 'memory:\n  max_file_chars: 8000\n  max_total_chars: 4000\n',
+    key: 'config.rule.memory_file_over_total',
+    path: 'memory.max_file_chars',
+  },
+  {
+    name: 'memory proposals on a project whose agents never run at L2',
+    rule: 'M36',
+    yaml: 'memory:\n  mode: read_propose\nautonomy:\n  max_by_risk:\n    low: L1\n    medium: L1\n    high: L1\n    critical: L0\n',
+    key: 'config.rule.memory_propose_needs_l2',
+    path: 'memory.mode',
+  },
   // M30: the viewer never builds or reads an Evidence Pack (E02, ADR-M48, QUESTIONS #218).
   {
     name: 'viewer may build evidence packs',

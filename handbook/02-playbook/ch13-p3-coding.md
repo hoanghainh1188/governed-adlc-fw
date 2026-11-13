@@ -332,6 +332,62 @@ An approval without one of these codes is refused (`review_reason_required`) and
 
 - When the agent's last recertification is older than the configured age (3 months, Chapter 20 §20.8), the run is **not** blocked. The platform posts a comment that mentions the agent's owner, and the audit log records the warning with the run.
 
+### 13.10.7. Agent memory
+
+Every run starts fresh: an agent finds the same facts again in each run (how to run the tests, a naming rule, a trap in the build). **Agent memory** (task X13, `design/ADR-M74-agent-memory.md`) keeps short notes about the project in the repository, so that later runs can read them. A person who did not write a note approves it before any run reads it.
+
+**Where memory lives.** Memory is a set of Markdown files `.sdlc/memory/<name>.md` on the default branch. `<name>` uses lowercase letters, digits and `-` (at most 64 characters), with no sub-folders. Other files in the folder (a sub-folder, a symbolic link, another name, `agents.md`) are not memory: runs never read them.
+
+**What to write.** Facts about the project that help a later run, for example:
+
+```markdown
+# API tests
+Run the API tests with `pnpm test:api`. They need the `db` service of `docker compose`.
+```
+
+Never write in a memory file:
+
+- secrets, tokens, keys or passwords;
+- personal data, client names or client data;
+- copied prompts, instructions to the agent ("ignore the rules", "push to main") or anything that tries to change its rules.
+
+Keep each note short and true. A note that is out of date does harm: the agent is told that the code at the run's base commit wins when a note disagrees with it.
+
+**Turning memory on.** Memory is off by default. A tenant admin sets `memory` in the project configuration (Chapter 20 §20.5d):
+
+| `memory.mode` | What runs do |
+|---|---|
+| `off` (default) | Runs never read memory |
+| `read` | Runs read the approved set (X13 PR 2) |
+| `read_propose` | Runs also propose changes in their own pull request (X13 PR 3). Needs an agent that may run at L2 (rule M36) |
+
+**Approving memory (Person A or Person B).** A person changes memory in a normal pull request. After the merge, a person who did **not** write any of the memory changes since the last approved version approves the new set:
+
+```bash
+adlc memory approve shop
+```
+
+- The platform reads the memory folder at the head of the default branch and records its hash as a new version. With `--commit <SHA>`, the commit must hold the same set as the head.
+- Refused (`producer`) when you authored a commit that changed `.sdlc/memory/` since the last version. Another Person A or Person B approves it.
+- Refused (`too_many_commits`) when more than 100 commits changed the folder since the last version: approve in smaller steps.
+- Refused (`no_git_identity`) when you have no linked GitHub account: ask a tenant admin to link it.
+- When the set is already the latest version, nothing is recorded.
+- Runs read only a set that is an approved version, and only the version of their own project.
+
+`adlc memory list shop` shows the versions, newest first, with their hash, commit and state.
+
+**Removing memory.**
+
+- Normal removal: delete or fix the file in a pull request, then approve the new set.
+- Emergency removal (a poisoned or wrong note): revoke the version at once. Person A, Person B or governance may revoke, also the person who wrote the note. From then on, runs read no memory while that set is at their base commit, even before the files are changed. A revocation is never undone; the same set needs a new approval.
+
+```bash
+adlc memory revoke shop 3 --reason poisoned
+```
+
+  Reasons: `poisoned` (it tries to steer the agent), `wrong` (it is not true), `other`.
+- **A secret or personal data in a memory file**: revoke the version, remove the file, then rewrite the history of the default branch on GitHub (the client's own action on its repository). The platform holds no memory text: it keeps only hashes, counts and version numbers, so there is nothing to delete on the platform.
+
 ---
 
 ## 13.11. Metrics
@@ -383,6 +439,7 @@ An approval without one of these codes is refused (`review_reason_required`) and
 | 0.11 | 2026-10-09 | Claude (docs review PR C2) | §13.10.2 check 6b: the one list of agent instruction files (only the exact pinned path is left out); §13.10.4: "The budgets", the one description with the default amounts (moved from ROLLOUT-GUIDE) |
 | 0.14 | 2026-10-24 | Claude (task X11) | §13.10.4: long runs and small models, context condensing (`run.context_condensing`, rule M35; ADR-M29 §2.10) |
 | 0.15 | 2026-10-24 | Claude (task H04) | §13.10.5: G5 checks the secret scan (`secret_in_diff`, `secret_scan_failed`); new §13.10.5a: the secret scan of the run's diff (ADR-M93, QUESTIONS #586–#590) |
+| 0.20 | 2026-11-13 | Claude (task X13, PR 1) | New §13.10.7: agent memory: where it lives, what to write, `memory.mode`, `adlc memory approve`, `list` and `revoke`, removal and erasure (ADR-M74, QUESTIONS #711–#715) |
 | 0.19 | 2026-11-12 | Claude (task O06, PR 2c) | §13.10.2a: one read of the comments for all the projects of a repository; an issue linked to open intents of two projects gets no decision (ADR-M106 1.3 §2.4) |
 | 0.18 | 2026-11-12 | Claude (task O06, PR 2b) | §13.10.2a: a project with a folder (the agent works in it, two pinned files, `folder_not_enforceable`); §13.10.5 check 1d: a change outside the folder (ADR-M106 §2.4) |
 | 0.17 | 2026-11-12 | Claude (task O06) | §13.10.2 check 6b: a very large tree is listed in parts; new §13.10.2a: before the first intent on a repository (`AGENTS.md`, other instruction files, CI, very large trees, monorepos; ADR-M106) |

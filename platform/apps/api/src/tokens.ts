@@ -9,6 +9,7 @@ export const ESCALATIONS = Symbol('EscalationsService');
 export const AI_RECORDS = Symbol('AiRecordsService');
 export const SPECS = Symbol('SpecsService');
 export const PLANS = Symbol('PlansService');
+export const MEMORY = Symbol('MemoryService');
 export const RUNS = Symbol('RunsService');
 export const COST = Symbol('CostService');
 export const METRICS = Symbol('MetricsService');

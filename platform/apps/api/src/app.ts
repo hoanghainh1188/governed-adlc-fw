@@ -65,6 +65,8 @@ import { IntentsService } from './intents/intents.service.js';
 import { ClientDataDeletionController } from './client-data/deletion.controller.js';
 import { MeController } from './me/me.controller.js';
 import { MeTokensController } from './me/tokens.controller.js';
+import { MemoryController } from './memory/memory.controller.js';
+import { MemoryService } from './memory/memory.service.js';
 import { PlansController } from './plans/plans.controller.js';
 import { PlansService } from './plans/plans.service.js';
 import { CostController } from './cost/cost.controller.js';
@@ -87,6 +89,7 @@ import {
   EVIDENCE,
   INTENTS,
   PLANS,
+  MEMORY,
   RUNS,
   COST,
   METRICS,
@@ -126,6 +129,12 @@ export interface ApiDeps {
    * `git_host_unavailable`.
    */
   readonly gitHost?: Pick<GitHostAdapter, 'getBranchHead' | 'getFileAtCommit'>;
+  /**
+   * The Git host reads of `adlc memory approve` (X13, ADR-M74 §2.3): the default branch's head,
+   * the memory folder and the commits that changed it. Undefined: approving answers
+   * `git_host_unavailable`.
+   */
+  readonly memoryGitHost?: Pick<GitHostAdapter, 'getBranchHead' | 'listFolder' | 'listPathCommits'>;
   /**
    * The Git host reads of a project's evaluation tasks (L07, ADR-M85): the merged pull request,
    * commit parents, comparisons and commit authors. Undefined: the task endpoints answer
@@ -210,6 +219,7 @@ class ApiModule {
         EvidenceHoldsController,
         EscalationsController,
         AiRecordsController,
+        MemoryController,
         ProjectEvalPlansController,
         EvalPlansController,
         EvaluationsController,
@@ -255,6 +265,12 @@ class ApiModule {
             deps.gitHost ? { gitHost: deps.gitHost } : undefined,
             signals,
             wakeLogger,
+          ),
+        },
+        {
+          provide: MEMORY,
+          useValue: new MemoryService(
+            deps.memoryGitHost ? { gitHost: deps.memoryGitHost } : undefined,
           ),
         },
         {

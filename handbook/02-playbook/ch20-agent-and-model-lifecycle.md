@@ -232,6 +232,23 @@ Not yet on the platform (v0.1): agents with L3 or more (leadership and the secur
 
 ---
 
+### 20.5d. Agent memory settings
+
+Agent memory is notes in `.sdlc/memory/` of the project's repository that a person approved (Chapter 13 §13.10.7, `design/ADR-M74-agent-memory.md`). A tenant admin turns it on per project in the configuration (`adlc admin config`):
+
+```yaml
+memory:
+  mode: read            # off (default), read or read_propose
+  max_files: 20         # 1–50: more files are not read
+  max_file_chars: 4000  # 500–8000: a longer file is cut
+  max_total_chars: 12000 # 1000–24000: about 3,000 tokens in all
+```
+
+- Rule M36: `max_file_chars` is never above `max_total_chars`, and `read_propose` needs an agent that may run at L2 or higher (`autonomy.max_by_risk`).
+- Memory is not part of an agent version: changing a memory file never needs a new agent version or a new approval of `AGENTS.md`.
+- Evaluation runs never read or propose memory, so their results stay comparable.
+- The default stays `off` until the owner measures runs with and without memory (QUESTIONS #714).
+
 ## 20.6. Stage 3 — Evaluate
 
 Evaluate the **whole agent** (model + instructions + tools + context) on our own tasks, not on public benchmarks.
@@ -332,7 +349,7 @@ Person B or leadership can suspend or quarantine an agent **at any time** (Chapt
 |---|---|
 | Audit log, release evidence, incident records | **Keep** (retention rules, Chapter 3) |
 | Approved knowledge (for example validated architecture notes) | **Move** to the successor after review |
-| Unverified agent memory | **Quarantine**; do not reuse without review |
+| Unverified agent memory | **Quarantine**; do not reuse without review. Memory on the platform (`.sdlc/memory/`, §20.5d) is read only after a person approves it, and a version can be revoked at once |
 | Scratch notes, caches, session state | **Delete** |
 | Tool outputs containing personal data | **Delete or anonymise** |
 | Vector indexes built from its context | **Rebuild or delete**; never reuse unchecked |
@@ -405,3 +422,4 @@ Old context must not quietly come back through caches, indexes or copied instruc
 | 1.5 | 2026-11-12 | Claude (task O06, PR 2a) | §20.5: an agent of a monorepo project pins a second file, the repository root's (`--root-instructions`; ADR-M31 §2.5 0.6) |
 | 1.6 | 2026-11-12 | Claude (task O06, PR 2b) | §20.5: a monorepo project's agent uses the adapter `openhands` |
 | 1.7 | 2026-11-13 | Claude Code (task X06, PR 2) | §20.5c: the second register tool, `read_code` (find a symbol, its uses and related files; no model; ADR-M108) |
+| 1.8 | 2026-11-13 | Claude (task X13, PR 1) | New §20.5d: agent memory settings (`memory`, rule M36); §20.10: approved and revoked memory (ADR-M74) |

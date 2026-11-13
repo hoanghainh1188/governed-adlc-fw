@@ -6,6 +6,8 @@ import {
   AdminError,
   AgentRegisterError,
   AiRecordError,
+  MemoryError,
+  memoryErrorMessage,
   CommandError,
   EvaluationError,
   KillError,
@@ -108,6 +110,8 @@ export const API_ERROR_CODES = [
   'agent_refused',
   'tool_not_found',
   'tool_refused',
+  'memory_refused',
+  'memory_version_not_found',
   'role_binding_not_found',
   'project_archived',
   'project_has_open_intents',
@@ -199,6 +203,8 @@ const ERROR_MESSAGE_KEYS: Readonly<Record<ApiErrorCode, MessageKey>> = {
   agent_refused: 'api.error.agent_refused',
   tool_not_found: 'api.error.tool_not_found',
   tool_refused: 'api.error.tool_refused',
+  memory_refused: 'api.error.memory_refused',
+  memory_version_not_found: 'api.error.memory_version_not_found',
   role_binding_not_found: 'api.error.role_binding_not_found',
   project_archived: 'api.error.project_archived',
   project_has_open_intents: 'api.error.project_has_open_intents',
@@ -410,6 +416,30 @@ export function planApiError(error: PlanError): ApiError {
   return new ApiError(status, code, error.refusal ?? error.code, details, undefined, text);
 }
 
+/** Agent memory refusals (X13, ADR-M74 §2.3, §2.7). `reason` is the memory error code. */
+const MEMORY: Readonly<Record<MemoryError['code'], [number, ApiErrorCode]>> = {
+  project_not_found: [404, 'project_not_found'],
+  forbidden: [403, 'forbidden'],
+  git_host_unavailable: [503, 'git_host_unavailable'],
+  git_host_error: [503, 'git_host_unavailable'],
+  repository_invalid: [409, 'memory_refused'],
+  not_head: [409, 'memory_refused'],
+  producer: [409, 'memory_refused'],
+  too_many_commits: [409, 'memory_refused'],
+  no_git_identity: [409, 'memory_refused'],
+  version_not_found: [404, 'memory_version_not_found'],
+  already_revoked: [409, 'memory_refused'],
+  conflict: [409, 'memory_refused'],
+};
+
+export function memoryApiError(error: MemoryError): ApiError {
+  const [status, code] = MEMORY[error.code];
+  const reason = error.code === 'git_host_error' ? (error.gitCode ?? error.code) : error.code;
+  return new ApiError(status, code, reason, undefined, undefined, (locale) =>
+    memoryErrorMessage(error, locale),
+  );
+}
+
 /** Kill switch refusals (C11, ADR-M42 §2.6). */
 const KILL: Readonly<Record<KillErrorCode, [number, ApiErrorCode]>> = {
   run_not_found: [404, 'run_not_found'],
@@ -476,6 +506,7 @@ export function toApiError(error: unknown): ApiError {
   }
   if (error instanceof EscalationError) return new ApiError(...ESCALATION[error.code]);
   if (error instanceof EvaluationError) return evaluationApiError(error);
+  if (error instanceof MemoryError) return memoryApiError(error);
   if (error instanceof AiRecordError) {
     if (error.code === 'version_conflict') return new ApiError(409, 'ai_record_version_conflict');
     if (error.code === 'not_a_writer') return new ApiError(403, 'forbidden');
