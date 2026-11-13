@@ -101,8 +101,30 @@ export interface ToolRuntimeCredentials {
   readonly llm_key: string;
 }
 
-/** The permission catalogue (ADR-M69 §2.2). The first one is `read_documents` (X04). */
-export const TOOL_PERMISSIONS = ['read_documents'] as const;
+/**
+ * `config.json` of a `read_code` tool (X06 PR 2, ADR-M108 §2.8): the code index version of the
+ * run's base commit, the project's code schema and the database. No model: the code tool calls none.
+ */
+export interface CodeToolRuntimeConfig {
+  readonly schema_version: 1;
+  readonly index_id: string;
+  /** The project's code schema in `knowledge-db` (`kcode_p<…>`). */
+  readonly schema: string;
+  readonly database: { readonly host: string; readonly port: number; readonly name: string };
+}
+
+/** `credentials.json` of a `read_code` tool: the run's login only. */
+export interface CodeToolRuntimeCredentials {
+  readonly db_username: string;
+  readonly db_password: string;
+}
+
+/**
+ * The permission catalogue (ADR-M69 §2.2). The first one is `read_documents` (X04); `read_code`
+ * (X06, ADR-M108 §2.8) reads the project's code index. A tool has at most one of the two: each
+ * reads its own index with its own login.
+ */
+export const TOOL_PERMISSIONS = ['read_code', 'read_documents'] as const;
 export type ToolPermission = (typeof TOOL_PERMISSIONS)[number];
 
 export function isToolPermission(value: string): value is ToolPermission {
@@ -128,6 +150,34 @@ export interface ToolCallRule {
  * through (ADR-M87 §5). Fixed here; never configuration, never from a tenant.
  */
 export const TOOL_CALL_RULES: Readonly<Record<ToolPermission, readonly ToolCallRule[]>> = {
+  // X06 (ADR-M108 §2.8). The tool checks again that a path is relative and has no `..`.
+  read_code: [
+    {
+      tool: 'find_symbol',
+      arguments: {
+        kind: { type: 'string', max_length: 20 },
+        limit: { type: 'integer', min: 1, max: 50 },
+        name: { type: 'string', max_length: 200 },
+      },
+      required: ['name'],
+    },
+    {
+      tool: 'find_references',
+      arguments: {
+        limit: { type: 'integer', min: 1, max: 100 },
+        name: { type: 'string', max_length: 200 },
+      },
+      required: ['name'],
+    },
+    {
+      tool: 'related_files',
+      arguments: {
+        limit: { type: 'integer', min: 1, max: 100 },
+        path: { type: 'string', max_length: 1000 },
+      },
+      required: ['path'],
+    },
+  ],
   read_documents: [
     {
       tool: 'search_project_docs',

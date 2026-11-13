@@ -238,7 +238,7 @@ pnpm openbao:bootstrap worker-knowledge-credentials  # T11 §5o (needs the profi
 pnpm openbao:bootstrap knowledge-issuer-credentials  # T11 §5o (after configure)
 ```
 
-Without it, a run whose plan asks for a `read_documents` tool fails (`tool_unavailable`). The model `bge-m3` must be on LiteLLM (the `ollama` provider, `ollama pull bge-m3`).
+Without it, a run whose plan asks for a `read_documents` or a `read_code` tool fails (`tool_unavailable`). The code index of the `read_code` tool (X06, [ADR-M108](../../design/ADR-M108-code-index.md)) uses the same profile and credentials, and no model. The model `bge-m3` must be on LiteLLM (the `ollama` provider, `ollama pull bge-m3`).
 
 Optional, dashboard sign-in with GitHub (U05, [ADR-M73](../../design/ADR-M73-dashboard-actions.md)): the GitHub App needs a client secret and lists the callback URL `<public origin>/v1/auth/github/callback` (section [Create the GitHub App](#create-the-github-app-operator)). Store the client secret (`pnpm github-app:create` wrote it to `<key file>.client-secret`; delete the file afterwards), set `SDLC_API_WEB_SIGNIN=github` and `SDLC_API_PUBLIC_ORIGIN` (for example `http://localhost:8090`; plain `http://` only on `localhost`) in `platform/deploy/.env`, and start `sdlc-api` again:
 
@@ -882,7 +882,7 @@ Never run `docker volume prune` or `docker system prune --volumes`: they delete 
 
 ## Verify the published images
 
-Each release publishes six images on GHCR (D-08 V04, `design/ADR-M66-ghcr-images.md`), for `linux/amd64` and `linux/arm64`: `sdlc-api`, `sdlc-worker`, `sdlc-runner`, `sdlc-otel-collector`, `sandbox-node24` and, from v0.6.0, `tool-project-docs`, under `ghcr.io/hoanghainh1188/governed-adlc-fw/`. The release's `images.lock` pins each one by digest. They are built on the release tag by `.github/workflows/release-images.yml` (called by `release.yml`), all six scanned with Trivy before the first push and each one again by digest after it (no CRITICAL finding), signed with cosign keyless (GitHub OIDC, Sigstore's public transparency log), and carry an SPDX SBOM and SLSA build provenance.
+Each release publishes seven images on GHCR (D-08 V04, `design/ADR-M66-ghcr-images.md`), for `linux/amd64` and `linux/arm64`: `sdlc-api`, `sdlc-worker`, `sdlc-runner`, `sdlc-otel-collector`, `sandbox-node24`, from v0.6.0 `tool-project-docs` and, from the release after v0.13.0, `tool-code-index` (the `read_code` tool, X06), under `ghcr.io/hoanghainh1188/governed-adlc-fw/`. The release's `images.lock` pins each one by digest. They are built on the release tag by `.github/workflows/release-images.yml` (called by `release.yml`), all seven scanned with Trivy before the first push and each one again by digest after it (no CRITICAL finding), signed with cosign keyless (GitHub OIDC, Sigstore's public transparency log), and carry an SPDX SBOM and SLSA build provenance.
 
 Check an image before you deploy it; `pnpm images get <NAME>` prints its reference (`API`, `WORKER`, `RUNNER`, `OTEL_COLLECTOR`, `SANDBOX_NODE24`, `TOOL_PROJECT_DOCS`). `pnpm images verify` checks all six at once with the release workflow's own check (it needs `cosign` and a signed-in `gh`). With [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) 3.x:
 

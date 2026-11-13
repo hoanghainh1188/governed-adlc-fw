@@ -111,13 +111,59 @@ describe('the run database login (QUESTIONS #540)', () => {
     const creds = new DatabaseCredentials('database', call);
     await creds.revokeRunLogins(RUN);
     await creds.revokeRunLogins(RUN);
+    // X06: the prefix also ends `kdocs-<run>-code`; both roles are deleted.
     expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([
       `POST sys/leases/revoke-prefix/database/creds/kdocs-${RUN}`,
       `DELETE database/roles/kdocs-${RUN}`,
+      `DELETE database/roles/kdocs-${RUN}-code`,
       `POST sys/leases/revoke-prefix/database/creds/kdocs-${RUN}`,
       `DELETE database/roles/kdocs-${RUN}`,
+      `DELETE database/roles/kdocs-${RUN}-code`,
     ]);
     expect(requests[1]!.accept).toEqual([404]);
     expect(runDatabaseRole(RUN)).toBe(`kdocs-${RUN}`);
+  });
+});
+
+describe('X06: the login of a read_code tool (ADR-M108 §2.8, QUESTIONS #700)', () => {
+  const CODE_ROLE = `kcode_p${'a1'.repeat(16)}_read`;
+
+  it('uses the role kdocs-<run>-code and grants the code read role only', async () => {
+    const { call, requests } = caller({
+      [`GET database/creds/kdocs-${RUN}-code`]: CREDS[`GET database/creds/kdocs-${RUN}`],
+    });
+    const login = await new DatabaseCredentials('database', call).issueRunLogin({
+      runId: RUN,
+      grantRole: CODE_ROLE,
+      ttlSeconds: 3600,
+      kind: 'code',
+    });
+    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      `POST database/roles/kdocs-${RUN}-code`,
+      `GET database/creds/kdocs-${RUN}-code`,
+    ]);
+    expect((requests[0]!.body as { creation_statements: string[] }).creation_statements).toEqual(
+      creationStatements(CODE_ROLE, 'code'),
+    );
+    expect(login.password.reveal()).toBe('PASSWORD-CANARY');
+    expect(runDatabaseRole(RUN, 'code')).toBe(`kdocs-${RUN}-code`);
+  });
+
+  it("never pairs a kind with the other kind's read role", async () => {
+    for (const [kind, role] of [
+      ['code', ROLE],
+      ['docs', CODE_ROLE],
+    ] as const) {
+      const { call, requests } = caller(CREDS);
+      await expect(
+        new DatabaseCredentials('database', call).issueRunLogin({
+          runId: RUN,
+          grantRole: role,
+          ttlSeconds: 3600,
+          kind,
+        }),
+      ).rejects.toBeInstanceOf(SecretsError);
+      expect(requests).toEqual([]);
+    }
   });
 });

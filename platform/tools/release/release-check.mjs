@@ -12,8 +12,8 @@
 // `tag` checks: the tag is `vX.Y.Z`; the root package.json and PLATFORM_VERSION hold X.Y.Z; the
 // CHANGELOG has a section `## [X.Y.Z] - YYYY-MM-DD` with non-empty "Upgrade notes". The images are
 // built on the tag, so the tagged commit holds no lock file (ADR-M94 §2.4). `lock` checks a lock
-// file: X.Y.Z and the six images pinned by digest on the one registry path; `--images-out` writes
-// the six references. Every problem is printed (one line each, a code first), then the exit code
+// file: X.Y.Z and the seven images pinned by digest on the one registry path; `--images-out` writes
+// the seven references. Every problem is printed (one line each, a code first), then the exit code
 // is 1. Prints nothing secret: it reads tracked files and the lock file only.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,6 +28,8 @@ const LOCK_IMAGES = {
   SDLC_IMAGE_SANDBOX_NODE24: 'sandbox-node24',
   // X04 PR 3b (ADR-M89): the first register tool.
   SDLC_IMAGE_TOOL_PROJECT_DOCS: 'tool-project-docs',
+  // X06 PR 2 (ADR-M108): the `read_code` register tool.
+  SDLC_IMAGE_TOOL_CODE_INDEX: 'tool-code-index',
 };
 // 0.1.0 is the first release: there was nothing to upgrade from (Harry, V12 plan).
 const NOTES_EXEMPT = new Set(['0.1.0']);
@@ -102,7 +104,7 @@ function changelogSection(text, version, errors) {
   return body.join('\n').trim() + '\n';
 }
 
-/** The six references of a lock file, or an empty list with the problems in `errors`. */
+/** The seven references of a lock file, or an empty list with the problems in `errors`. */
 function checkLock(text, version, errors) {
   const entries = new Map();
   for (const raw of text.split('\n')) {

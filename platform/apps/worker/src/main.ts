@@ -104,6 +104,7 @@ async function main(): Promise<void> {
       ...(knowledge?.deps
         ? {
             knowledge: knowledge.deps,
+            ...(knowledge.code ? { code: knowledge.code } : {}),
             // X04 PR 3b (QUESTIONS #540): the tools' logins, through the worker's own AppRole.
             databaseCredentials: openbao.databaseCredentials(),
           }

@@ -155,7 +155,7 @@ jobs:
           # C04: the sandbox images, the runner and the package proxy (design/ADR-M25 §2.9).
           decide_heavy run_sandbox_image "Sandbox image job" \
             "a sandbox image, the runner, a tool image, the agent adapter, the package proxy or a live test" \
-            platform/sandbox-images/ platform/apps/runner/ platform/apps/tool-project-docs/ platform/deploy/scripts/tool-image.sh platform/deploy/verdaccio/ platform/tests/integration/sandbox-image/ platform/packages/adapters/agent-openhands/ platform/packages/adapters/agent-opencode/ platform/packages/agent-kit/ platform/tests/integration/agent/ platform/tests/integration/attack/ platform/packages/config/defaults/
+            platform/sandbox-images/ platform/apps/runner/ platform/apps/tool-project-docs/ platform/apps/tool-code-index/ platform/deploy/scripts/tool-image.sh platform/deploy/verdaccio/ platform/tests/integration/sandbox-image/ platform/packages/adapters/agent-openhands/ platform/packages/adapters/agent-opencode/ platform/packages/agent-kit/ platform/tests/integration/agent/ platform/tests/integration/attack/ platform/packages/config/defaults/
 
           # U01 (design/ADR-M54 §2.6): the dashboard's browser smoke test (Playwright, Chromium)
           # runs in the sandbox image job, without the sandbox steps when only these paths changed.
@@ -503,6 +503,10 @@ jobs:
           tool="$(sh platform/deploy/scripts/tool-image.sh project-docs --no-push)"
           docker save "$tool" -o "$RUNNER_TEMP/tool-project-docs.tar"
           echo "Built $tool" >> "$GITHUB_STEP_SUMMARY"
+          # X06 PR 2 (ADR-M108): the register tool read_code.
+          code="$(sh platform/deploy/scripts/tool-image.sh code-index --no-push)"
+          docker save "$code" -o "$RUNNER_TEMP/tool-code-index.tar"
+          echo "Built $code" >> "$GITHUB_STEP_SUMMARY"
       - name: Install trivy
         if: needs.scan.outputs.run_sandbox_image == 'true'
         run: |
@@ -514,11 +518,11 @@ jobs:
       - name: Report (does not block)
         if: needs.scan.outputs.run_sandbox_image == 'true'
         run: |
-          for image in node24 node24-opencode gateway tool-project-docs; do
-            # X04 PR 3b: the tool image has the Node base of sdlc-api, so the repo's ignore file
+          for image in node24 node24-opencode gateway tool-project-docs tool-code-index; do
+            # X04 PR 3b, X06: the tool images have the Node base of sdlc-api, so the repo's ignore file
             # (as in release-images.yml); the sandbox images and the gateway keep theirs.
             ignore=platform/sandbox-images/.trivyignore
-            [ "$image" = tool-project-docs ] && ignore=.trivyignore
+            case "$image" in tool-*) ignore=.trivyignore ;; esac
             "$RUNNER_TEMP/trivy" image --input "$RUNNER_TEMP/$image.tar" --scanners vuln \
               --severity "$TRIVY_REPORT_SEVERITY,$TRIVY_BLOCK_SEVERITY" \
               --ignorefile "$ignore" \
@@ -534,11 +538,11 @@ jobs:
       - name: Scan vulnerabilities (severity CRITICAL blocks)
         if: needs.scan.outputs.run_sandbox_image == 'true'
         run: |
-          for image in node24 node24-opencode gateway tool-project-docs; do
-            # X04 PR 3b: the tool image has the Node base of sdlc-api, so the repo's ignore file
+          for image in node24 node24-opencode gateway tool-project-docs tool-code-index; do
+            # X04 PR 3b, X06: the tool images have the Node base of sdlc-api, so the repo's ignore file
             # (as in release-images.yml); the sandbox images and the gateway keep theirs.
             ignore=platform/sandbox-images/.trivyignore
-            [ "$image" = tool-project-docs ] && ignore=.trivyignore
+            case "$image" in tool-*) ignore=.trivyignore ;; esac
             "$RUNNER_TEMP/trivy" image --input "$RUNNER_TEMP/$image.tar" --scanners vuln \
               --severity "$TRIVY_BLOCK_SEVERITY" --ignorefile "$ignore" \
               --disable-telemetry --skip-version-check --exit-code 1
@@ -547,7 +551,7 @@ jobs:
       - name: Scan licences (CRITICAL category blocks)
         if: needs.scan.outputs.run_sandbox_image == 'true'
         run: |
-          for image in node24 node24-opencode gateway tool-project-docs; do
+          for image in node24 node24-opencode gateway tool-project-docs tool-code-index; do
             "$RUNNER_TEMP/trivy" image --input "$RUNNER_TEMP/$image.tar" --scanners license \
               --severity "$TRIVY_BLOCK_SEVERITY" \
               --disable-telemetry --skip-version-check --exit-code 1
@@ -611,7 +615,7 @@ jobs:
           if-no-files-found: ignore
       - name: Remove the image archive
         if: always()
-        run: rm -f "$RUNNER_TEMP/node24.tar" "$RUNNER_TEMP/node24-opencode.tar" "$RUNNER_TEMP/gateway.tar" "$RUNNER_TEMP/tool-project-docs.tar"
+        run: rm -f "$RUNNER_TEMP/node24.tar" "$RUNNER_TEMP/node24-opencode.tar" "$RUNNER_TEMP/gateway.tar" "$RUNNER_TEMP/tool-project-docs.tar" "$RUNNER_TEMP/tool-code-index.tar"
 
   fresh-deploy:
     # E07 (D-08 E07 AC3): follows the README section "Fresh deployment (operator)" on a throw-away
@@ -745,7 +749,7 @@ jobs:
         run: pnpm test:workflow
 
   release-images:
-    # V15 (ADR-M94 §2.5): a version pull request builds and scans the six release images on both
+    # V15 (ADR-M94 §2.5): a version pull request builds and scans the seven release images on both
     # architectures with the release's own workflow, and pushes nothing. release-images-scan.yml
     # only reads, so this job widens no permission.
     needs: [scan, checks]

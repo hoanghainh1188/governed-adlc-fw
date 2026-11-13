@@ -5,7 +5,7 @@
 # ask for, also for a job that is skipped, so ci.yml could not call release-images.yml without
 # write permissions. This file only reads.
 #
-# Builds the six images for linux/amd64 and linux/arm64, each on its own native runner, and scans
+# Builds the seven images for linux/amd64 and linux/arm64, each on its own native runner, and scans
 # each one with Trivy (CRITICAL blocks, the thresholds of ci.yml). `cache: true` (a release only)
 # exports the layers to the Actions cache for release-images.yml's job push.
 name: release-images-scan
@@ -50,6 +50,7 @@ jobs:
             sdlc-otel-collector,
             sandbox-node24,
             tool-project-docs,
+            tool-code-index,
           ]
         include:
           - image: sdlc-api
@@ -76,6 +77,11 @@ jobs:
           - image: tool-project-docs
             context: .
             dockerfile: platform/apps/tool-project-docs/Dockerfile
+            ignorefile: .trivyignore
+          # X06 PR 2 (ADR-M108): the `read_code` register tool.
+          - image: tool-code-index
+            context: .
+            dockerfile: platform/apps/tool-code-index/Dockerfile
             ignorefile: .trivyignore
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

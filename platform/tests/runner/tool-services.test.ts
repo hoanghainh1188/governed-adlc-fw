@@ -290,6 +290,45 @@ describe('starting a tool with backing services (ADR-M69 §2.4 order)', () => {
     expect(gatewayFile).not.toContain('sk-TOOL-KEY-CANARY');
   });
 
+  it('X06: a read_code tool gets its code settings and only a login: no model key in the files', async () => {
+    const { docker, calls, archives } = fakeDocker();
+    const codeRuntime: ToolRuntime = {
+      config: {
+        schema_version: 1,
+        index_id: DOC,
+        schema: `kcode_p${'1'.repeat(32)}`,
+        database: { host: 'knowledge-db', port: 5432, name: 'knowledge' },
+      },
+      credentials: {
+        db_username: { reveal: () => 'v-run-login' },
+        db_password: { reveal: () => 'DB-PASSWORD-CANARY' },
+      },
+    };
+    await startTools(
+      docker,
+      startInput({
+        grants: [
+          grant({
+            permissions: ['read_code'],
+            call_rules_sha256: callRulesSha256(['read_code']),
+            backing_services: ['knowledge-db:5432'],
+          }),
+        ],
+        runtime: new Map([['project-docs', codeRuntime]]),
+      }),
+    );
+    const net = names.serviceNetwork('project-docs');
+    // Only the database joins: the code tool calls no model.
+    expect(calls.filter((c) => c.startsWith(`connect ${net} sdlc-`) && !c.endsWith(' []'))).toEqual(
+      [`connect ${net} sdlc-knowledge-db-1 [knowledge-db]`],
+    );
+    const tar = archives[0]!.tar.toString('utf8');
+    expect(tar).toContain('"schema":"kcode_p');
+    expect(tar).toContain('DB-PASSWORD-CANARY');
+    expect(tar).not.toContain('llm_key');
+    expect(tar).not.toContain('model_gateway_url');
+  });
+
   it('a service that is not running, or no runtime files: `tool_unavailable`', async () => {
     await expect(
       startTools(fakeDocker({ failConnect: 'sdlc-knowledge-db-1' }).docker, startInput()),

@@ -109,6 +109,19 @@ describeDb('X04: the tool register on PostgreSQL', () => {
       await expect(
         insert(`'http', 'img', NULL, '{write_documents}', '{internal}', 'proposed', NULL`),
       ).rejects.toThrow();
+      // X06 (migration 0052): `read_code` is in the catalogue, never with `read_documents`.
+      await expect(
+        insert(`'http', 'img', NULL, '{read_code,read_documents}', '{internal}', 'proposed', NULL`),
+      ).rejects.toThrow();
+      await insert(`'http', 'img', NULL, '{read_code}', '{internal}', 'proposed', NULL`);
+    });
+
+    it('X06: registers a read_code tool without a model, and refuses both index permissions', async () => {
+      const tool = await registerTool(scope, { ...base('t-code'), permissions: ['read_code'] });
+      expect(tool.permissions).toEqual(['read_code']);
+      await expect(
+        registerTool(scope, { ...base('t-both'), permissions: ['read_code', 'read_documents'] }),
+      ).rejects.toThrow();
     });
 
     it('refuses a backing service port above 65535 in SQL too, and takes 65535', async () => {

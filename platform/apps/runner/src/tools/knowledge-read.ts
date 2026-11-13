@@ -13,6 +13,7 @@
 import crypto from 'node:crypto';
 
 import {
+  CODE_INDEX_FORMAT,
   KNOWLEDGE_READ_LOG_EVENT,
   validateRunContract,
   type EvidenceStore,
@@ -86,7 +87,7 @@ function parseLine(
 }
 
 /**
- * Records `knowledge_read` for each `read_documents` tool of the run that has none yet. A tool
+ * Records `knowledge_read` for each `read_documents` or `read_code` tool of the run that has none yet. A tool
  * whose log cannot be read records nothing (its `tool_used` counts still say how often it was
  * called). Without an evidence store the event is still written; the list is then not kept.
  */
@@ -101,8 +102,10 @@ export async function recordKnowledgeRead(
   const checked = validateRunContract(stored.contract_json);
   if (!checked.ok) return;
   const { contract } = checked;
-  const grants = (contract.tool_grants ?? []).filter((g: ToolGrant) =>
-    g.permissions.includes('read_documents'),
+  // X06 PR 2 (ADR-M108 §2.8): a `read_code` tool writes the same lines, with file IDs and hashes.
+  const grants = (contract.tool_grants ?? []).filter(
+    (g: ToolGrant) =>
+      g.permissions.includes('read_documents') || g.permissions.includes('read_code'),
   );
   if (grants.length === 0) return;
   const events = await scope.runEvents.list(runId);
@@ -115,7 +118,9 @@ export async function recordKnowledgeRead(
         (event.payload as { tool_key?: unknown }).tool_key === grant.tool_key,
     );
     if (recorded) continue;
-    const model = (await scope.tools.getByKey(grant.tool_key))?.model_ref ?? null;
+    const model = grant.permissions.includes('read_code')
+      ? CODE_INDEX_FORMAT
+      : ((await scope.tools.getByKey(grant.tool_key))?.model_ref ?? null);
     const index = uses.find((use) => use.model === model);
     if (index === undefined) continue;
     let logs: string;

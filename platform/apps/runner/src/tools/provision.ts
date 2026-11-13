@@ -20,6 +20,8 @@ import {
   type ToolGrant,
   type ToolRuntimeConfig,
   type ToolRuntimeCredentials,
+  type CodeToolRuntimeConfig,
+  type CodeToolRuntimeCredentials,
 } from '@sdlc/contracts';
 
 import type { DockerClient } from '../docker/client.js';
@@ -59,12 +61,22 @@ export function toolGrantsEnforceable(
   );
 }
 
-/** X04 PR 3b: what a tool with backing services gets as files before it starts. */
-export interface ToolRuntime {
-  readonly config: ToolRuntimeConfig;
-  /** Revealed only into the file. */
-  readonly credentials: { readonly [K in keyof ToolRuntimeCredentials]: { reveal(): string } };
-}
+type Revealable<T> = { readonly [K in keyof T]: { reveal(): string } };
+
+/**
+ * X04 PR 3b: what a tool with backing services gets as files before it starts. X06 PR 2: a
+ * `read_code` tool gets its own config and only a database login (ADR-M108 §2.8).
+ */
+export type ToolRuntime =
+  | {
+      readonly config: ToolRuntimeConfig;
+      /** Revealed only into the file. */
+      readonly credentials: Revealable<ToolRuntimeCredentials>;
+    }
+  | {
+      readonly config: CodeToolRuntimeConfig;
+      readonly credentials: Revealable<CodeToolRuntimeCredentials>;
+    };
 
 function callRulesSha256(grant: ToolGrant): string {
   return crypto
@@ -195,10 +207,11 @@ async function attachServices(
 ): Promise<void> {
   const runtime = input.runtime?.get(grant.tool_key);
   if (runtime === undefined) throw unavailable();
-  const credentials: ToolRuntimeCredentials = {
+  // Only the fields of the tool's own kind: a `read_code` tool has no model key (X06).
+  const credentials: ToolRuntimeCredentials | CodeToolRuntimeCredentials = {
     db_username: runtime.credentials.db_username.reveal(),
     db_password: runtime.credentials.db_password.reveal(),
-    llm_key: runtime.credentials.llm_key.reveal(),
+    ...('llm_key' in runtime.credentials ? { llm_key: runtime.credentials.llm_key.reveal() } : {}),
   };
   await docker.putArchive(
     containerId,

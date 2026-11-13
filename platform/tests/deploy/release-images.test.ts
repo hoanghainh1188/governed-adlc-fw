@@ -1,5 +1,5 @@
 // D-08 V04 (design/ADR-M66) and V15 (design/ADR-M94): the platform's images on GHCR for a release.
-// - the release workflow builds and scans all six images on both architectures before the first
+// - the release workflow builds and scans all seven images on both architectures before the first
 //   push (release-images-scan.yml), and only then pushes, tags, signs and attests them; its
 //   thresholds equal ci.yml (V15 AC3);
 // - Compose uses the published images by digest on a release checkout (the release's images.lock,
@@ -57,6 +57,7 @@ const IMAGES = [
   'sdlc-otel-collector',
   'sandbox-node24',
   'tool-project-docs',
+  'tool-code-index',
 ];
 const LOCK_NAMES: Record<string, string> = {
   API: 'sdlc-api',
@@ -65,6 +66,7 @@ const LOCK_NAMES: Record<string, string> = {
   OTEL_COLLECTOR: 'sdlc-otel-collector',
   SANDBOX_NODE24: 'sandbox-node24',
   TOOL_PROJECT_DOCS: 'tool-project-docs',
+  TOOL_CODE_INDEX: 'tool-code-index',
 };
 
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -120,7 +122,7 @@ describe('V04: the release workflow', () => {
     expect(run).not.toContain('refs/heads/main');
   });
 
-  it('builds the six images for amd64 and arm64, each on a native runner', () => {
+  it('builds the seven images for amd64 and arm64, each on a native runner', () => {
     const scan = scanJob();
     expect(scan.strategy?.matrix.arch).toEqual(['amd64', 'arm64']);
     expect(scan.strategy?.matrix.image).toEqual(IMAGES);
@@ -322,7 +324,7 @@ describe('V04, V15: scripts/images.sh (ADR-M94 §2.4)', () => {
     [
       `SDLC_IMAGES_VERSION=${version}`,
       ...Object.entries(LOCK_NAMES).map(
-        ([n, image], i) => `SDLC_IMAGE_${n}=${prefix}/${image}@${digest('abcdef'[i]!)}`,
+        ([n, image], i) => `SDLC_IMAGE_${n}=${prefix}/${image}@${digest('abcdef0'[i]!)}`,
       ),
     ].join('\n') + '\n';
 

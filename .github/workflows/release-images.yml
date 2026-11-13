@@ -1,16 +1,16 @@
 # The platform's images on GHCR for a release (task V04, design/ADR-M66; ADR-M94 from task V15).
 #
-# Builds sdlc-api, sdlc-worker, sdlc-runner, sdlc-otel-collector, sandbox-node24 and
-# tool-project-docs for linux/amd64 and linux/arm64 (each on its own native runner) and scans each
+# Builds sdlc-api, sdlc-worker, sdlc-runner, sdlc-otel-collector, sandbox-node24,
+# tool-project-docs and tool-code-index (X06) for linux/amd64 and linux/arm64 (each on its own native runner) and scans each
 # one with Trivy (CRITICAL blocks, the thresholds of ci.yml): the job scan, which runs
-# release-images-scan.yml. Then, with `push: true` only, and only after ALL twelve scans passed
+# release-images-scan.yml. Then, with `push: true` only, and only after ALL fourteen scans passed
 # (ADR-M94 §2.5):
 # - push: pushes each architecture by digest and scans that digest again from GHCR;
 # - publish: joins them in one multi-arch index tagged with the version and `sha-<commit>`, and
 #   refuses a version tag that already exists (tags never move); signs every index with cosign
 #   keyless (GitHub OIDC, Fulcio, Rekor) and records a GitHub build provenance attestation; BuildKit
 #   attaches an SPDX SBOM and SLSA provenance to every image;
-# - lock: writes `images.lock` (an artifact and the job summary), the six references pinned by
+# - lock: writes `images.lock` (an artifact and the job summary), the seven references pinned by
 #   digest, which release.yml attaches to the GitHub Release.
 #
 # Callers: release.yml on the tag vX.Y.Z (`push: true`; the signer is then release-images.yml at
@@ -120,6 +120,7 @@ jobs:
             sdlc-otel-collector,
             sandbox-node24,
             tool-project-docs,
+            tool-code-index,
           ]
         include:
           - image: sdlc-api
@@ -146,6 +147,11 @@ jobs:
           - image: tool-project-docs
             context: .
             dockerfile: platform/apps/tool-project-docs/Dockerfile
+            ignorefile: .trivyignore
+          # X06 PR 2 (ADR-M108): the `read_code` register tool, registered by its digest.
+          - image: tool-code-index
+            context: .
+            dockerfile: platform/apps/tool-code-index/Dockerfile
             ignorefile: .trivyignore
     env:
       SOURCE_DATE_EPOCH: ${{ needs.check.outputs.epoch }}
@@ -240,6 +246,7 @@ jobs:
             sdlc-otel-collector,
             sandbox-node24,
             tool-project-docs,
+            tool-code-index,
           ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -333,6 +340,7 @@ jobs:
             echo "SDLC_IMAGE_OTEL_COLLECTOR=$(cat "$refs/sdlc-otel-collector")"
             echo "SDLC_IMAGE_SANDBOX_NODE24=$(cat "$refs/sandbox-node24")"
             echo "SDLC_IMAGE_TOOL_PROJECT_DOCS=$(cat "$refs/tool-project-docs")"
+            echo "SDLC_IMAGE_TOOL_CODE_INDEX=$(cat "$refs/tool-code-index")"
           } > "$out"
           {
             echo "### images.lock for v$VERSION"

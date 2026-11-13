@@ -26,6 +26,8 @@ import path from 'node:path';
 import {
   KNOWLEDGE_DATABASE,
   knowledgeSchema,
+  codeIndexSchema,
+  CODE_INDEX_FORMAT,
   sandboxImageFor,
   type AgentAdapterCode,
   type AgentFileReads,
@@ -444,6 +446,9 @@ async function toolRuntime(
   model: string | null,
   request: ProvisionRequest,
 ): Promise<ToolRuntime> {
+  if (grant.permissions.includes('read_code')) {
+    return codeToolRuntime(deps, scope, contract, grant, request);
+  }
   const handoff = request.toolSecrets?.get(grant.tool_key);
   const database = deps.settings.toolServices.find((s) => s.alias === 'knowledge-db');
   const gateway = deps.settings.toolServices.find((s) => s.alias === 'litellm');
@@ -485,6 +490,58 @@ async function toolRuntime(
       model_gateway_url: `http://${gateway.alias}:${String(gateway.port)}`,
     },
     credentials: { db_username, db_password, llm_key },
+  };
+}
+
+/**
+ * The settings and credential of a `read_code` tool (X06 PR 2, ADR-M108 §2.8): its code index
+ * version of the run, the project's code schema and the database; the unwrapped login only (the
+ * code tool calls no model). The same checks as a `read_documents` tool.
+ */
+async function codeToolRuntime(
+  deps: RunnerDeps,
+  scope: TenantScope,
+  contract: RunContract,
+  grant: ToolGrant,
+  request: ProvisionRequest,
+): Promise<ToolRuntime> {
+  const handoff = request.toolSecrets?.get(grant.tool_key);
+  const database = deps.settings.toolServices.find((s) => s.alias === 'knowledge-db');
+  if (
+    handoff === undefined ||
+    !INDEX_ID.test(handoff.indexId) ||
+    grant.permissions.includes('read_documents') ||
+    database === undefined
+  ) {
+    throw new ProvisioningError('tool_unavailable');
+  }
+  const index = await scope.knowledgeIndexes.usedByRun(
+    handoff.indexId,
+    contract.run_id,
+    contract.project_id,
+  );
+  if (index?.kind !== 'code' || index.model !== CODE_INDEX_FORMAT) {
+    throw new ProvisioningError('tool_unavailable');
+  }
+  let fields: Readonly<Record<string, RedactedSecret>>;
+  try {
+    fields = await deps.unwrapper.unwrap(handoff.wrapped);
+  } catch (error) {
+    if (isRefusedWrapToken(error)) {
+      await recordWrapTokenReused(scope, contract.run_id, 'tool_secrets');
+    }
+    throw new ProvisioningError('tool_unavailable');
+  }
+  const { db_username, db_password } = fields;
+  if (!db_username || !db_password) throw new ProvisioningError('tool_unavailable');
+  return {
+    config: {
+      schema_version: 1,
+      index_id: handoff.indexId,
+      schema: codeIndexSchema(contract.project_id),
+      database: { host: database.alias, port: database.port, name: KNOWLEDGE_DATABASE },
+    },
+    credentials: { db_username, db_password },
   };
 }
 
