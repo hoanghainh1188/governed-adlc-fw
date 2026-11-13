@@ -697,7 +697,23 @@ t("X08","Later","Knowledge for people and the G8 learning loop (design first)","
  "design/ (a new design document), design/QUESTIONS.md",
  ["A design for people to find past intents, decisions and evidence (search, links), and for lessons recorded at G8 (\"Release / Learning\") that propose changes to `AGENTS.md` or the handbook",
   "No code in this task; implementation tasks follow Harry's approval"],
- "QUESTIONS #361")
+ "QUESTIONS #361. Design done in ADR-M109 (proposed, QUESTIONS #706–#710); X08a and X08b build it")
+t("X08a","Later","Intent search and links for people","M",["X08"],"FR-40, FR-42, NFR-08",
+ "platform/packages/core (intents, migration), platform/apps/api, platform/apps/cli, platform/apps/dashboard, platform/tests/*, handbook Ch.19",
+ ["`GET /v1/intents` filters `gate`, `risk_tier`, `created_from`/`created_to`, `closed_from`/`closed_to`, `sealed`, `has_lessons` and `q` (2–200 characters), always inside the tenant and the projects the caller may read (ADR-M109 §2.1)",
+  "`q`: PostgreSQL full-text search with the `simple` configuration on a generated column `intents.search_tsv` (title and description) with a GIN index measured on 10,000 intents; an intent code or `#<number>` matches its column; bound parameters only; `q` never in logs or spans; a client data deletion clears it in place",
+  "`adlc intent list` options and a dashboard search box with the filters in the URL; every text from the catalog",
+  "The intent body gains a `links` object (issue, pull request, spec, plan, Evidence Pack, lessons, follow-up intents) built from stored codes; handbook Ch.19 usage",
+  "Tests as ADR-M109 §5 (X08a)"],
+ "Starts after ADR-M109 is accepted (QUESTIONS #710)")
+t("X08b","Later","Lessons at G8 and the learning loop","M",["X08","X08a"],"FR-11, FR-21, FR-40",
+ "platform/packages/core (lessons, migration, poller command), platform/apps/api, platform/apps/cli, platform/apps/dashboard, platform/packages/config, platform/packages/messages, platform/tests/*, design/ADR-M27, handbook Ch.19, Ch.20",
+ ["The comment command `/lesson <category> <target>` with the words below the first line, and `adlc lesson add` / the API / the dashboard with a comment URL; the platform stores codes, IDs and the link only, in the append-only tables `intent_lessons` and `intent_lesson_outcomes` (D-05 §6.12)",
+  "Person A, Person B of the project or a tenant admin; never a bot or an agent; from G8 until `learning.lesson_window_days` (default 14) after the intent closes; G8 never waits for a lesson; the `released` notice invites people to record one",
+  "Outcomes `applied` (with a link) and `dropped` (a code); `adlc intent create --from-lesson`; `adlc lesson issue` opens a handbook issue with codes and the link only",
+  "`adlc lessons list` and `adlc metrics lessons` for the monthly learning step; the dashboard list on a project; handbook Ch.19 and Ch.20 usage, a note for the handbook's authors (Ch.15, Ch.16, T14 stay theirs)",
+  "Tests as ADR-M109 §5 (X08b)"],
+ "Starts after ADR-M109 is accepted (QUESTIONS #710); updates ADR-M27 §2.4 (one command may match a finished intent)")
 t("X10","Later","An adapter for a second Git host","L",["X09"],"NFR-05",
  "platform/packages/adapters/git-<host>/*, platform/tests/*, platform/deploy/README.md",
  ["The host ranked first in ADR-M70 implements `GitHostAdapter`; the gate tests pass on its stub",

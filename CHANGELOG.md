@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Added
+- **Design: knowledge for people and the G8 learning loop** (task X08, ADR-M109 proposed, QUESTIONS #706–#710). How people will find past intents (filters and a full-text search on the title and description, links from an intent to its issue, pull request, spec, plan, Evidence Pack and lessons) and how a lesson learned at G8 is recorded (`/lesson <category> <target>` on the intent's issue; the words stay on GitHub, the platform keeps codes and the link) and linked to the change that applies it. Proposed D-05 1.73 (§6.12). No behaviour change yet: X08a (search) and X08b (lessons) build it after the ADR is accepted.
+
 ## [0.14.0] - 2026-11-13
 
 ### Added

@@ -102,6 +102,8 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **X05** Documents outside the repository (Office, PDF, Confluence, Drive, Backlog)
 - **X06** A code index for agents (Tree-sitter or SCIP and pgvector) (done, v0.14.0)
 - **X08** Knowledge for people and the G8 learning loop (design first)
+- **X08a** Intent search and links for people
+- **X08b** Lessons at G8 and the learning loop
 - **X10** An adapter for a second Git host
 - **X13** Agent memory
 - **O06** Real repositories: very large trees, monorepos, repositories without CI or AGENTS.md (done, v0.13.0)
