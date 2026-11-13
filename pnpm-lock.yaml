@@ -29,6 +29,9 @@ importers:
       '@sdlc/adapter-agent-openhands':
         specifier: workspace:*
         version: link:platform/packages/adapters/agent-openhands
+      '@sdlc/adapter-code-treesitter':
+        specifier: workspace:*
+        version: link:platform/packages/adapters/code-treesitter
       '@sdlc/adapter-evidence-s3':
         specifier: workspace:*
         version: link:platform/packages/adapters/evidence-s3
@@ -316,6 +319,9 @@ importers:
 
   platform/apps/worker:
     dependencies:
+      '@sdlc/adapter-code-treesitter':
+        specifier: workspace:*
+        version: link:../../packages/adapters/code-treesitter
       '@sdlc/adapter-evidence-s3':
         specifier: workspace:*
         version: link:../../packages/adapters/evidence-s3
@@ -402,6 +408,15 @@ importers:
       '@sdlc/contracts':
         specifier: workspace:*
         version: link:../../contracts
+
+  platform/packages/adapters/code-treesitter:
+    dependencies:
+      '@sdlc/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@vscode/tree-sitter-wasm':
+        specifier: 0.3.1
+        version: 0.3.1
 
   platform/packages/adapters/evidence-s3:
     dependencies:
@@ -1576,6 +1591,9 @@ packages:
 
   '@vitest/spy@5.0.1':
     resolution: {integrity: sha512-rbto/mF/SGERxEgYOek7Xm6B9b+y+mVoo+f4b2LymYO8zM1b7uB5nHuhVMTP2hxdzgxvGiZYGxGIaMvL5y180Q==}
+
+  '@vscode/tree-sitter-wasm@0.3.1':
+    resolution: {integrity: sha512-RJFoomET6FajjG511fmQxeBQfU6M24a0aFZPqpid+ttIxanWf1VGytBG0UmsGjt07qmIPJS8U31D+aecuCucsQ==}
 
   '@webassemblyjs/ast@1.14.1':
     resolution: {integrity: sha512-nuBEDgQfm1ccRp/8bCQrx1frohyufl4JlbMMZ4P1wpeOfDhF6FQkxZJ1b/e+PLwr6X1Nhw6OLme5usuBWYBvuQ==}
@@ -3985,6 +4003,8 @@ snapshots:
       vite: 8.3.1(@types/node@24.13.6)(terser@5.51.2)(yaml@2.9.1)
 
   '@vitest/spy@5.0.1': {}
+
+  '@vscode/tree-sitter-wasm@0.3.1': {}
 
   '@webassemblyjs/ast@1.14.1':
     dependencies:

@@ -351,6 +351,18 @@ knowledge:
   chunk_chars: 2000
   embed_batch: 32
 
+code_index:
+  # Task X06, ADR-M108 §2.6: the index of a project's source files (TypeScript, JavaScript, Vue,
+  # Python, Java, Go) for the tool permission `read_code`, built in the run preparation with
+  # Tree-sitter. More files, bytes or symbols than these fail the run (`tool_unavailable`), never a
+  # partial index; one file over `max_file_bytes` or `parse_timeout_ms` is left out and counted.
+  # [Proposal] numbers, to be measured by A10.
+  max_files: 5000
+  max_file_bytes: 524288
+  max_total_bytes: 67108864
+  max_symbols: 500000
+  parse_timeout_ms: 2000
+
 tools:
   # Task X04, ADR-M69 §2.2: register tools (`tool:<key>`) are recertified like agents. Mandatory
   # rule M18: never more than 3 months. An overdue tool gives a warning; it does not block a run.

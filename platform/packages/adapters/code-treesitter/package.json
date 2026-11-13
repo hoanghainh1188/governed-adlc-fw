@@ -1,0 +1,16 @@
+{
+  "name": "@sdlc/adapter-code-treesitter",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Code symbol extractor: Tree-sitter in WebAssembly. See design/ADR-M108.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@sdlc/contracts": "workspace:*",
+    "@vscode/tree-sitter-wasm": "0.3.1"
+  }
+}

@@ -269,4 +269,113 @@ describeDb('H03b: client purge pass on PostgreSQL', () => {
     ]);
     expect((await t.app.system.getTenant(parseTenantId(w.tenantId)))?.status).toBe('purged');
   });
+
+  it('X06: deletes both kinds of index from their own store and drops both schemas', async () => {
+    const w = await world();
+    await pending(w, T0);
+    const deleted: string[] = [];
+    const dropped: string[] = [];
+    const lifecycle = (name: string) => ({
+      deleteIndexVersion: (_projectId: string, id: string) => {
+        deleted.push(`${name}:${id}`);
+        return Promise.resolve({ chunks: 0 });
+      },
+      listIndexVersions: () => Promise.resolve([]),
+      deleteOrphanChunks: () => Promise.resolve(0),
+      dropProject: (projectId: string) => {
+        dropped.push(`${name}:${projectId}`);
+        return Promise.resolve();
+      },
+    });
+    const docsId = crypto.randomUUID();
+    const codeId = crypto.randomUUID();
+    for (const [id, kind, model] of [
+      [docsId, 'docs', 'bge-m3'],
+      [codeId, 'code', 'tree-sitter-1'],
+    ] as const) {
+      await w.scope.knowledgeIndexes.create({
+        id,
+        projectId: w.projectId,
+        baseSha: 'c'.repeat(40),
+        model,
+        kind,
+        documents: 1,
+        chunks: 2,
+        bytes: 3,
+      });
+    }
+    const docsStore = {
+      ...lifecycle('docs'),
+      ensureProject: () => Promise.resolve(),
+      missingChunks: () => Promise.resolve([]),
+      putChunks: () => Promise.resolve(),
+      putIndexVersion: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
+    const result = await runClientPurgePass({
+      db: t.app,
+      store,
+      logger: { log: (level, event, fields = {}) => logs.push({ level, event, fields }) },
+      now: () => addDays(T0, 14),
+      settings: SETTINGS,
+      knowledge: { store: docsStore, codeStore: lifecycle('code') },
+    });
+    expect(result.knowledgeDropped).toBeGreaterThanOrEqual(2);
+    expect(deleted.filter((d) => d.endsWith(codeId) || d.endsWith(docsId)).sort()).toEqual(
+      [`code:${codeId}`, `docs:${docsId}`].sort(),
+    );
+    // Other tenants of this database are purged in the same pass: only this project counts.
+    expect(dropped.filter((d) => d.endsWith(w.projectId)).sort()).toEqual([
+      `code:${w.projectId}`,
+      `docs:${w.projectId}`,
+    ]);
+    const events = await w.scope.audit.listForEntity(w.projectId, ['knowledge.purged']);
+    expect(
+      events.map((e) => e.payload).sort((a, b) => String(a.kind).localeCompare(String(b.kind))),
+    ).toEqual([
+      { index_id: codeId, documents: 1, chunks: 2, cause: 'client_deletion', kind: 'code' },
+      { index_id: docsId, documents: 1, chunks: 2, cause: 'client_deletion', kind: 'docs' },
+    ]);
+  });
+
+  it('X06: without a code store, a code index is not marked and the purge waits', async () => {
+    const w = await world();
+    await pending(w, T0);
+    const codeId = crypto.randomUUID();
+    await w.scope.knowledgeIndexes.create({
+      id: codeId,
+      projectId: w.projectId,
+      baseSha: 'c'.repeat(40),
+      model: 'tree-sitter-1',
+      kind: 'code',
+      documents: 1,
+      chunks: 2,
+      bytes: 3,
+    });
+    const docsStore = {
+      ensureProject: () => Promise.resolve(),
+      missingChunks: () => Promise.resolve([]),
+      putChunks: () => Promise.resolve(),
+      putIndexVersion: () => Promise.resolve(),
+      deleteIndexVersion: () => Promise.resolve({ chunks: 0 }),
+      listIndexVersions: () => Promise.resolve([]),
+      deleteOrphanChunks: () => Promise.resolve(0),
+      dropProject: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
+    const result = await runClientPurgePass({
+      db: t.app,
+      store,
+      logger: { log: (level, event, fields = {}) => logs.push({ level, event, fields }) },
+      now: () => addDays(T0, 14),
+      settings: SETTINGS,
+      knowledge: { store: docsStore },
+    });
+    expect(result.failed).toBeGreaterThanOrEqual(1);
+    expect(logs.some((l) => l.event === 'client_purge.knowledge_store_absent')).toBe(true);
+    expect((await w.scope.knowledgeIndexes.listReady(w.projectId, 10)).map((r) => r.id)).toEqual([
+      codeId,
+    ]);
+    expect((await t.app.system.getTenant(parseTenantId(w.tenantId)))?.status).not.toBe('purged');
+  });
 });

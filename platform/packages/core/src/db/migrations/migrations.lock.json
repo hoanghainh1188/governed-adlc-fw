@@ -48,5 +48,6 @@
   "0047-client-data-deletion.ts": "a657f1017adabeb519b0ae9f8a3c43b5022db0a85fc5c2b33041ac317e872e8f",
   "0048-client-purge.ts": "035aee253e3e9e90d6d8eff9dcfb81c849d1f48994a7fda174791ef57caa662a",
   "0049-project-repo-path.ts": "21802115b76bc53ec65dcb64cb9f37abe8c07a533bf136fe7dd9beaf257fc4b9",
-  "0050-intent-effort-estimate.ts": "3e54362fa6a8b1da20848ac0f71601e08b8cc615c0c2bec02517f8432c2695a0"
+  "0050-intent-effort-estimate.ts": "3e54362fa6a8b1da20848ac0f71601e08b8cc615c0c2bec02517f8432c2695a0",
+  "0051-code-index.ts": "24c259cb16427b42763a9b433043ff1c452c679ce3a209327f1a8e8835564ccc"
 }
