@@ -85,11 +85,11 @@ The platform pins what a person approved, as it pins the plan and the agent's in
 
 | Where | Content |
 |---|---|
-| Run event `memory_read` (once per run whose agent started) | `version` or null, `set_sha256`, `reason` (`read`, `off`, `none`, `unapproved`, `revoked`, `tree_truncated`, `hash_mismatch`, `unreadable`), `files`, `chars`, `truncated` (`yes`, `no`) |
+| Run event `memory_read` (once per run with memory on, before its agent starts; 0.3: none for a contract without `memory`) | `version` and `set_sha256` only with `read`, `reason` (`read`, `off` (memory turned off since G4), `none`, `unapproved`, `revoked`, `tree_truncated`, `hash_mismatch`, `unreadable`), `files`, `chars`, `truncated` (`yes`, `no`) |
 | Run event `memory_proposed` (`read_propose`, after the split) | `files_added`, `files_changed`, `files_removed`, `set_sha256` of the proposed set, `kept_in_change` (memory paths left in the code change) |
 | Run event `memory_branch_pushed`, `memory_publish_failed` | The branch's commit SHA; a failure code |
 | Audit | `memory.approved`, `memory.approval_refused`, `memory.revoked`, `memory.pr_opened` (pull request number) |
-| Context snapshot (ADR-M90, `schema_version` 2) | `memory`: `version`, `set_sha256`, `path_sha256` (sorted), `files`, `truncated` |
+| Context snapshot (ADR-M90, `schema_version` 2 only for a run with `memory_read`; others stay 1) | `memory`: `reason`, `version`, `set_sha256`, `files`, `truncated` (0.3: no `path_sha256`; `set_sha256` already names every path and blob) |
 | Evidence Pack | The `memory_read` and `memory_proposed` events of each run (`PACK_RUN_EVENTS`) and the memory pull request number as a reference |
 
 ### 2.9. Retention (FR-44)
@@ -141,3 +141,4 @@ The platform pins what a person approved, as it pins the plan and the agent's in
 |---|---|---|---|
 | 0.1 | 2026-10-24 | Claude (task X12) | First version, proposed (QUESTIONS #571–#575) |
 | 0.2 | 2026-11-13 | Claude (task X13 PR 1), accepted by Harry with the merge | Accepted (QUESTIONS #711); the contract schema 5 (QUESTIONS #712); which files are memory, the commit `adlc memory approve` records, `not_head`, `unchanged`, `no_git_identity`, the Git host methods `listFolder` and `listPathCommits` (QUESTIONS #715); the CLI is `adlc` (ADR-M100) |
+| 0.3 | 2026-11-14 | Claude (task X13 PR 2) | As built: the contract's `memory` is `{ reason, version, set_sha256 }` (`approved` or why not); `memory_read` before the agent starts, `off` when memory was turned off since G4; the runner reads at most `max_files` files of at most 32 KiB each; the snapshot's `memory` without `path_sha256` (QUESTIONS #712) |

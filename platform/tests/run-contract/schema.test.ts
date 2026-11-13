@@ -36,6 +36,7 @@ describe('Run Contract schema (AC1)', () => {
       'tool_grants',
       'repo_path',
       'root_instructions_sha256',
+      'memory',
       'autonomy_level',
       'max_budget_usd',
       'max_iterations',
@@ -65,7 +66,7 @@ describe('Run Contract schema (AC1)', () => {
   it.each([
     // X03 (QUESTIONS #526): a contract of schema 1 has no adapter and is refused.
     ['schema_version', 1],
-    ['schema_version', 5],
+    ['schema_version', 6],
     ['agent_adapter', 'aider'],
     ['agent_adapter', undefined],
     ['run_id', 'RUN-1'],
@@ -173,5 +174,72 @@ describe('schema 4: the project folder (O06, ADR-M106 §2.4)', () => {
     expect(
       fieldOf(contract({ schema_version: schema, ...grants, root_instructions_sha256: null })),
     ).toBe('root_instructions_sha256');
+  });
+});
+
+describe('schema 5: agent memory (X13 PR 2, ADR-M74 §2.6, QUESTIONS #712)', () => {
+  const SET = 'f'.repeat(64);
+  const withMemory = (memory: unknown, extra: Record<string, unknown> = {}) =>
+    contract({
+      schema_version: 5,
+      tool_grants: [],
+      repo_path: '',
+      root_instructions_sha256: null,
+      memory,
+      ...extra,
+    });
+
+  it('accepts an approved version with its hash, and every reason without them', () => {
+    expect(fieldOf(withMemory({ reason: 'approved', version: 3, set_sha256: SET }))).toBe('ok');
+    for (const reason of ['none', 'unapproved', 'revoked', 'tree_truncated']) {
+      expect(fieldOf(withMemory({ reason, version: null, set_sha256: null })), reason).toBe('ok');
+    }
+    // Schema 5 keeps schema 4's fields: a folder project with memory on.
+    expect(
+      fieldOf(
+        withMemory(
+          { reason: 'none', version: null, set_sha256: null },
+          { repo_path: 'packages/web' },
+        ),
+      ),
+    ).toBe('ok');
+  });
+
+  it.each([
+    [{ reason: 'approved', version: null, set_sha256: SET }],
+    [{ reason: 'approved', version: 0, set_sha256: SET }],
+    [{ reason: 'approved', version: 1, set_sha256: 'F'.repeat(64) }],
+    [{ reason: 'none', version: 1, set_sha256: null }],
+    [{ reason: 'none', version: null, set_sha256: SET }],
+    [{ reason: 'off', version: null, set_sha256: null }],
+    [{ reason: 'approved', version: 1, set_sha256: SET, text: 'notes' }],
+    [{ reason: 'approved', version: 1 }],
+    [null],
+    [undefined],
+  ])('refuses memory = %j', (memory) => {
+    expect(fieldOf(withMemory(memory))).toBe('memory');
+  });
+
+  it('schema 5 needs the folder fields too', () => {
+    const memory = { reason: 'none', version: null, set_sha256: null };
+    expect(fieldOf(withMemory(memory, { repo_path: undefined }))).toBe('repo_path');
+  });
+
+  it.each([2, 3, 4])('schema %i never carries memory', (schema) => {
+    const extra =
+      schema === 4
+        ? { tool_grants: [], repo_path: '', root_instructions_sha256: null }
+        : schema === 3
+          ? { tool_grants: [] }
+          : {};
+    expect(
+      fieldOf(
+        contract({
+          schema_version: schema,
+          ...extra,
+          memory: { reason: 'none', version: null, set_sha256: null },
+        }),
+      ),
+    ).toBe('memory');
   });
 });

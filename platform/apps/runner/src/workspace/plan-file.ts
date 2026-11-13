@@ -37,14 +37,14 @@ const OID = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 const PLAN_FILE = /^\.sdlc\/plans\/INT-[0-9]{4}-[0-9]{4,9}\.yaml$/;
 const REGULAR_FILE_MODES: ReadonlySet<string> = new Set(['100644', '100755']);
 
-class GitFailed extends Error {
+export class GitFailed extends Error {
   /** True when git ran and said no (an exit code); false when it was killed or did not start. */
   constructor(readonly answered: boolean) {
     super('git failed');
   }
 }
 
-function gitIn(
+export function gitIn(
   cloneDir: string,
   args: readonly string[],
   timeoutMs: number,

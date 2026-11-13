@@ -71,12 +71,14 @@ import { Redacted } from '@sdlc/secrets';
 import type { DockerClient } from '../docker/client.js';
 import type { Sandbox } from '../sandbox/lifecycle.js';
 import type { RunnerSettings } from '../settings.js';
+import type { MemoryFilesReader } from '../workspace/memory-files.js';
 import type { PlanFileReader } from '../workspace/plan-file.js';
 import { attachRunner } from './access.js';
 import { AgentRunError } from './errors.js';
 import { discardFeedbackToken, type FeedbackReader } from './feedback.js';
 import { LoopWatch, type LoopStop } from './loop-watch.js';
 import { SpendWatch } from './spend.js';
+import { loadMemory } from './memory.js';
 import { loadAgentTask } from './task.js';
 
 /** The repository inside the sandbox (ADR-M25 §2.3). */
@@ -135,6 +137,8 @@ export interface AgentDriveDeps {
    * Without it a run whose plan was read from a file fails (`task_unavailable`, `no_clone`).
    */
   readonly planFile?: PlanFileReader;
+  /** X13 PR 2: the memory notes of the run's kept clone (ADR-M74 §2.6). */
+  readonly memoryFiles?: MemoryFilesReader;
 }
 
 export interface AgentRunRequest {
@@ -455,7 +459,10 @@ export async function driveAgent(
     );
     condensing = condenser.state;
     taskLoading = true; // from here `readRunFeedback` uses or revokes the token
-    const task = await loadAgentTask(scope, contract, feedback, deps.planFile);
+    const loaded = await loadAgentTask(scope, contract, feedback, deps.planFile);
+    // X13 PR 2 (ADR-M74 §2.6): approved memory notes, or none; never fails the run.
+    const memory = await loadMemory(scope, contract, config.memory, deps.memoryFiles);
+    const task = memory === undefined ? loaded : { ...loaded, memory };
     const endpoint = await attachRunner(
       deps.docker,
       deps.settings,

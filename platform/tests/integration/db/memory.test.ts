@@ -26,6 +26,7 @@ import {
   revokeMemory,
   type MemoryGitHost,
 } from '../../../packages/core/src/memory/service.js';
+import { memoryForRun } from '../../../packages/core/src/memory/run.js';
 import { memorySetSha256 } from '../../../packages/core/src/memory/set.js';
 import { tokenIssuedAt } from '../token-clock.js';
 import { createTestDatabase, describeDb, type TestDatabase } from './helpers.js';
@@ -431,6 +432,117 @@ describeDb('X13 PR 1: approving and revoking agent memory on PostgreSQL', () => 
         expect(text, code).not.toMatch(/\{[a-z_]+\}/);
         expect(text).not.toBe(`memory.error.${code}` as MessageKey);
       }
+    });
+  });
+
+  describe('X13 PR 2: the memory a run may read (memoryForRun, ADR-M74 §2.6)', () => {
+    const BASE = sha(900);
+    const files = { 'build.md': 'a', 'api.md': 'b' };
+    const entries = (f: Record<string, string>) =>
+      Object.entries(f).map(([name, c]) => ({ name, kind: 'file' as const, sha: blob(c) }));
+    const host = (listing: FolderEntry[] | Error) => ({
+      listFolder: () =>
+        listing instanceof Error ? Promise.reject(listing) : Promise.resolve(listing),
+    });
+    let docsId = '';
+    const forRun = (
+      projectId: string,
+      listing: FolderEntry[] | Error,
+      mode: 'off' | 'read' | 'read_propose' = 'read',
+    ) =>
+      memoryForRun(scope, host(listing), {
+        projectId,
+        ref: { owner: 'acme', name: 'docs' },
+        baseSha: BASE,
+        mode,
+      });
+
+    beforeAll(async () => {
+      const docs = await scope.projects.create({
+        slug: 'docs',
+        name: 'Docs',
+        git_provider: 'github',
+        repo_full_name: 'acme/docs',
+      });
+      docsId = docs.id;
+      await scope.memoryVersions.record({
+        project_id: docsId,
+        version: 1,
+        set_sha256: setHash(files),
+        commit_sha: BASE,
+        source: 'cli',
+        approved_by: users.a,
+      });
+      await scope.memoryVersions.record({
+        project_id: docsId,
+        version: 2,
+        set_sha256: setHash({ 'build.md': 'c' }),
+        commit_sha: BASE,
+        source: 'cli',
+        approved_by: users.a,
+      });
+      await scope.memoryVersions.revoke({
+        project_id: docsId,
+        version: 2,
+        revoked_by: users.b,
+        reason: 'poisoned',
+      });
+    });
+
+    it('off: no memory field at all (the contract stays schema 3 or 4)', async () => {
+      await expect(forRun(docsId, entries(files), 'off')).resolves.toBeUndefined();
+    });
+
+    it('an approved set: its version and hash', async () => {
+      await expect(forRun(docsId, entries(files))).resolves.toEqual({
+        reason: 'approved',
+        version: 1,
+        set_sha256: setHash(files),
+      });
+      await expect(forRun(docsId, entries(files), 'read_propose')).resolves.toMatchObject({
+        reason: 'approved',
+      });
+    });
+
+    it('a revoked set, an unapproved set, no memory file', async () => {
+      const none = { version: null, set_sha256: null };
+      await expect(forRun(docsId, entries({ 'build.md': 'c' }))).resolves.toEqual({
+        reason: 'revoked',
+        ...none,
+      });
+      await expect(forRun(docsId, entries({ 'build.md': 'd' }))).resolves.toEqual({
+        reason: 'unapproved',
+        ...none,
+      });
+      await expect(
+        forRun(docsId, [{ name: 'x.txt', kind: 'file', sha: blob('e') }]),
+      ).resolves.toEqual({ reason: 'none', ...none });
+    });
+
+    it("another project's approved set does not count", async () => {
+      await expect(forRun(projectId, entries(files))).resolves.toMatchObject({
+        reason: 'unapproved',
+      });
+      const theirs = (await other.projects.getBySlug('shop'))!;
+      await expect(
+        memoryForRun(other, host(entries(files)), {
+          projectId: theirs.id,
+          ref: { owner: 'acme', name: 'shop' },
+          baseSha: BASE,
+          mode: 'read',
+        }),
+      ).resolves.toMatchObject({ reason: 'unapproved' });
+    });
+
+    it('a cut tree: tree_truncated; any other Git host error is thrown (the step waits)', async () => {
+      await expect(forRun(docsId, new GitHostError('tree_truncated'))).resolves.toEqual({
+        reason: 'tree_truncated',
+        version: null,
+        set_sha256: null,
+      });
+      await expect(forRun(docsId, new GitHostError('network_error'))).rejects.toMatchObject({
+        code: 'network_error',
+      });
     });
   });
 });

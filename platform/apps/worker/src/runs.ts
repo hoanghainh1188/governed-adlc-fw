@@ -96,6 +96,8 @@ export async function createWorkerRuns(options: {
         gitHost: options.gitHost,
         wrapper: options.wrapper,
         egressAllowlist: settings.egressAllowlist,
+        // X13 PR 2 (ADR-M74 §2.6): the memory folder at the run's base commit.
+        memory: { gitHost: options.gitHost },
         ...(options.knowledge ? { knowledge: options.knowledge } : {}),
         ...(options.code ? { code: options.code } : {}),
         ...(options.databaseCredentials

@@ -47,8 +47,35 @@ import {
 export const RUN_CONTRACT_SCHEMA_VERSION = 3;
 /** O06: the schema of a contract with `repo_path` and `root_instructions_sha256`. */
 export const RUN_CONTRACT_SCHEMA_FOLDER = 4;
+/**
+ * X13 (ADR-M74 0.2 §2.6, QUESTIONS #712): schema 4's fields plus `memory`. The worker issues it
+ * only for a project whose `memory.mode` is not `off`; every other contract stays schema 3 or 4.
+ */
+export const RUN_CONTRACT_SCHEMA_MEMORY = 5;
 /** Schema versions the runner accepts. */
-export const RUN_CONTRACT_SCHEMA_VERSIONS = [2, 3, 4] as const;
+export const RUN_CONTRACT_SCHEMA_VERSIONS = [2, 3, 4, 5] as const;
+
+/**
+ * Why a run reads memory or not, as G4 found it (ADR-M74 §2.6): `approved` (a version that is
+ * not revoked), `none` (no memory file), `unapproved`, `revoked`, `tree_truncated`.
+ */
+export const RUN_CONTRACT_MEMORY_REASONS = [
+  'approved',
+  'none',
+  'unapproved',
+  'revoked',
+  'tree_truncated',
+] as const;
+export type RunContractMemoryReason = (typeof RUN_CONTRACT_MEMORY_REASONS)[number];
+
+/** Schema 5: the approved memory set at `base_sha`, or why there is none. Never a path or text. */
+export interface RunContractMemory {
+  readonly reason: RunContractMemoryReason;
+  /** The approved version; null unless `approved`. */
+  readonly version: number | null;
+  /** The set's SHA-256 the runner must find in its clone; null unless `approved`. */
+  readonly set_sha256: string | null;
+}
 
 /** Autonomy levels a contract may grant: L0 never runs an agent (D-02 FR-03), L3+ not in the MVP. */
 export const RUN_CONTRACT_AUTONOMY_LEVELS = [
@@ -96,6 +123,8 @@ export interface RunContract {
   readonly repo_path?: string;
   /** Schema 4 (O06): the SHA-256 of the agent's second pinned file, or null. */
   readonly root_instructions_sha256?: string | null;
+  /** Schema 5 (X13, ADR-M74 §2.6): the approved memory set at `base_sha`, or why there is none. */
+  readonly memory?: RunContractMemory;
   readonly autonomy_level: RunContractAutonomy;
   /** Cost cap in USD as a decimal string (`"2"`, `"0.5"`, at most 6 decimals). */
   readonly max_budget_usd: string;
@@ -198,6 +227,17 @@ const toolGrants: Check = (value) =>
       isToolGrant(grant) && (i === 0 || (value[i - 1] as ToolGrant).tool_key < grant.tool_key),
   );
 
+/** Exactly `reason`, `version` and `set_sha256`; the two values set only when `approved`. */
+function isContractMemory(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const m = value as Record<string, unknown>;
+  const keys = Object.keys(m).sort();
+  if (keys.join(',') !== 'reason,set_sha256,version') return false;
+  if (!(RUN_CONTRACT_MEMORY_REASONS as readonly unknown[]).includes(m.reason)) return false;
+  if (m.reason !== 'approved') return m.version === null && m.set_sha256 === null;
+  return positiveInt(m.version) && text(SHA256)(m.set_sha256);
+}
+
 const FIELDS: Readonly<Record<keyof RunContract, Check>> = {
   schema_version: (value) => (RUN_CONTRACT_SCHEMA_VERSIONS as readonly unknown[]).includes(value),
   run_id: text(UUID),
@@ -218,6 +258,7 @@ const FIELDS: Readonly<Record<keyof RunContract, Check>> = {
   tool_grants: toolGrants,
   repo_path: (value) => typeof value === 'string' && isRepoPath(value),
   root_instructions_sha256: (value) => value === null || text(SHA256)(value),
+  memory: isContractMemory,
   autonomy_level: (value) =>
     typeof value === 'string' &&
     (RUN_CONTRACT_AUTONOMY_LEVELS as readonly string[]).includes(value),
@@ -237,7 +278,7 @@ export const RUN_CONTRACT_FIELDS = Object.keys(FIELDS) as readonly (keyof RunCon
 /**
  * Checks a value against the Run Contract schema: every field of its schema version present with
  * the right format (`tool_grants` from schema 3, `repo_path` and `root_instructions_sha256` in
- * schema 4 only), no other field, every register tool of
+ * schemas 4 and 5, `memory` in schema 5 only), no other field, every register tool of
  * `allowed_tools` with exactly one grant and every grant in `allowed_tools`, and `expires_at` after
  * `issued_at`. Returns the first field that fails.
  */
@@ -252,7 +293,10 @@ export function validateRunContract(value: unknown): RunContractValidation {
   for (const field of RUN_CONTRACT_FIELDS) {
     const absent =
       (field === 'tool_grants' && schema === 2) ||
-      ((field === 'repo_path' || field === 'root_instructions_sha256') && schema !== 4);
+      ((field === 'repo_path' || field === 'root_instructions_sha256') &&
+        schema !== 4 &&
+        schema !== 5) ||
+      (field === 'memory' && schema !== 5);
     if (absent) {
       if (Object.hasOwn(record, field)) return { ok: false, field };
       continue;

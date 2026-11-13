@@ -42,6 +42,7 @@ import { reconcileOnStart, sweepOrphans, type ReconcileResult } from './reconcil
 import type { TeardownReason } from './sandbox/lifecycle.js';
 import { storeChanges } from './workspace/changes.js';
 import { storeProposal } from './workspace/export.js';
+import { memoryFilesReader } from './workspace/memory-files.js';
 import { planFileReader } from './workspace/plan-file.js';
 
 export interface RunnerHooks {
@@ -203,10 +204,15 @@ export class Runner {
   }
 
   /** B09 PR 2: the plan file reader of a run whose clone this process kept. */
-  #planFileFor(runId: string): Pick<AgentDriveDeps, 'planFile'> {
+  #planFileFor(runId: string): Pick<AgentDriveDeps, 'planFile' | 'memoryFiles'> {
     const cloneDir = this.#clones.get(runId);
     if (!cloneDir) return {};
-    return { planFile: planFileReader(cloneDir, this.#deps.settings.git.timeoutMs) };
+    const timeoutMs = this.#deps.settings.git.timeoutMs;
+    return {
+      planFile: planFileReader(cloneDir, timeoutMs),
+      // X13 PR 2: the memory notes come from the same kept clone.
+      memoryFiles: memoryFilesReader(cloneDir, timeoutMs),
+    };
   }
 
   /** The proposal step of an L1 run whose clone this process kept (C06 session 2b). */

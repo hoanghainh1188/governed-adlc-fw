@@ -233,4 +233,41 @@ describe('recording context_snapshot (AC1, AC3)', () => {
     expect(w.events).toEqual([]);
     expect(w.puts).toEqual([]);
   });
+
+  it('X13 PR 2: a run with memory_read gets schema 2 with the version and hash it read', async () => {
+    const set = sha('set');
+    const w = world([
+      AGENT_STARTED,
+      {
+        event_type: 'memory_read',
+        payload: {
+          reason: 'read',
+          version: 3,
+          set_sha256: set,
+          files: 2,
+          chars: 90,
+          truncated: 'yes',
+        },
+      },
+    ]);
+    await recordContextSnapshot(w.scope, w.evidence, RUN_ID, undefined);
+    const parsed = JSON.parse(w.puts[0]!.content) as Record<string, unknown>;
+    expect(parsed.schema_version).toBe(2);
+    expect(parsed.memory).toEqual({
+      files: 2,
+      reason: 'read',
+      set_sha256: set,
+      truncated: true,
+      version: 3,
+    });
+    expect(Object.keys(parsed)).toEqual([...Object.keys(parsed)].sort());
+  });
+
+  it('X13 PR 2: a run without memory_read keeps schema 1, without a memory key', async () => {
+    const w = world();
+    await recordContextSnapshot(w.scope, w.evidence, RUN_ID, undefined);
+    const parsed = JSON.parse(w.puts[0]!.content) as Record<string, unknown>;
+    expect(parsed.schema_version).toBe(1);
+    expect(parsed).not.toHaveProperty('memory');
+  });
 });

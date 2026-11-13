@@ -28,6 +28,9 @@
 //    (`tools/credentials.ts`). A failure ends the run `failed` (`tool_unavailable`, run event
 //    `knowledge_unavailable`) and revokes what was issued. X06 (ADR-M108): the same for a
 //    `read_code` tool, with the code index and a login of the code read role (no model key).
+// 8. (X13 PR 2, ADR-M74 §2.6) for a project whose `memory.mode` is not `off`: the memory set at the
+//    base commit and whether a person approved it (`memoryForRun`), in the contract (schema 5).
+//    G4 never fails for memory; the runner reads the set from its clone only when the hash holds.
 // If anything fails after the contract, the key is revoked and the run is cancelled
 // (`prepare_failed`), so no run waits in `queued` with a live key.
 import {
@@ -36,6 +39,8 @@ import {
   type AgentAdapterCode,
   type KnowledgeErrorCode,
   type GitHostAdapter,
+  type MemoryMode,
+  type RunContractMemory,
   type RedactedSecret,
   type RunContractSigner,
   type RunDatabaseCredentials,
@@ -49,6 +54,7 @@ import type { Registry } from '../registry/registry.js';
 import { issueRunContract } from '../run-contract/issue.js';
 import { buildCodeIndex, type CodeIndexDeps } from '../knowledge/code-indexer.js';
 import { buildProjectIndex, type KnowledgeDeps } from '../knowledge/indexer.js';
+import { memoryForRun } from '../memory/run.js';
 import { loadEffectiveConfig } from '../registry/effective-config.js';
 import { isRecordableModel } from '../run-events/types.js';
 import { gatherG4Facts, projectRepoRef, type G4Deps, type RunProposal } from './g4-proposal.js';
@@ -93,6 +99,11 @@ export interface PrepareRunDeps {
    * `read_documents` tool. Without it a run with such a tool fails (`tool_unavailable`).
    */
   readonly databaseCredentials?: RunDatabaseCredentials;
+  /**
+   * X13 PR 2 (ADR-M74 §2.6): the Git host's folder listing for the run's memory. Without it a
+   * project with memory on cannot prepare a run (the step fails and is tried again).
+   */
+  readonly memory?: { readonly gitHost: Pick<GitHostAdapter, 'listFolder'> };
 }
 
 export type PrepareRunRefusal =
@@ -169,6 +180,8 @@ interface Checked {
   /** X04: register tools whose recertification is overdue (a warning, not a refusal). */
   readonly overdueTools: readonly { readonly id: string; readonly key: string }[];
   readonly validityMinutes: number;
+  /** X13: the project's `memory.mode` when G4 passed. */
+  readonly memoryMode: MemoryMode;
 }
 
 export async function prepareRun(
@@ -198,10 +211,18 @@ export async function prepareRun(
       ownerWarning: ready.agent.warnings.includes('recertification_overdue'),
       overdueTools: ready.tools.overdue,
       validityMinutes: policy.config.run.contract_validity_minutes,
+      memoryMode: policy.config.memory.mode,
     };
   });
   if (typeof checked === 'string') return { ok: false, reason: checked };
   const { proposal } = checked;
+  const memory = await runMemory(
+    scope,
+    deps,
+    peek.project_id,
+    proposal.baseSha,
+    checked.memoryMode,
+  );
 
   const issued = await issueRunContract(
     scope,
@@ -226,6 +247,7 @@ export async function prepareRun(
       allowedModels: proposal.allowedModels,
       egressAllowlist: deps.egressAllowlist,
       triggeredBy: checked.triggeredBy,
+      ...(memory === undefined ? {} : { memory }),
     },
     { signer: deps.signer, now: () => deps.registry.now() },
   );
@@ -598,4 +620,19 @@ async function wrapFeedbackToken(
     permissions: { [source.permission]: 'read' },
   });
   return deps.wrapper.wrap({ token: token.token }, { ttlSeconds });
+}
+
+/** X13: the contract's `memory` for a project with memory on; undefined when it is `off`. */
+async function runMemory(
+  scope: TenantScope,
+  deps: PrepareRunDeps,
+  projectId: string,
+  baseSha: string,
+  mode: MemoryMode,
+): Promise<RunContractMemory | undefined> {
+  if (mode === 'off') return undefined;
+  const project = await scope.projects.getById(projectId);
+  const ref = project ? projectRepoRef(project) : undefined;
+  if (!deps.memory || !ref) throw new Error('memory: no Git host or repository for the run');
+  return memoryForRun(scope, deps.memory.gitHost, { projectId, ref, baseSha, mode });
 }

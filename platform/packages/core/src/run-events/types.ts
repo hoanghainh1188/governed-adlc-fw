@@ -363,6 +363,21 @@ export const RUN_EVENT_TYPES = {
    * `hash_mismatch`, `invalid` or `files_mismatch`.
    */
   plan_unavailable: { reason: 'code' },
+  /**
+   * X13 PR 2 (ADR-M74 §2.6, §2.8): once per run with memory on whose agent starts. `reason`:
+   * `read` (the notes reached the prompt), or why not: `none`, `unapproved`, `revoked`,
+   * `tree_truncated` (from G4), `hash_mismatch`, `unreadable` (the runner's clone). `version` and
+   * `set_sha256` of the set read; `files`, `chars` and `truncated` (`yes`, `no`) of the text the
+   * agent got. Never a path, a name or memory text.
+   */
+  memory_read: {
+    reason: 'code',
+    version: 'version?',
+    set_sha256: 'sha256?',
+    files: 'count',
+    chars: 'count',
+    truncated: 'code',
+  },
 } as const satisfies Readonly<Record<string, Readonly<Record<string, RunEventFieldSpec>>>>;
 
 export type RunEventType = keyof typeof RUN_EVENT_TYPES;

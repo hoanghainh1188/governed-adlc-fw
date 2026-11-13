@@ -148,6 +148,23 @@ export interface AgentTask {
    * rules, the files or the tools. In memory only: never in Temporal, logs, run events or tables.
    */
   readonly reviewFeedback?: ReviewFeedbackText;
+  /**
+   * X13 PR 2 (ADR-M74 §2.6): the project's approved memory notes, read by the runner from its own
+   * clone at `base_sha`, hash checked against the contract's `memory.set_sha256`, cleaned and
+   * capped. Approved by a person, but untrusted in the prompt: the adapter delimits it as data. In
+   * memory only: never in Temporal, logs, run events or tables.
+   */
+  readonly memory?: MemoryTextBlock;
+}
+
+/** The memory notes of a run, rendered and capped by the runner. */
+export interface MemoryTextBlock {
+  /** `Memory file: <name>` lines, each followed by the file's cleaned text. */
+  readonly text: string;
+  /** Number of memory files in the text. */
+  readonly files: number;
+  /** True when the runner left files out or cut a file or the whole text at its cap. */
+  readonly truncated: boolean;
 }
 
 /** The task text of a plan file, rendered and capped by the runner (`PLAN_TASK_TEXT_MAX_CHARS`). */

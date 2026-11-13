@@ -21,6 +21,8 @@ export {
   CI_FAILED_INSTRUCTION,
   feedbackBlock,
   INSTRUCTIONS_FILE,
+  MAX_MEMORY_TEXT,
+  memoryBlock,
   planTaskBlock,
   toolsOf,
   type TaskMessageOptions,

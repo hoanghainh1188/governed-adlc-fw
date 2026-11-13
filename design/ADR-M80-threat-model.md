@@ -269,4 +269,5 @@ Optional, once, outside CI: one run with `gpt-oss:20b` (Ollama on the owner's ma
 | 0.11 | 2026-11-12 | Claude Code (task X06) | §5 gap G-12: the worker parses client code for the code index (ADR-M108) |
 | 0.12 | 2026-11-13 | Claude (task H06) | §5 gap G-6: optional gVisor or Kata runtime (ADR-M25 §2.12) |
 | 0.13 | 2026-11-13 | Claude (task X13 PR 1) | ASI06: the agent memory text of 0.7 approved with ADR-M74 0.2 (QUESTIONS #711) |
+| 0.14 | 2026-11-14 | Claude (task X13 PR 2) | ASI06: the memory read path is built; proof `platform/tests/agent/memory-prompt.test.ts` (an injected note stays in its nonce block), `platform/tests/runner/memory-files.test.ts` (hash check, canary never in the run event) |
 
