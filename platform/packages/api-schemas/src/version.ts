@@ -3,4 +3,4 @@
 // (`platform_version`), `adlc --version` prints it, `adlc doctor` compares the two. The release
 // gate (`platform/tools/release/release-check.mjs`) and a test keep it equal to `package.json`;
 // change both for a release (RELEASING.md).
-export const PLATFORM_VERSION = '0.15.0';
+export const PLATFORM_VERSION = '0.16.0';

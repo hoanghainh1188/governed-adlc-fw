@@ -42,7 +42,7 @@ npm install -g @hoanghainh/governed-adlc
 adlc --version
 ```
 
-- **Use the platform's version.** `adlc --version` prints the release; install the one your platform runs (ask your operator): `npm install -g @hoanghainh/governed-adlc@<version>`, for example `@0.15.0`. To update: the same command with the new version.
+- **Use the platform's version.** `adlc --version` prints the release; install the one your platform runs (ask your operator): `npm install -g @hoanghainh/governed-adlc@<version>`, for example `@0.16.0`. To update: the same command with the new version.
 - **Before v0.9.0** the package was `agentic-sdlc-cli` and the command `sdlc`. For a platform older than v0.9.0, install `agentic-sdlc-cli@<version>`. To move: `npm uninstall -g agentic-sdlc-cli`, then install the new package. Your login stays: `adlc` reads the old one (`~/.config/sdlc/`) until it saves its own (`~/.config/adlc/`). From v0.10.0 there is no `sdlc` command: write `adlc` in your scripts (v0.9.x installed both, ADR-M100).
 - **Trust.** From v0.9.1 on, every version is published by this repository's GitHub Actions from a release tag, with npm provenance (npm shows the commit and the workflow that built it). Version 0.9.0, the first of `@hoanghainh/governed-adlc`, was published by hand, without provenance (the old package `agentic-sdlc-cli`: by hand for 0.1.1, with provenance from v0.2.0 to v0.8.0). The package has no dependencies: everything it needs is in one file, and `THIRD-PARTY-NOTICES` lists the bundled open-source packages.
 - **Operator commands.** `adlc ops …` is in the package too, but works only on the platform server, with `SDLC_DB_URL` ([deploy/README.md](deploy/README.md)).
