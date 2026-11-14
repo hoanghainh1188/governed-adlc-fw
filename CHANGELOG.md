@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- **Finding past intents, part 2: the dashboard** (task X08a PR 2, ADR-M109 0.2; closes #525). The intents board has a search box and the filters of `GET /v1/intents` (gate, risk, sealed Evidence Pack, created and closed days). The filters live in the address (`#/intents?q=…&gate=G3`), so a search can be shared; the matches show as one list, open and finished alike. A value the API would refuse is never sent; a search text under 2 characters is refused in the page. Handbook Ch.19 §19.8e.
 - **Finding past intents, part 1** (task X08a PR 1, ADR-M109 0.2 accepted, QUESTIONS #721–#725). `GET /v1/intents` and `adlc intent list` filter by `gate`, `risk_tier`, the creation and close days, a sealed Evidence Pack, and a search text `q` (`--search`): the words of the title and description (PostgreSQL full-text search, `simple`, no stemming), an intent code, or `#<number>` for the issue or pull request. Always inside your tenant and the projects you have a role on; the search text is never logged. `adlc intent show` and the intent body gain `links`: the issue, the pull request, the spec and the plan file at their commits, and the Evidence Pack. A client data deletion now also turns the intents' titles into `Redacted intent <code>` and empties their descriptions (ADR-M97 1.1). New Git host method `webUrl` (D-03 1.57). The dashboard search comes in PR 2. Handbook Ch.19.
 
 ### Upgrade notes

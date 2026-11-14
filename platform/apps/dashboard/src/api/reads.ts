@@ -35,6 +35,7 @@ import {
   type IntentView,
 } from '@sdlc/api-schemas';
 
+import type { IntentSearch } from '../model/search.js';
 import { apiPath, getJson, getPublicJson, segment } from './client.js';
 
 type Signal = { readonly signal?: AbortSignal };
@@ -71,16 +72,20 @@ export const TENANT_SLUG = /^[a-z][a-z0-9-]{1,62}$/;
 export const gitHubSignInUrl = (tenant: string): string =>
   apiPath('/v1/auth/github/start', { tenant });
 
-/** Every intent the person can read, page by page; `truncated` past the cap. */
+/**
+ * Every intent the person can read, page by page; `truncated` past the cap. X08a: with the
+ * board's search filters (checked by `model/search.ts`), only the matching intents.
+ */
 export async function readIntents(
   project: string | undefined,
   o: Signal = {},
+  search: IntentSearch = {},
 ): Promise<{ items: IntentView[]; truncated: boolean }> {
   const items: IntentView[] = [];
   let cursor: string | undefined;
   do {
     const page = await getJson(
-      apiPath('/v1/intents', { project, limit: 100, cursor }),
+      apiPath('/v1/intents', { project, ...search, limit: 100, cursor }),
       intentPageSchema,
       o,
     );

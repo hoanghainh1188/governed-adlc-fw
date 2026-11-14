@@ -1161,3 +1161,51 @@ tbody th.mono {
 .notice-success {
   border-left-color: var(--ok);
 }
+
+/* X08a PR 2: the search box and filters of the intents board. */
+.intent-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.intent-search-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 18rem;
+  font-size: var(--text-small);
+}
+
+.intent-search input[type='search'],
+.intent-search input[type='date'] {
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-chip);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font: inherit;
+}
+
+.intent-search input[type='search'] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.intent-search input:focus-visible,
+.intent-search select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.intent-search .field-hint {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.intent-search .is-error {
+  color: var(--alert);
+}
