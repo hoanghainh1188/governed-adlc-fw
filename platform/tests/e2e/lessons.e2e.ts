@@ -26,9 +26,10 @@ test('X08b: the lessons of a project, read only, with their filters in the URL',
   });
   await signIn(page);
   await page.getByRole('navigation').getByRole('link', { name: 'Lessons' }).click();
+  // The screen loads on demand: wait for it before using its filter (not the board's).
+  await expect(page.getByRole('heading', { name: 'Lessons', level: 1 })).toBeVisible();
   await page.getByLabel('Project').selectOption('shop');
   await expect(page).toHaveURL(/#\/lessons\?project=shop$/);
-  await expect(page.getByRole('heading', { name: 'Lessons', level: 1 })).toBeVisible();
 
   const table = page.getByRole('table', { name: 'Lessons' });
   await expect(table.getByRole('row')).toHaveCount(4);
