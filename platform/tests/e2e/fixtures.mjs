@@ -491,10 +491,68 @@ export function escalationOf(code) {
 }
 
 /** The answer for a GET path, or undefined (404). */
+/** X08b PR 3: lessons of `shop` (codes and links only; the words stay on GitHub). */
+function lesson(n, over) {
+  return {
+    id: uuid(1300 + n),
+    intent: 'INT-2026-0002',
+    project: 'shop',
+    category: 'agent_assumption',
+    target: 'agents_md',
+    source: 'github_comment',
+    comment_url: `https://github.com/harryforge/shop-demo/issues/12#issuecomment-${1000 + n}`,
+    comment_id: String(1000 + n),
+    recorded_by: uuid(1),
+    created_at: at(-3 * 24 * HOUR),
+    state: 'open',
+    outcome: null,
+    ...over,
+  };
+}
+
+const LESSONS = () => [
+  lesson(1),
+  lesson(2, {
+    category: 'rework',
+    target: 'config',
+    state: 'applied',
+    outcome: {
+      outcome: 'applied',
+      link_url: 'https://github.com/harryforge/shop-demo/pull/31',
+      reason: null,
+      follow_up_intent_id: null,
+      decided_by: uuid(2),
+      created_at: at(-1 * 24 * HOUR),
+    },
+  }),
+  lesson(3, {
+    category: 'process',
+    target: 'none',
+    state: 'dropped',
+    outcome: {
+      outcome: 'dropped',
+      link_url: null,
+      reason: 'record_only',
+      follow_up_intent_id: null,
+      decided_by: uuid(2),
+      created_at: at(-2 * HOUR),
+    },
+  }),
+];
+
 export function fixtures(url) {
   const p = url.pathname;
   const all = INTENTS();
   if (p === '/v1/me') return { body: ME };
+  if (p === '/v1/lessons') {
+    const q = url.searchParams;
+    const items = LESSONS().filter(
+      (l) =>
+        (!q.get('project') || l.project === q.get('project')) &&
+        (q.get('open') !== 'true' || l.state === 'open'),
+    );
+    return { body: { items } };
+  }
   if (p === '/v1/intents') {
     const q = url.searchParams;
     const project = q.get('project');

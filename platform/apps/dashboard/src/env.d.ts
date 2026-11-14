@@ -11,4 +11,10 @@ declare module 'virtual:dashboard-admin-catalog' {
   export default catalog;
 }
 
+declare module 'virtual:dashboard-lessons-catalog' {
+  /** X08b PR 3: the `dashboard.lessons.*` messages, loaded with the on-demand screens. */
+  const catalog: Readonly<Record<string, string>>;
+  export default catalog;
+}
+
 declare module '*.css';

@@ -26,6 +26,7 @@ import {
   gateMetricsSchema,
   intentDetailSchema,
   intentPageSchema,
+  lessonListSchema,
   meSchema,
   passkeyListSchema,
   recentEvaluationsSchema,
@@ -94,6 +95,14 @@ export async function readIntents(
   } while (cursor !== undefined && items.length < MAX_BOARD_INTENTS);
   return { items, truncated: cursor !== undefined };
 }
+
+/** X08b PR 3: the lessons of a project, newest first (at most 500); `open`: no outcome yet. */
+export const readLessons = (project: string, open: boolean, o: Signal = {}) =>
+  getJson(
+    apiPath('/v1/lessons', { project, ...(open ? { open: 'true' } : {}) }),
+    lessonListSchema,
+    o,
+  );
 
 export const readIntent = (code: string, o: Signal = {}) =>
   getJson(apiPath(`/v1/intents/${segment(code)}`), intentDetailSchema, o);

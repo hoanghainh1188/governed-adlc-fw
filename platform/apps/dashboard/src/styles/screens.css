@@ -964,7 +964,12 @@ tbody th.mono {
   color: var(--alert);
 }
 
+.chip.lesson-dropped {
+  color: var(--ink-muted);
+}
+
 .chip.evaluation-completed,
+.chip.lesson-applied,
 .chip.plan-active {
   border-color: var(--ok);
   color: var(--ok);

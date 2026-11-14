@@ -262,5 +262,9 @@ describe.runIf(built)('the build (AC3, `pnpm build` first)', () => {
     expect(first).toHaveLength(1);
     expect(html).toContain(`/dashboard/assets/${path.basename(first[0]!)}`);
     expect(gz(first[0]!)).toBeLessThan(80 * 1024);
+    // X08b PR 3: the lessons screen and its messages ride in the on-demand chunk.
+    const text = (f: string) => fs.readFileSync(f, 'utf8');
+    expect(text(admin[0]!)).toContain('Open the comment');
+    expect(text(first[0]!)).not.toContain('Open the comment');
   });
 });
