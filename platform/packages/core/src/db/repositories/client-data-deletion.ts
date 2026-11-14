@@ -25,6 +25,11 @@ export function anonymizedExternalLogin(identityId: string): string {
   return `redacted-${identityId}`;
 }
 
+/** Title written for an intent of a deleted client (X08a, QUESTIONS #725; trigger SDA31). */
+export function scrubbedIntentTitle(code: string): string {
+  return `Redacted intent ${code}`;
+}
+
 /** Minimal YAML that replaces a project's configuration after a client purge (ADR-M97 §2.1). */
 export function projectConfigTombstoneYaml(purgedAt: Date): string {
   return `redacted: true\npurged_at: ${purgedAt.toISOString()}\n`;
@@ -119,6 +124,29 @@ export class ClientDataDeletionRepository extends TenantRepository {
       }
       return { configs };
     });
+  }
+
+  /**
+   * X08a (QUESTIONS #725, ADR-M97): replaces the title and description of every intent of the
+   * tenant with the tombstone (`Redacted intent <code>`, an empty description); the search vector
+   * follows by itself. Idempotent. Returns how many intents changed.
+   */
+  async scrubIntents(): Promise<number> {
+    const rows = await this.run(
+      this.db
+        .updateTable('intents')
+        .set({ title: sql<string>`'Redacted intent ' || code`, description: '' })
+        .where('tenant_id', '=', this.tenantId)
+        .where((eb) =>
+          eb.or([
+            eb('title', '<>', sql<string>`'Redacted intent ' || code`),
+            eb('description', '<>', ''),
+          ]),
+        )
+        .returning('id')
+        .execute(),
+    );
+    return rows.length;
   }
 
   private redactIdentities(db: Kysely<Database>, userId: string): Promise<UserIdentity[]> {

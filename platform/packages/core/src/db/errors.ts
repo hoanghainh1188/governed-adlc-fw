@@ -79,6 +79,7 @@ const PG_ERROR_CODES: Record<string, DbErrorCode> = {
   SDA28: 'conflict', // a project folder that overlaps another project of the same repository (0049)
   SDA29: 'immutable', // an intent's effort estimate changed when finished, or back to null (0050)
   SDA30: 'immutable', // a memory proposal in a final state, or back to `pushed` (0055)
+  SDA31: 'immutable', // an intent's title or description changed to anything but the tombstone (0056)
 };
 
 /** Maps a PostgreSQL error to a DbError; anything else is rethrown unchanged. */

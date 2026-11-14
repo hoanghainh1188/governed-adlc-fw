@@ -130,6 +130,11 @@ export interface ApiDeps {
    */
   readonly gitHost?: Pick<GitHostAdapter, 'getBranchHead' | 'getFileAtCommit'>;
   /**
+   * X08a (ADR-M109 §2.1): builds the web addresses of an intent's `links` (no Git host call).
+   * Undefined: the links hold their codes and numbers, without a `url`.
+   */
+  readonly webLinks?: Pick<GitHostAdapter, 'webUrl'>;
+  /**
    * The Git host reads of `adlc memory approve` (X13, ADR-M74 §2.3): the default branch's head,
    * the memory folder and the commits that changed it. Undefined: approving answers
    * `git_host_unavailable`.
@@ -252,7 +257,7 @@ class ApiModule {
         {
           provide: INTENTS,
           useFactory: (registry: Registry) =>
-            new IntentsService(registry, signals, wakeLogger, passkeys?.service),
+            new IntentsService(registry, signals, wakeLogger, passkeys?.service, deps.webLinks),
           inject: [REGISTRY],
         },
         {

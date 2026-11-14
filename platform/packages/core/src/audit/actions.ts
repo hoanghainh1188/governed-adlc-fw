@@ -660,6 +660,8 @@ export const AUDIT_ACTIONS = {
       langfuse_intents_purged: 'count',
       knowledge_indexes_dropped: 'count',
       users_anonymized: 'count',
+      // X08a (QUESTIONS #725): intents whose title and description became the tombstone.
+      intents_scrubbed: 'count?',
       retained_audit_rows: 'count',
       deletion_receipt_hash: 'sha256',
     },

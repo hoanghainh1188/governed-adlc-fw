@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+- **Finding past intents, part 1** (task X08a PR 1, ADR-M109 0.2 accepted, QUESTIONS #721–#725). `GET /v1/intents` and `adlc intent list` filter by `gate`, `risk_tier`, the creation and close days, a sealed Evidence Pack, and a search text `q` (`--search`): the words of the title and description (PostgreSQL full-text search, `simple`, no stemming), an intent code, or `#<number>` for the issue or pull request. Always inside your tenant and the projects you have a role on; the search text is never logged. `adlc intent show` and the intent body gain `links`: the issue, the pull request, the spec and the plan file at their commits, and the Evidence Pack. A client data deletion now also turns the intents' titles into `Redacted intent <code>` and empties their descriptions (ADR-M97 1.1). New Git host method `webUrl` (D-03 1.57). The dashboard search comes in PR 2. Handbook Ch.19.
+
+### Upgrade notes
+- **On a running stack:** `pnpm db:migrate`: migration `0056-intent-search` (the generated column `intents.search_tsv` with its GIN index, `intents.closed_at` filled from `updated_at` for finished intents, the triggers `intents_closed_at` and `intents_scrub_only`). It rewrites the `intents` table once; on a large table, run it when the platform is quiet. Then the new `sdlc-api` and `sdlc-worker` images, and update `adlc` to the release that brings this change, for the new `adlc intent list` options. No setting and no credentials command.
+
 ## [0.15.0] - 2026-11-14
 
 **Agent memory: approved notes for agents, proposed by runs in their own pull request; and a load test.**

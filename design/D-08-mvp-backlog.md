@@ -1889,7 +1889,7 @@ flowchart LR
 - [ ] AC1: A design for people to find past intents, decisions and evidence (search, links), and for lessons recorded at G8 ("Release / Learning") that propose changes to `AGENTS.md` or the handbook
 - [ ] AC2: No code in this task; implementation tasks follow Harry's approval
 
-> Note: QUESTIONS #361. Design done in ADR-M109 (proposed, QUESTIONS #706–#710); X08a and X08b build it
+> Note: QUESTIONS #361. Design done in ADR-M109 (accepted with X08a PR 1, QUESTIONS #706–#710, #721–#725); X08a and X08b build it
 
 #### X08a. Intent search and links for people
 
@@ -1899,13 +1899,13 @@ flowchart LR
 
 **Acceptance criteria**
 
-- [ ] AC1: `GET /v1/intents` filters `gate`, `risk_tier`, `created_from`/`created_to`, `closed_from`/`closed_to`, `sealed`, `has_lessons` and `q` (2–200 characters), always inside the tenant and the projects the caller may read (ADR-M109 §2.1)
-- [ ] AC2: `q`: PostgreSQL full-text search with the `simple` configuration on a generated column `intents.search_tsv` (title and description) with a GIN index measured on 10,000 intents; an intent code or `#<number>` matches its column; bound parameters only; `q` never in logs or spans; a client data deletion clears it in place
+- [ ] AC1: `GET /v1/intents` filters `gate`, `risk_tier`, `created_from`/`created_to`, `closed_from`/`closed_to` (`intents.closed_at`, QUESTIONS #722), `sealed` and `q` (2–200 characters), always inside the tenant and the projects the caller may read (ADR-M109 §2.1)
+- [ ] AC2: `q`: PostgreSQL full-text search with the `simple` configuration on a generated column `intents.search_tsv` (title and description) with a GIN index measured on 10,000 intents; an intent code or `#<number>` matches its column; bound parameters only; `q` never in logs or spans; a client data deletion turns the title and description into the tombstone (QUESTIONS #725)
 - [ ] AC3: `adlc intent list` options and a dashboard search box with the filters in the URL; every text from the catalog
-- [ ] AC4: The intent body gains a `links` object (issue, pull request, spec, plan, Evidence Pack, lessons, follow-up intents) built from stored codes; handbook Ch.19 usage
+- [ ] AC4: The intent body gains a `links` object (issue, pull request, spec, plan, Evidence Pack) built from stored codes, the addresses from `GitHostAdapter.webUrl` (QUESTIONS #723); handbook Ch.19 usage
 - [ ] AC5: Tests as ADR-M109 §5 (X08a)
 
-> Note: Starts after ADR-M109 is accepted (QUESTIONS #710)
+> Note: Two pull requests (QUESTIONS #724): PR 1 the database, the API, the CLI and the links; PR 2 the dashboard. ADR-M109 accepted with PR 1
 
 #### X08b. Lessons at G8 and the learning loop
 
@@ -1918,10 +1918,11 @@ flowchart LR
 - [ ] AC1: The comment command `/lesson <category> <target>` with the words below the first line, and `adlc lesson add` / the API / the dashboard with a comment URL; the platform stores codes, IDs and the link only, in the append-only tables `intent_lessons` and `intent_lesson_outcomes` (D-05 §6.12)
 - [ ] AC2: Person A, Person B of the project or a tenant admin; never a bot or an agent; from G8 until `learning.lesson_window_days` (default 14) after the intent closes; G8 never waits for a lesson; the `released` notice invites people to record one
 - [ ] AC3: Outcomes `applied` (with a link) and `dropped` (a code); `adlc intent create --from-lesson`; `adlc lesson issue` opens a handbook issue with codes and the link only
-- [ ] AC4: `adlc lessons list` and `adlc metrics lessons` for the monthly learning step; the dashboard list on a project; handbook Ch.19 and Ch.20 usage, a note for the handbook's authors (Ch.15, Ch.16, T14 stay theirs)
-- [ ] AC5: Tests as ADR-M109 §5 (X08b)
+- [ ] AC4: The filter `has_lessons` of `GET /v1/intents` and `adlc intent list --has-lessons`, and `links.lessons` and `links.follow_ups` of the intent body (moved from X08a, QUESTIONS #721)
+- [ ] AC5: `adlc lessons list` and `adlc metrics lessons` for the monthly learning step; the dashboard list on a project; handbook Ch.19 and Ch.20 usage, a note for the handbook's authors (Ch.15, Ch.16, T14 stay theirs)
+- [ ] AC6: Tests as ADR-M109 §5 (X08b)
 
-> Note: Starts after ADR-M109 is accepted (QUESTIONS #710); updates ADR-M27 §2.4 (one command may match a finished intent)
+> Note: Starts after X08a (ADR-M109 accepted, QUESTIONS #710); updates ADR-M27 §2.4 (one command may match a finished intent)
 
 #### X10. An adapter for a second Git host
 

@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (task X08; the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710) |
-| Date | 2026-11-13 |
+| Status | **Accepted** with the merge of X08a PR 1 (Harry, 2026-11-14); 0.1 proposed by X08 (the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710); 0.2 adds the details of QUESTIONS #721–#725 |
+| Date | 2026-11-13; 0.2 on 2026-11-14 |
 | Decided by | Harry (to accept); X08a and X08b build it |
 | Related | D-08 X08, X08a, X08b, X07, X12, X13; D-02 FR-11, FR-21, FR-40, FR-42, FR-44; D-05 §6.2, §6.12 (proposed), §10; codes table §4 row G8 ("Release / Learning"); handbook Ch.10 §10.7 (Close: retrospective), Ch.15 §15.6 (post-release note), Ch.16 §16.11 (monthly learning step), T14 §7 (lessons); ADR-M20 (codes and links only), ADR-M27 (comment commands), ADR-M48 (Evidence Pack), ADR-M49 (G8), ADR-M54 (dashboard), ADR-M74 (agent memory), ADR-M97 (client data deletion); QUESTIONS #361, #395, #706–#710 |
 
@@ -47,6 +47,17 @@ QUESTIONS #706–#710 (Harry, 2026-11-13, the X08 plan) chose the answers below.
 - The query is built with `websearch_to_tsquery('simple', $q)` and a bound parameter: never string concatenation.
 - **No new store and no new copy of the text.** The search reads only the two columns that already exist. When a client's data is deleted (ADR-M97), the title and description are cleared or pseudonymized in place, and the generated column follows by itself: nothing to purge separately. This is why the search does not cover Evidence Pack files, plan files, specs or review text: they live in the evidence store or on GitHub, and a copy in a search index would be one more place to purge.
 - Logs and spans never hold `q` (ADR-M35: no query strings). The audit log does not record searches: reading is not an audited action today, and a search text may contain client words.
+
+**As built (0.2, X08a PR 1, QUESTIONS #721–#725).**
+
+- `has_lessons`, `links.lessons` and `links.follow_ups` come with X08b, with the lesson tables (QUESTIONS #721).
+- `closed_from` and `closed_to` read the new column `intents.closed_at`: a trigger sets it from the move's `updated_at` when the status becomes final and clears it if the status leaves a final state; the app never writes it (QUESTIONS #722). A finished intent from before the migration gets its `updated_at`.
+- `gate` returns only intents that are not finished. `sealed` is `true` or `false` in the query (`--sealed yes|no` in the CLI).
+- The `links` object holds the stored codes and numbers (the issue and pull request number, the spec's path and commit, the plan file's path and commit when the plan was read from a file, the Evidence Pack's API path and whether a pack is sealed). Each address comes from `GitHostAdapter.webUrl`, a pure method of the adapter (D-03 1.57, QUESTIONS #723); without an adapter the address is null.
+- **The index, measured** on 10,000 intents of one project (a developer machine, PostgreSQL of `test-db.sh`): a rare word (1 % of the rows) takes about 1.4 ms in the database and 12 ms through `GET /v1/intents`; a common word (25 %) 8 ms through the API. At this size the planner reads the project's rows by the existing index on (`tenant_id`, `project_id`, `status`) and checks the vector; it needs no GIN scan. A plain GIN index on `search_tsv` stays for larger tenants; `btree_gin` is not needed (no extension).
+- `simple` does not stem: `order` does not match `orders`. Japanese text is split only at spaces and punctuation, so a Japanese word matches only as a whole run between them (the handbook says so). A search by meaning stays out of scope (below).
+- A client data deletion (ADR-M97 1.1, QUESTIONS #725) turns the title into `Redacted intent <code>` and the description into an empty text; the search vector follows by itself. The trigger `intents_scrub_only` (SDA31) allows no other change of the two columns.
+- Two pull requests (QUESTIONS #724): PR 1 the database, the API, the CLI and the links; PR 2 the dashboard.
 
 **Not chosen for X08a.** A search by meaning (embeddings through the X04 knowledge index) needs a model call per query, a data class rule for the embedding model and a second index to purge. GitHub search alone cannot filter by gate, risk tier or sealed state. Both can come later as their own task.
 
@@ -161,3 +172,4 @@ The platform never changes `AGENTS.md`, memory, the configuration or the handboo
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-13 | Claude Code (task X08) | First version, proposed |
+| 0.2 | 2026-11-14 | Claude Code (task X08a PR 1), accepted by Harry with the merge | Accepted; §2.1 "As built": `has_lessons` and the lesson links move to X08b, `intents.closed_at`, `GitHostAdapter.webUrl`, the index measurement, `simple` without stemming, the tombstone on client data deletion (QUESTIONS #721–#725) |

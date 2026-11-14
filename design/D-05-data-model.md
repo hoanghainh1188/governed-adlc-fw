@@ -431,8 +431,8 @@ Every table (except `tenants`) has `tenant_id uuid not null` and `created_at tim
 | id | uuid PK | |
 | code | text | `INT-YYYY-NNNN`, unique within the tenant |
 | project_id | uuid FK | |
-| title | text | |
-| description | text | |
+| title | text | Changes only to the tombstone `Redacted intent <code>` of a client data deletion (version 1.73, X08a, trigger `SDA31`, QUESTIONS #725) |
+| description | text | Changes only to an empty text, with the title (as above) |
 | created_by | uuid FK users | The intent owner (Person A), who approves G1. The workflow counts the creator as a producer at G7, so the creator never approves G7 (design/QUESTIONS.md #16) |
 | risk_tier | risk_tier | |
 | data_class | data_class | |
@@ -450,6 +450,8 @@ Every table (except `tenants`) has `tenant_id uuid not null` and `created_at tim
 | waiting_since | timestamptz null | When the step first recorded this reason and cause (registry clock); kept while they stay the same |
 | waiting_until | timestamptz null | When the wait ends by itself, if the step knows: the close of a HOTL block window (to the second) |
 | human_effort_hours | numeric(7,2) null | Version 1.70 (V14, ADR-M79 §2.6, QUESTIONS #691–#693): a person's estimate of the hours the work would take without an agent. A number only, never a text. Null (the default): no estimate. From 0.25 to 10000 (CHECK). The agent report compares the lead time of the merged intents with it |
+| search_tsv | tsvector | Version 1.73 (X08a, migration `0056-intent-search`, ADR-M109 §2.1): generated, `to_tsvector('simple', title \|\| ' ' \|\| description)`, with a GIN index; read only by the search `q` of `GET /v1/intents` |
+| closed_at | timestamptz null | Version 1.73 (X08a, QUESTIONS #722): when the intent became `done`, `rejected`, `cancelled` or `blocked`; set and cleared by the trigger `intents_closed_at` from the move's `updated_at`, never by the app |
 
 - This is the **only** table in the intent group that is UPDATEd (current state). History lives in `gate_decisions` and `audit_log`.
 - `budget_usd` and `run_budget_usd` only go up, and `run_budget_usd` never goes back to null (trigger, `SDA12`; migration `0015-gate-g5`). Only a G5 `resume` decision that names `budget_increase` with an amount raises them, in one transaction with the audit event `intent.budget_increased` (amounts, the escalation ID). `platform_app` may update both columns (ADR-M34 §2.9).
@@ -1169,7 +1171,7 @@ CREATE TRIGGER audit_log_no_truncate BEFORE TRUNCATE ON audit_log
 | 1.63 | 2026-10-24 | Claude (task H04), approved by Harry on 2026-10-24 in the H04 plan (QUESTIONS #586–#590) | §5: G5 reason codes `secret_in_diff`, `secret_scan_failed`; §6.4: run event `secrets_scanned` and the value kind `codes`; migration `0042-diff-scan`; ADR-M93 |
 | 1.64 | 2026-10-26 | Claude (task H05), approved by Harry on 2026-10-26 in the H05 plan (QUESTIONS #456, #601–#605) | §5: five gate reason codes (`review_too_large`, `review_size_unknown`, `generated_change`, `mechanical_change`, `cannot_split`); §6.4: run event `diff_measured`, audit action `gate.g5_split_requested`; migration `0043-review-limits`; ADR-M95 |
 | 1.69 | 2026-11-12 | Claude Code (task U09, PR 1), approved by Harry in the U09 plan | §6.1 `passkey_challenges.action`: the admin step-up codes of U09 (one per area; no intent, escalation, gate or input hash); no migration (ADR-M73 1.7 §2.4b, QUESTIONS #685) |
-| 1.73 | 2026-11-13 | Claude Code (task X08), **proposed** with ADR-M109 | §6.12 (new): `intent_lessons` and `intent_lesson_outcomes`, codes and links only, append-only; the generated column `intents.search_tsv` for the intent search (QUESTIONS #706–#710) |
+| 1.73 | 2026-11-13 | Claude Code (task X08), **proposed** with ADR-M109; §6.2 approved with X08a PR 1 (2026-11-14) | §6.12 (new): `intent_lessons` and `intent_lesson_outcomes`, codes and links only, append-only (proposed, X08b); §6.2 the generated column `intents.search_tsv`, `intents.closed_at`, the title and description tombstone (QUESTIONS #706–#710, #721–#725) |
 | 1.72 | 2026-11-13 | Claude Code (task X06, PR 2), approved by Harry in the X06 plan (QUESTIONS #700) | §6.1 `tools.permissions`: the catalogue adds `read_code`, never with `read_documents` (migration `0052-read-code-permission`); the run event `knowledge_read` and the evidence kind `knowledge_read` also hold what a `read_code` tool returned (file IDs and content hashes) (ADR-M108 §2.8) |
 | 1.71 | 2026-11-12 | Claude Code (task X06, PR 1), approved by Harry in the X06 plan (QUESTIONS #696–#700) | §6.1 `knowledge_indexes.kind` (`docs` or `code`; migration `0051-code-index`); §10.1: retention and client data deletion of the code index; audit `knowledge.purged` gets `kind` (ADR-M108) |
 | 1.70 | 2026-11-12 | Claude Code (task V14), approved by Harry in the V14 plan (QUESTIONS #691–#693) | §6.2 `intents.human_effort_hours`: a person's estimate of the human effort in hours, null by default, 0.25 to 10000; changes only while the intent is open and never back to null (trigger `SDA29`); audit `intent.effort_estimated` (migration `0050-intent-effort-estimate`, ADR-M79 §2.6) |

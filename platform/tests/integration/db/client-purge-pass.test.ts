@@ -215,6 +215,12 @@ describeDb('H03b: client purge pass on PostgreSQL', () => {
     expect(deleted[0]?.payload).toMatchObject({
       evidence_files_purged: 1,
       users_anonymized: 1,
+      // X08a (QUESTIONS #725): the intent's title and description, and so its search vector.
+      intents_scrubbed: 1,
+    });
+    expect(await w.scope.intents.getById(intent.id)).toMatchObject({
+      title: `Redacted intent ${intent.code}`,
+      description: '',
     });
     const started = await w.scope.audit.listForEntity(w.tenantId, ['client_data.deletion_started']);
     expect(started).toHaveLength(1);

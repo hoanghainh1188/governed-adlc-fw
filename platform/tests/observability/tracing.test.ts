@@ -109,7 +109,11 @@ describe('with tracing on', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const { port } = server.address() as AddressInfo;
     try {
-      for (const path of ['/v1/intents?token=query-secret&code=INT-1', '/health/live?x=1']) {
+      // X08a (ADR-M109 §2.1): the intent search text `q` is in the query string too.
+      for (const path of [
+        '/v1/intents?token=query-secret&code=INT-1&q=search-canary-words',
+        '/health/live?x=1',
+      ]) {
         await new Promise<void>((resolve, reject) => {
           const request = http.request(
             {
@@ -135,7 +139,13 @@ describe('with tracing on', () => {
     // Client and server span of the first request; the health check's server span is ignored.
     expect(spans.map((s) => s.kind).sort()).toEqual([1, 2, 2]);
     const text = allValues(spans);
-    for (const secret of ['query-secret', 'header-secret', 'cookie-secret', 'response-secret']) {
+    for (const secret of [
+      'query-secret',
+      'search-canary-words',
+      'header-secret',
+      'cookie-secret',
+      'response-secret',
+    ]) {
       expect(text).not.toContain(secret);
     }
     expect(text).not.toContain('?');

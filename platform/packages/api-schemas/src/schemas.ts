@@ -122,6 +122,12 @@ const specRefSchema = z.object({
   acceptance_criteria: z.number().int().min(0).nullable(),
 });
 
+/** A web address of the Git host (X08a `links`). */
+const webUrl = z
+  .string()
+  .max(2048)
+  .regex(/^https:\/\/\S+$/);
+
 export const intentDetailSchema = intentSchema.extend({
   /** U07: the current gate input hash the confirmation step shows. */
   gate_input_sha256: code.nullable().optional(),
@@ -143,6 +149,20 @@ export const intentDetailSchema = intentSchema.extend({
     })
     .nullable(),
   decisions: z.array(decisionSchema).max(10_000),
+  /** X08a (ADR-M109 §2.1): what a person follows from the intent; `url` null without a Git host. */
+  links: z
+    .object({
+      issue: z.object({ number: z.number().int(), url: webUrl.nullable() }).nullable(),
+      pull_request: z.object({ number: z.number().int(), url: webUrl.nullable() }).nullable(),
+      spec: z
+        .object({ path: z.string().max(1024), commit_sha: code, url: webUrl.nullable() })
+        .nullable(),
+      plan: z
+        .object({ path: z.string().max(1024), commit_sha: code, url: webUrl.nullable() })
+        .nullable(),
+      evidence: z.object({ path: z.string().max(200), sealed: z.boolean() }),
+    })
+    .optional(),
 });
 export type IntentDetail = z.infer<typeof intentDetailSchema>;
 
