@@ -80,6 +80,7 @@ jobs:
       run_sandbox_image: ${{ steps.decide.outputs.run_sandbox_image }}
       run_dashboard: ${{ steps.decide.outputs.run_dashboard }}
       run_fresh_deploy: ${{ steps.decide.outputs.run_fresh_deploy }}
+      run_load: ${{ steps.decide.outputs.run_load }}
       release_version: ${{ steps.decide.outputs.release_version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -185,6 +186,13 @@ jobs:
           # longest job: weekly and manual runs only, never on a pull request.
           echo "run_fresh_deploy=$all" >> "$GITHUB_OUTPUT"
           echo "Fresh deployment job: run=$all (weekly and manual runs only)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # O07 (QUESTIONS #718): the load test runs on manual runs only: never weekly, never on a
+          # pull request. Its numbers go to the job summary.
+          load=false
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then load=true; fi
+          echo "run_load=$load" >> "$GITHUB_OUTPUT"
+          echo "Load test job: run=$load (manual runs only)" | tee -a "$GITHUB_STEP_SUMMARY"
 
           # V15 (ADR-M94 §2.5): a pull request that changes the root package.json version builds
           # and scans every release image, pushing nothing, so most failures appear before the tag.
@@ -706,6 +714,48 @@ jobs:
             docker compose -p "$p" down --volumes --remove-orphans || true
           done
 
+  load:
+    # O07 (D-08 O07 AC1, QUESTIONS #717–#720): many intents of many tenants at once through the
+    # poller, the intent workflow on a throw-away Compose Temporal, a fake runner and a throw-away
+    # PostgreSQL, with GitHub API stubs. Manual runs only; the report goes to the job summary. A
+    # smaller scale than the default (100 intents) so the job fits its 40 minutes; the default 500
+    # intents run on a developer machine (platform/deploy/README.md "Capacity").
+    name: load test
+    needs: [scan, checks]
+    if: needs.scan.outputs.run_load == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (reads packageManager)
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:load
+        env:
+          SDLC_LOAD_TENANTS: '10'
+          SDLC_LOAD_INTENTS: '10'
+          SDLC_LOAD_TIMEOUT_MINUTES: '30'
+          SDLC_LOAD_REPORT: ${{ runner.temp }}/load-report.json
+      - name: Load test report
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/load-report.json
+        run: |
+          if [ -f "$REPORT" ]; then
+            { echo '```json'; cat "$REPORT"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Stop and remove every throw-away Compose project
+        if: always()
+        run: |
+          for p in $(docker compose ls -a -q | grep '^sdlcload' || true); do
+            docker compose -p "$p" down --volumes --remove-orphans || true
+          done
+
   upgrade:
     # O02 (D-08 O02 AC1, QUESTIONS #581): follows the README section "Upgrade" on a throw-away
     # Compose project: the newest release tag before this commit (a git worktree, its published
@@ -831,6 +881,7 @@ jobs:
         sandbox-runsc,
         sandbox-image,
         fresh-deploy,
+        load,
         upgrade,
         trial-up,
         db,

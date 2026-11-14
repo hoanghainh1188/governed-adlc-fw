@@ -32,6 +32,7 @@
     "test:db": "platform/deploy/scripts/test-db.sh",
     "test:knowledge": "platform/deploy/scripts/test-knowledge.sh",
     "test:workflow": "tsc -b platform/apps/worker && SDLC_WORKFLOW_TEST=1 SDLC_TEMPORAL_TEST_SERVER=\"$(platform/deploy/scripts/temporal-test-server.sh)\" SDLC_TEST_DB_DIR=platform/tests/integration/workflow platform/deploy/scripts/test-db.sh",
+    "test:load": "tsc -b platform/apps/worker && SDLC_LOAD_TEST=1 SDLC_TEST_DB_DIR=platform/tests/integration/load platform/deploy/scripts/test-db.sh",
     "test:workflow-compose": "tsc -b platform/apps/worker && SDLC_WORKFLOW_COMPOSE_TEST=1 SDLC_TEST_DB_DIR=platform/tests/integration/workflow/compose-smoke.test.ts platform/deploy/scripts/test-db.sh",
     "test:openbao": "SDLC_OPENBAO_TEST=1 vitest run --config vitest.integration.config.ts platform/tests/integration/openbao",
     "test:backup": "SDLC_BACKUP_TEST=1 vitest run --config vitest.integration.config.ts platform/tests/integration/backup",
