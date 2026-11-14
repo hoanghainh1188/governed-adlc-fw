@@ -8,6 +8,7 @@ import { t, type MessageKey } from '@sdlc/messages';
 import {
   agentMetricsSchema,
   gateMetricsSchema,
+  lessonMetricsSchema,
   type AgentMetricsView,
   type GateMetricsView,
   type WaitStatsView,
@@ -24,7 +25,42 @@ export async function runMetrics(args: readonly string[], ctx: CliContext): Prom
   const [command, ...rest] = args;
   if (command === 'gates') return gates(rest, ctx);
   if (command === 'agents') return agents(rest, ctx);
+  if (command === 'lessons') return lessons(rest, ctx);
   return usage(ctx);
+}
+
+/** `adlc metrics lessons` (X08b PR 2, ADR-M109 §2.5): the counts of the monthly learning step. */
+async function lessons(args: readonly string[], ctx: CliContext): Promise<number> {
+  const parsed = parseCommand(args, { project: { type: 'string' }, since: { type: 'string' } });
+  if (!parsed) return usage(ctx);
+  const { project, since } = parsed.values as Record<string, string | undefined>;
+  if (project !== undefined && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(project)) return usage(ctx);
+  if (since !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(since)) return usage(ctx);
+  const json = parsed.values.json === true;
+  return withApi(ctx, json, async (client) => {
+    const body = await client.get('/v1/metrics/lessons', lessonMetricsSchema, { project, since });
+    if (json) {
+      ctx.stdout(toJson(body));
+      return EXIT.ok;
+    }
+    say(ctx, 'cli.metrics.lessons', {
+      recorded: body.recorded,
+      open: body.open,
+      applied: body.applied,
+      dropped: body.dropped,
+      median: show(body.median_days_to_outcome),
+    });
+    const counts = (record: Readonly<Record<string, number>>) =>
+      Object.entries(record)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key} ${String(value)}`)
+        .join(', ') || '-';
+    say(ctx, 'cli.metrics.lessons_by', {
+      categories: counts(body.by_category),
+      targets: counts(body.by_target),
+    });
+    return EXIT.ok;
+  });
 }
 
 async function gates(args: readonly string[], ctx: CliContext): Promise<number> {

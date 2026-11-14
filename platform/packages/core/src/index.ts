@@ -22,6 +22,7 @@ export * from './workflow/index.js';
 export * from './observability/index.js';
 export * from './specs/index.js';
 export * from './plans/index.js';
+export * from './lessons/index.js';
 export * from './kill/index.js';
 export * from './evaluation/index.js';
 export * from './metrics/index.js';

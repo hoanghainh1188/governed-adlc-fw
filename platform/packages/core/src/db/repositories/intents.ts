@@ -75,6 +75,8 @@ export interface IntentFilters {
   readonly closedTo?: string;
   /** Has a sealed Evidence Pack (G8 passed), or has none. */
   readonly sealed?: boolean;
+  /** X08b (QUESTIONS #730): has at least one lesson, whatever its state, or has none. */
+  readonly hasLessons?: boolean;
   /** A search text (2–200 characters): an intent code, `#<number>` or words. Client data. */
   readonly q?: string;
 }
@@ -356,6 +358,16 @@ export class IntentRepository extends TenantRepository {
               .whereRef('ep.intent_id', '=', 'intents.id')
               .where('ep.sealed_at', 'is not', null);
             return f.sealed ? eb.exists(packs) : eb.not(eb.exists(packs));
+          }),
+        )
+        .$if(f.hasLessons !== undefined, (qb) =>
+          qb.where((eb) => {
+            const lessons = eb
+              .selectFrom('intent_lessons as il')
+              .select('il.id')
+              .where('il.tenant_id', '=', tenantId)
+              .whereRef('il.intent_id', '=', 'intents.id');
+            return f.hasLessons ? eb.exists(lessons) : eb.not(eb.exists(lessons));
           }),
         )
         .$if(search?.kind === 'code', (qb) =>

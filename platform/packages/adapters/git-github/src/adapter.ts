@@ -570,6 +570,22 @@ export class GitHubAdapter implements GitHostAdapter {
   }
 
   /**
+   * The comment ID of a comment's web address on this repository (X08b, QUESTIONS #729):
+   * `…/<owner>/<repo>/issues/<n>#issuecomment-<id>` or `…/pull/<n>#issuecomment-<id>` on the same
+   * host as `webUrl`. Null for any other address. No call to GitHub.
+   */
+  commentIdOf(ref: RepoRef, url: string): string | null {
+    const repo = checkRepo(ref);
+    const issue = this.webUrl(repo, { kind: 'issue', number: 1 });
+    const base = issue.slice(0, issue.length - '/issues/1'.length);
+    if (typeof url !== 'string' || !url.startsWith(`${base}/`)) return null;
+    const match = /^\/(?:issues|pull)\/[1-9][0-9]{0,8}#issuecomment-([1-9][0-9]{0,19})$/.exec(
+      url.slice(base.length),
+    );
+    return match ? match[1]! : null;
+  }
+
+  /**
    * Deletes a memory branch that still points to `expectedHead` (X13 PR 3b, ADR-M74 §2.5 step 5).
    * Reads the branch first: absent → `absent`; another commit → `moved`, nothing deleted. The
    * delete uses a token with `contents: write` for this call only, revoked right after.
@@ -695,10 +711,14 @@ export class GitHubAdapter implements GitHostAdapter {
     if (id(c.id, 'comment.id') !== comment) {
       throw new GitHostError('invalid_response', { field: 'comment.id' });
     }
+    // `issue_url` ends with the issue or pull request number (X08b).
+    const issueUrl = optStr(c.issue_url, 'comment.issue_url');
+    const issueNumber = issueUrl ? Number(/\/issues\/([0-9]{1,9})$/.exec(issueUrl)?.[1]) : NaN;
     return {
       commentId: comment,
       author: actor(c.user, 'comment.user'),
       body: optStr(c.body, 'comment.body') ?? '',
+      issueNumber: Number.isSafeInteger(issueNumber) && issueNumber > 0 ? issueNumber : null,
     };
   }
 

@@ -229,7 +229,7 @@ The `adlc` command does through the API what the comment commands do on GitHub, 
 | Command | Does |
 |---|---|
 | `adlc intent create --project <slug> --title <text> --risk <tier> --data-class <class> [--description <text> \| --description-file <file>] [--budget <USD>] [--issue <number>] [--spec <path/to/spec.md> [--spec-commit <SHA>] [--spec-tool spec-kit\|bmad\|manual]]` | Creates an intent; you become its intent owner (Person A). With `--spec`, also links its spec, as `adlc spec link` does (task U03). When the link is refused, the intent stays: the command names it, exits 1 and says how to link again |
-| `adlc intent list [--project <slug>] [--status <status>] [--gate <G1–G8>] [--risk <tier>] [--created-from <YYYY-MM-DD>] [--created-to <YYYY-MM-DD>] [--closed-from <YYYY-MM-DD>] [--closed-to <YYYY-MM-DD>] [--sealed yes\|no] [--search <text>] [--limit <n>] [--cursor <c>]` | Lists the intents you can read, newest first, with filters (below, "Finding past intents") |
+| `adlc intent list [--project <slug>] [--status <status>] [--gate <G1–G8>] [--risk <tier>] [--created-from <YYYY-MM-DD>] [--created-to <YYYY-MM-DD>] [--closed-from <YYYY-MM-DD>] [--closed-to <YYYY-MM-DD>] [--sealed yes\|no] [--has-lessons yes\|no] [--search <text>] [--limit <n>] [--cursor <c>]` | Lists the intents you can read, newest first, with filters (below, "Finding past intents") |
 | `adlc intent show <INT-…>` | Shows an intent with its spec, plan and gate decisions, its **links** (the issue, the pull request, the spec and the plan file at their commits, the sealed Evidence Pack), and **what holds it** when the platform holds it ("Held: …", the cause, until when) and the human-effort estimate |
 | `adlc intent estimate <INT-…> --hours <n>` | Records your estimate of the hours the work would take **without an agent** (0.25 to 10000, at most two decimals). Only Person A (a role in `access.intent_create_roles`) or a tenant admin, and only while the intent is open. The agent report compares it with the lead time ([below](#agent-metrics)) |
 | `adlc next <INT>` | What you do next for this intent (task V06): the gate, who it waits for, why it is held (the reason the workflow recorded), and one advice for you: the command or comment to type, or the roles it waits for. It reads only the intent and your roles (`GET /v1/intents/:intent`, `GET /v1/me`) and changes nothing. A producer of the change (the intent's creator at G7 and G8, the person who approved G4 at G5, G7 and G8) is never told to approve; at G3 it reminds you that the person who submitted the plan cannot approve it. For an escalation it points to `adlc escalation list --intent <INT>`. For actions outside a gate (link a spec, submit a plan, the AI record) it uses the default access roles and says so |
@@ -256,6 +256,11 @@ The `adlc` command does through the API what the comment commands do on GitHub, 
 | `adlc gate approve G8 <INT-…>` / `adlc gate reject G8 <INT-…> --reason-code <code>` | Approves or rejects the release at G8 (Person B; at Critical risk also the second approver). The platform seals the pack and closes the intent: Chapter 15 §15.10.3 |
 | `adlc evidence export <INT-…> [--version <n>] [--manifest] [--output <file>]` | Prints or saves the readable pack (`pack.md`), or the manifest with `--manifest`, after checking its SHA-256; `--output` never overwrites a file |
 | `adlc evidence proposal <INT-…> [--run <run ID>] --output <file> [--force]` | Saves the patch of a High-risk (L1) run after checking its SHA-256 (client code: mode 600, never printed; every download audited). Then end the intent with `adlc gate reject G4`: Chapter 13 §13.10.4 |
+| `adlc lesson add <INT-…> --category <code> --target <code> --comment <https://…>` | Records a lesson that points to an existing comment on the intent's issue or pull request (below, "Lessons from the command line") |
+| `adlc lesson apply <lesson ID> --link <https://…>` / `adlc lesson drop <lesson ID> --reason <code>` | Records what became of a lesson: applied by a change, or dropped with a reason |
+| `adlc lessons list [--project <slug>] [--open] [--since YYYY-MM-DD]` | Lists the lessons of the projects you can read, newest first, for the monthly learning step |
+| `adlc lesson issue <lesson ID> [--repo <owner/name>]` | Prints a filled-in GitHub "new issue" link for the handbook's authors |
+| `adlc metrics lessons [--project <slug>] [--since YYYY-MM-DD]` | Counts the lessons: open, applied, dropped, per category and target, and the median days to an outcome |
 | `adlc client request-data-deletion [--basis <code>]` | Tenant admins: asks to delete this tenant's client data (codes only; default basis `contract_offboarding`). The tenant stays active until an operator approves (§19.8d) |
 | `adlc client cancel-data-deletion` | Tenant admins: cancels an open request, or an approved deletion still in the grace period |
 | `adlc client status` | Shows the deletion phase for this tenant (`none`, `requested`, `approved`, …) |
@@ -267,10 +272,19 @@ The `adlc` command does through the API what the comment commands do on GitHub, 
 - Vietnamese and English words are found one by one. Japanese text is split only at spaces and punctuation, so search for the whole run of characters as it is written.
 - `--gate G3` lists the open intents at G3. `--risk high` filters by risk tier. `--created-from`, `--created-to`, `--closed-from` and `--closed-to` take UTC days (both ends included); "closed" means the day the intent became done, rejected, cancelled or blocked. `--sealed yes` lists intents with a sealed Evidence Pack (G8 passed), `--sealed no` the others.
 - Filters combine: `adlc intent list --risk high --closed-from 2026-11-01 --search export`.
+- `--has-lessons yes` lists the intents with at least one lesson, whatever its state; `--has-lessons no` the others.
 - The platform never records what you searched for. After a client's data is deleted, its intents keep their codes and dates, and their titles read `Redacted intent <code>`.
 
 - Gate decisions take **codes only**: a reason code (§19.8b) and, if you want, `--reason-ref` with an `https://` link to a comment that explains it. The platform never stores your words, because its records are kept for years.
 - The rules are the same as for comments (§19.8b): you need the gate's role, you can decide only the gate the intent waits at, and a producer never approves.
+
+<a id="lessons-cli"></a>**Lessons from the command line.** A lesson is a comment on the intent's issue or pull request (§19.8b, "Recording a lesson"). The same people, in the same window, can also use `adlc`:
+
+- `adlc lesson add INT-2026-0042 --category agent_assumption --target agents_md --comment <link>` records a lesson for a comment you already wrote. Copy the comment's link from its date in the comment header. The platform checks that the comment is on this intent's issue or pull request and that it exists; it keeps the codes and the link, never the words.
+- `adlc lesson apply <lesson ID> --link <https://…>` records the change that applied the lesson: a merged pull request, an intent or an issue. `adlc lesson drop <lesson ID> --reason duplicate|not_valid|record_only|other` records why nothing will change. The latest of these is the lesson's state; a lesson with neither is `open`.
+- `adlc intent create --from-lesson <lesson ID> --title <text> --risk <tier> --data-class <class>` creates the intent that applies the lesson (for example a change to `AGENTS.md`), in the lesson's project unless you give `--project`. The lesson becomes `applied`, and `adlc intent show` of the first intent lists the new one as a follow-up. The new intent goes through its own gates.
+- `adlc lesson issue <lesson ID>` prints a link to a new GitHub issue in the framework's repository, with the label `handbook`: the codes, the intent code and the comment link are filled in. Open it, write what should change and why, and submit it; then `adlc lesson apply <lesson ID> --link <issue link>`.
+- `adlc lessons list --open` and `adlc metrics lessons` are for the monthly learning step (Chapter 16): they show what is still open and how long lessons wait for an outcome.
 
 <a id="spec-link"></a>**Linking a spec (G2 input).** G2 checks the intent's spec. Link it with `adlc spec link` (task B08, `design/ADR-M39-spec-linking.md`):
 
@@ -703,6 +717,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | 0.50 | 2026-10-30 | Claude (v0.10.0, ADR-M100) | §19.8c: the old command `sdlc` is removed in v0.10.0; `adlc` still reads its login |
 | 0.52 | 2026-11-12 | Claude (task O06, PR 2a) | §19.8d: a project can be one folder of a monorepo (`--folder`, `folder:` in the project file, `repo_path_overlap`; ADR-M106 §2.4) |
 | 0.53 | 2026-11-12 | Claude (task U09) | §19.8d, §19.8e: the dashboard's **Admin** screen: projects, roles, configuration with its line difference, people and GitHub accounts, passkeys, tenant admins, the agent register, the AI record and evidence holds, each change with a passkey (ADR-M73 1.9) |
+| 0.55 | 2026-11-14 | Claude Code (task X08b, PR 1 and PR 2) | §19.8b: `/lesson`; §19.8c: `adlc lesson add\|apply\|drop\|issue`, `adlc lessons list`, `adlc metrics lessons`, `--from-lesson`, `--has-lessons` (ADR-M109 0.4) |
 | 0.54 | 2026-11-12 | Claude Code (task V14) | §19.8c: `adlc intent estimate` and the column "Lead / estimate" of the agent report (ADR-M79 §2.6) |
 | 0.51 | 2026-11-12 | Claude (task V19) | §19.8d: `pnpm server:setup` can run `adlc admin project apply` with the file of its settings; what stays with people is the same |
 | 0.26 | 2026-10-09 | Claude (docs review E2) | §19.8d points to the set-up order of the deployment guide |

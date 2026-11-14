@@ -9,6 +9,7 @@ import {
   type Project,
   type SpecRef,
   type WaitingFor,
+  type LessonRow,
 } from '@sdlc/core';
 
 export interface IntentBody {
@@ -145,6 +146,26 @@ export function presentWaitingFor(waiting: WaitingFor | null): Record<string, un
 function repoRefOf(project: Pick<Project, 'repo_full_name'>): RepoRef | null {
   const [owner, name, ...rest] = project.repo_full_name.split('/');
   return owner && name && rest.length === 0 ? { owner, name } : null;
+}
+
+/**
+ * X08b (ADR-M109 §2.5): the lessons of an intent (codes, state and the comment's link) and the
+ * codes of the intents created from them.
+ */
+export function presentLessonLinks(
+  lessons: readonly LessonRow[],
+  followUps: readonly string[],
+): Record<string, unknown> {
+  return {
+    lessons: lessons.map((l) => ({
+      id: l.id,
+      category: l.category,
+      target: l.target,
+      state: l.outcome === null ? 'open' : l.outcome.outcome,
+      comment_url: l.comment_url,
+    })),
+    follow_ups: [...followUps],
+  };
 }
 
 /**

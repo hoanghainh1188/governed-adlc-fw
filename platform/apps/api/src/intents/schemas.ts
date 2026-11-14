@@ -35,6 +35,8 @@ export const createIntentSchema = z.strictObject({
     .regex(/^\d{1,12}(\.\d{1,6})?$/)
     .optional(),
   issue_number: z.number().int().positive().optional(),
+  /** X08b (ADR-M109 §2.5): the lesson this intent follows up; recorded as its `applied` outcome. */
+  from_lesson: z.uuid().optional(),
 });
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -51,6 +53,7 @@ export const listIntentsSchema = z.strictObject({
   closed_from: day.optional(),
   closed_to: day.optional(),
   sealed: flag.optional(),
+  has_lessons: flag.optional(),
   q: z.string().trim().min(2).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_INTENT_PAGE).default(50),
   cursor: z.string().max(200).optional(),

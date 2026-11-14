@@ -12,6 +12,7 @@ import {
   intentDetailSchema,
   intentPageSchema,
   intentSchema,
+  lessonSchema,
   type DecisionView,
   type IntentDetail,
   type IntentView,
@@ -29,6 +30,7 @@ import { sayNextHint } from './next/hint.js';
 const MAX_DESCRIPTION = 10_000;
 const MAX_PAGE = 100;
 const DECIMAL = /^\d{1,12}(\.\d{1,6})?$/;
+const LESSON_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const OPTIONS = {
@@ -44,6 +46,8 @@ const OPTIONS = {
     spec: { type: 'string' },
     'spec-commit': { type: 'string' },
     'spec-tool': { type: 'string' },
+    // X08b (ADR-M109 §2.5): a follow-up of a lesson; its project when --project is left out.
+    'from-lesson': { type: 'string' },
   },
   list: {
     project: { type: 'string' },
@@ -58,6 +62,7 @@ const OPTIONS = {
     'closed-from': { type: 'string' },
     'closed-to': { type: 'string' },
     sealed: { type: 'string' },
+    'has-lessons': { type: 'string' },
     search: { type: 'string' },
   },
   show: {},
@@ -91,8 +96,14 @@ async function create(args: readonly string[], ctx: CliContext): Promise<number>
   if (specBody === null) return usage(ctx);
   const json = values.json === true;
   return withApi(ctx, json, async (client) => {
+    const fromLesson = values['from-lesson'];
+    const lesson =
+      typeof fromLesson === 'string'
+        ? await client.get(`/v1/lessons/${fromLesson}`, lessonSchema)
+        : undefined;
     const body = {
-      project: String(values.project),
+      project: typeof values.project === 'string' ? values.project : show(lesson?.project),
+      ...(lesson === undefined ? {} : { from_lesson: lesson.id }),
       title: String(values.title),
       description: await description(ctx, values),
       risk_tier: String(values.risk),
@@ -159,9 +170,10 @@ async function linkAfterCreate(
 }
 
 function validCreate(values: Values): boolean {
-  if (!['project', 'title', 'risk', 'data-class'].every((k) => typeof values[k] === 'string')) {
-    return false;
-  }
+  if (!['title', 'risk', 'data-class'].every((k) => typeof values[k] === 'string')) return false;
+  const lesson = values['from-lesson'];
+  if (lesson !== undefined && (typeof lesson !== 'string' || !LESSON_ID.test(lesson))) return false;
+  if (typeof values.project !== 'string' && lesson === undefined) return false;
   if (values.description !== undefined && values['description-file'] !== undefined) return false;
   if (!(RISK_TIERS as readonly string[]).includes(String(values.risk))) return false;
   if (!(DATA_CLASSES as readonly string[]).includes(String(values['data-class']))) return false;
@@ -221,6 +233,11 @@ function listFilters(values: Values): Record<string, string> | undefined {
   if (sealed !== undefined) {
     if (sealed !== 'yes' && sealed !== 'no') return undefined;
     out.sealed = sealed === 'yes' ? 'true' : 'false';
+  }
+  const hasLessons = text('has-lessons');
+  if (hasLessons !== undefined) {
+    if (hasLessons !== 'yes' && hasLessons !== 'no') return undefined;
+    out.has_lessons = hasLessons === 'yes' ? 'true' : 'false';
   }
   const search = text('search')?.trim();
   if (search !== undefined) {
@@ -365,6 +382,19 @@ function printLinks(ctx: CliContext, intent: IntentDetail): void {
   if (links.spec) line('cli.intent.link_spec', links.spec.url, links.spec.path);
   if (links.plan) line('cli.intent.link_plan', links.plan.url, links.plan.path);
   if (links.evidence.sealed) line('cli.intent.link_evidence', undefined, links.evidence.path);
+  // X08b (ADR-M109 §2.5): the lessons and the intents created from them.
+  for (const lesson of links.lessons ?? []) {
+    say(ctx, 'cli.intent.link_lesson', {
+      id: lesson.id,
+      category: lesson.category,
+      target: lesson.target,
+      state: lesson.state,
+      comment: lesson.comment_url,
+    });
+  }
+  for (const code of links.follow_ups ?? []) {
+    line('cli.intent.link_follow_up', undefined, code);
+  }
 }
 
 /** U02 (ADR-M54 §2.4b): what holds the intent, as the workflow's step recorded it. */

@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** with the merge of X08a PR 1 (Harry, 2026-11-14); 0.1 proposed by X08 (the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710); 0.2 adds the details of QUESTIONS #721–#725; 0.3 those of #726–#730 |
-| Date | 2026-11-13; 0.2 and 0.3 on 2026-11-14 |
+| Status | **Accepted** with the merge of X08a PR 1 (Harry, 2026-11-14); 0.1 proposed by X08 (the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710); 0.2 adds the details of QUESTIONS #721–#725; 0.3 those of #726–#730; 0.4 the API and the CLI as built (X08b PR 2) |
+| Date | 2026-11-13; 0.2, 0.3 and 0.4 on 2026-11-14 |
 | Decided by | Harry (to accept); X08a and X08b build it |
 | Related | D-08 X08, X08a, X08b, X07, X12, X13; D-02 FR-11, FR-21, FR-40, FR-42, FR-44; D-05 §6.2, §6.12 (proposed), §10; codes table §4 row G8 ("Release / Learning"); handbook Ch.10 §10.7 (Close: retrospective), Ch.15 §15.6 (post-release note), Ch.16 §16.11 (monthly learning step), T14 §7 (lessons); ADR-M20 (codes and links only), ADR-M27 (comment commands), ADR-M48 (Evidence Pack), ADR-M49 (G8), ADR-M54 (dashboard), ADR-M74 (agent memory), ADR-M97 (client data deletion); QUESTIONS #361, #395, #706–#710 |
 
@@ -133,6 +133,15 @@ The platform never changes `AGENTS.md`, memory, the configuration or the handboo
 - **FR-11.** A lesson never approves anything. The intent or pull request that applies it follows its own gates, so its producer never approves it, whoever recorded the lesson.
 - **The monthly learning step** (handbook Ch.16 §16.11). `adlc lessons list [--project …] [--open] [--since YYYY-MM-DD] [--json]` lists lessons with their codes, intent, age, comment link and outcome; the dashboard shows the same list on a project. `adlc metrics lessons` counts lessons per category and target, how many were applied, and the median days from recording to outcome. The handbook's authors decide how the monthly step uses the list; the platform only provides it.
 
+**As built (0.4, X08b PR 2, QUESTIONS #727, #729, #730).**
+
+- Endpoints for the CLI (no dashboard session writes there; QUESTIONS #728): `POST /v1/intents/:intent/lessons` (`category`, `target`, `comment_url`), `GET /v1/lessons` (`project`, `open`, `since`; newest first, at most 500), `GET /v1/lessons/:id`, `POST /v1/lessons/:id/apply` (`link_url`), `POST /v1/lessons/:id/drop` (`reason`), `GET /v1/metrics/lessons` (`project`, `since`). `POST /v1/intents` takes `from_lesson`; `GET /v1/intents` takes `has_lessons`; the intent body's `links` gains `lessons` (ID, codes, state, comment link) and `follow_ups` (intent codes).
+- The rules of `/lesson` hold for the API (`lessonWindowOpen` and `mayRecordLessons` are shared): Person A, Person B or a tenant admin; from G8 until the window closes. A person without a role on the project gets 404, governance 403. Refusals are the error `lesson_refused` with `reason` the lesson error code (`window_closed`, `comment_invalid`, `comment_not_found`, `comment_not_on_intent`, `duplicate`, `link_missing`), or `git_host_unavailable`.
+- The comment check (QUESTIONS #729): `GitHostAdapter.commentIdOf` reads the comment ID from an address of the project's repository (`…/issues/<n>#issuecomment-<id>` or `…/pull/<n>#issuecomment-<id>`, no call to the host); then `getIssueComment` with a read token (`issues`, `pull_requests`), revoked after the call, gives `issueNumber`, which must be the intent's issue or pull request. The text of the comment is read and dropped.
+- Outcomes: migration `0058-lesson-follow-up` lets an `applied` outcome name a follow-up intent without a link. `from_lesson` checks the lesson before the intent is created, so a refusal creates nothing; the outcome is recorded right after. A dashboard session may create intents (U08) but never sends `from_lesson` (`session_write_not_allowed`, QUESTIONS #728). Audit `lesson.applied` (`lesson_id`, `follow_up_intent_id` when there is one) and `lesson.dropped` (`lesson_id`, `reason`): the link stays in the outcome row, not in the audit payload.
+- `adlc lesson issue <lesson-id> [--repo <owner/name>]` prints a GitHub "new issue" address with the title, the label `handbook` and a body of codes, the intent code, the lesson ID and the comment link; the person opens it and adds the words (QUESTIONS #727). Default repository: `hoanghainh1188/governed-adlc-fw`.
+- `adlc metrics lessons` counts recorded, open, applied and dropped lessons, per category and target, and the median days from recording to the latest outcome.
+
 ### 2.6. Relation to agent memory (X12, X13)
 
 - Memory (ADR-M74) is what an **agent** proposes and a person approves; a lesson is what a **person** records. A lesson with target `memory` is one way to start a memory change; it never writes memory by itself.
@@ -180,5 +189,6 @@ The platform never changes `AGENTS.md`, memory, the configuration or the handboo
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-13 | Claude Code (task X08) | First version, proposed |
+| 0.4 | 2026-11-14 | Claude Code (task X08b PR 2), approved by Harry in the X08b plan | §2.5 "As built": the endpoints, the comment check with `commentIdOf`, migration 0058, `from_lesson`, `has_lessons`, the lesson links, `lesson issue`, `metrics lessons` (QUESTIONS #727, #729, #730) |
 | 0.3 | 2026-11-14 | Claude Code (task X08b PR 1), approved by Harry in the X08b plan | §2.3 "As built": three pull requests, the `/lesson` grammar and replies, the match of a finished intent, `lesson.refused` for the role and the window, the `released` invitation (QUESTIONS #726–#730) |
 | 0.2 | 2026-11-14 | Claude Code (task X08a PR 1), accepted by Harry with the merge | Accepted; §2.1 "As built": `has_lessons` and the lesson links move to X08b, `intents.closed_at`, `GitHostAdapter.webUrl`, the index measurement, `simple` without stemming, the tombstone on client data deletion (QUESTIONS #721–#725) |

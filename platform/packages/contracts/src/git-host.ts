@@ -196,6 +196,11 @@ export interface IssueCommentText {
   readonly commentId: string;
   readonly author: GitActor;
   readonly body: string;
+  /**
+   * X08b (ADR-M109 §2.3, QUESTIONS #729): the number of the issue or pull request the comment is
+   * on; null when the host does not say.
+   */
+  readonly issueNumber: number | null;
 }
 
 /**
@@ -401,6 +406,11 @@ export interface GitHostAdapter {
    * `invalid_input` for a number, path or commit it cannot name.
    */
   webUrl(ref: RepoRef, target: WebTarget): string;
+  /**
+   * X08b (QUESTIONS #729): the comment ID named by a web address of a comment of this repository
+   * (an issue's or a pull request's), or null for any other address. A pure function.
+   */
+  commentIdOf(ref: RepoRef, url: string): string | null;
   /**
    * The open security findings of a pull request (task C08 PR 2): counts per severity, or
    * unknown. Uses a token of its own that may read code-scanning alerts.

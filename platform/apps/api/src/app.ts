@@ -15,6 +15,7 @@ import {
   type EvaluationTaskGitHost,
   type PlatformDatabase,
   type PlatformLogger,
+  type LessonGitHost,
 } from '@sdlc/core';
 import { NO_INTENT_SIGNALS } from '@sdlc/workflow-client';
 
@@ -67,6 +68,8 @@ import { MeController } from './me/me.controller.js';
 import { MeTokensController } from './me/tokens.controller.js';
 import { MemoryController } from './memory/memory.controller.js';
 import { MemoryService } from './memory/memory.service.js';
+import { LessonsController } from './lessons/lessons.controller.js';
+import { LessonsService } from './lessons/lessons.service.js';
 import { PlansController } from './plans/plans.controller.js';
 import { PlansService } from './plans/plans.service.js';
 import { CostController } from './cost/cost.controller.js';
@@ -90,6 +93,7 @@ import {
   INTENTS,
   PLANS,
   MEMORY,
+  LESSONS,
   RUNS,
   COST,
   METRICS,
@@ -140,6 +144,12 @@ export interface ApiDeps {
    * `git_host_unavailable`.
    */
   readonly memoryGitHost?: Pick<GitHostAdapter, 'getBranchHead' | 'listFolder' | 'listPathCommits'>;
+  /**
+   * The Git host reads of `adlc lesson add` (X08b PR 2, ADR-M109 §2.3, QUESTIONS #729): the
+   * comment's address and the comment itself, with a read token used once. Undefined: adding a
+   * lesson answers `git_host_unavailable`.
+   */
+  readonly lessonGitHost?: LessonGitHost['gitHost'];
   /**
    * The Git host reads of a project's evaluation tasks (L07, ADR-M85): the merged pull request,
    * commit parents, comparisons and commit authors. Undefined: the task endpoints answer
@@ -225,6 +235,7 @@ class ApiModule {
         EscalationsController,
         AiRecordsController,
         MemoryController,
+        LessonsController,
         ProjectEvalPlansController,
         EvalPlansController,
         EvaluationsController,
@@ -276,6 +287,13 @@ class ApiModule {
           provide: MEMORY,
           useValue: new MemoryService(
             deps.memoryGitHost ? { gitHost: deps.memoryGitHost } : undefined,
+          ),
+        },
+        {
+          provide: LESSONS,
+          useValue: new LessonsService(
+            deps.lessonGitHost ? { gitHost: deps.lessonGitHost } : undefined,
+            now,
           ),
         },
         {

@@ -753,6 +753,16 @@ export const AUDIT_ACTIONS = {
   },
   /** X08b: a `/lesson` was refused: `cause` `not_allowed` or `window_closed`. */
   'lesson.refused': { entityType: 'intent', fields: { cause: 'code' } },
+  /**
+   * X08b PR 2 (ADR-M109 §2.5): a person marked a lesson applied. The link to the change stays in
+   * the outcome row; the audit names the follow-up intent when the change is one.
+   */
+  'lesson.applied': {
+    entityType: 'intent',
+    fields: { lesson_id: 'uuid', follow_up_intent_id: 'uuid?' },
+  },
+  /** X08b PR 2: a person dropped a lesson; `reason` is a drop reason code. */
+  'lesson.dropped': { entityType: 'intent', fields: { lesson_id: 'uuid', reason: 'code' } },
   /** A person put an intent's evidence on hold (E05, QUESTIONS #235): never purged until released. */
   'evidence.hold_set': { entityType: 'intent', fields: { hold_id: 'uuid' } },
   /** A person released the hold on an intent's evidence (E05, QUESTIONS #235). */

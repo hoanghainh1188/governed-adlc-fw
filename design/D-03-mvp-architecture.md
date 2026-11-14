@@ -361,6 +361,7 @@ interface GitHostAdapter {
   findOpenPullRequest(ref: RepoRef, head: string, base: string): Promise<PullRequestInfo | null>;
   deleteBranch(ref: RepoRef, branch: string, expectedHead: string): Promise<BranchDeletion>; // version 1.56: memory branches only
   webUrl(ref: RepoRef, target: WebTarget): string; // version 1.57: the links of an intent, no call to the host
+  commentIdOf(ref: RepoRef, url: string): string | null; // version 1.58: the comment ID of a lesson's link, no call to the host
   getSecurityFindings(ref: RepoRef, pr: number): Promise<SecurityFindings>;
   getReviewFeedback(token: RedactedSecret, ref: RepoRef, pr: number, reviewId: string): Promise<ReviewFeedback>;
   getIssueComment(token: RedactedSecret, ref: RepoRef, commentId: string): Promise<IssueCommentText>;
@@ -815,3 +816,4 @@ ADR-M09 (database/migration tool) and ADR-M10 (OpenHands PoC result) are written
 | 1.55 | 2026-11-13 | Claude Code (task X13 PR 1), approved by Harry in the X13 plan (QUESTIONS #711–#715) | §7.1: `listFolder` and `listPathCommits` (twenty-five methods) for agent memory; §8 `memory` in schema 5 and §9 "Agent memory" approved (ADR-M74 0.2) |
 | 1.56 | 2026-11-14 | Claude Code (task X13 PR 3b), approved by Harry in the X13 PR 3 plan (QUESTIONS #716) | §7.1: `deleteBranch` (twenty-six methods), memory branches only (ADR-M74 0.5) |
 | 1.57 | 2026-11-14 | Claude Code (task X08a PR 1), approved by Harry in the X08a plan (QUESTIONS #723) | §7.1: `webUrl` (twenty-seven methods), the web addresses of an intent's links (ADR-M109 0.2) |
+| 1.58 | 2026-11-14 | Claude Code (task X08b PR 2), approved by Harry in the X08b plan (QUESTIONS #729) | §7.1: `commentIdOf` (twenty-eight methods), the comment ID of an address on the project's repository, and `IssueCommentText.issueNumber`, the issue or pull request of a comment: `adlc lesson add` checks both (ADR-M109 0.4) |
