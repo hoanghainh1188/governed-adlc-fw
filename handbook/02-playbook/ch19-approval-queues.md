@@ -626,6 +626,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | **An intent** | Where it stands on G1–G8; **who decides this gate** (the oversight mode, the approver roles and how many approvals, as the workflow resolves it); its decisions, runs, open escalations and Evidence Packs, with the pack files to download | `adlc intent show`, `adlc run list`, `adlc evidence list\|export` |
 | **Escalations** | Open and acknowledged escalations, the nearest deadline first: severity, route, the role that holds the current step, the acknowledge or resolve clock | `adlc escalation list` |
 | **Cost and gate times** | Per project (or the whole tenant, for tenant admins): how long each gate waits for people (average, 90th percentile, longest, waiting now), and the model cost by intent, model or run status, with the wasted part | `adlc metrics gates`, `adlc cost report` |
+| **Lessons** | Per project: the lessons people recorded at G8, newest first, or only the open ones. Each row links to its intent and to the GitHub comment with the words, and shows the lesson's age and what became of it (the change's link, or why it was dropped). Read only: record a lesson with `/lesson` or `adlc lesson add`, its outcome with `adlc lesson apply\|drop` | `adlc lessons list` |
 | **Audit check** | Tenant admins only: checks the tenant's audit chain, on request | `adlc audit verify` |
 | **Passkeys** | With a GitHub sign-in and actions on: your passkeys; add and remove them | `adlc admin passkey list` (tenant admins, for a person) |
 | **Admin** | Projects, their roles, configuration and AI record; people, their GitHub accounts and passkeys; tenant admins; the agent register; evidence holds. What you see follows your roles | `adlc admin …`, `adlc ai-record show` |
@@ -717,6 +718,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | 0.50 | 2026-10-30 | Claude (v0.10.0, ADR-M100) | §19.8c: the old command `sdlc` is removed in v0.10.0; `adlc` still reads its login |
 | 0.52 | 2026-11-12 | Claude (task O06, PR 2a) | §19.8d: a project can be one folder of a monorepo (`--folder`, `folder:` in the project file, `repo_path_overlap`; ADR-M106 §2.4) |
 | 0.53 | 2026-11-12 | Claude (task U09) | §19.8d, §19.8e: the dashboard's **Admin** screen: projects, roles, configuration with its line difference, people and GitHub accounts, passkeys, tenant admins, the agent register, the AI record and evidence holds, each change with a passkey (ADR-M73 1.9) |
+| 0.56 | 2026-11-14 | Claude Code (task X08b, PR 3) | §19.8e: the dashboard's read-only **Lessons** screen (ADR-M109 0.5) |
 | 0.55 | 2026-11-14 | Claude Code (task X08b, PR 1 and PR 2) | §19.8b: `/lesson`; §19.8c: `adlc lesson add\|apply\|drop\|issue`, `adlc lessons list`, `adlc metrics lessons`, `--from-lesson`, `--has-lessons` (ADR-M109 0.4) |
 | 0.54 | 2026-11-12 | Claude Code (task V14) | §19.8c: `adlc intent estimate` and the column "Lead / estimate" of the agent report (ADR-M79 §2.6) |
 | 0.51 | 2026-11-12 | Claude (task V19) | §19.8d: `pnpm server:setup` can run `adlc admin project apply` with the file of its settings; what stays with people is the same |

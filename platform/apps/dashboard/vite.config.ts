@@ -11,6 +11,13 @@ const CATALOG_ID = 'virtual:dashboard-catalog';
 /** U09 (QUESTIONS #686): the `dashboard.admin.*` messages, in the administration chunk. */
 const ADMIN_CATALOG_ID = 'virtual:dashboard-admin-catalog';
 const ADMIN_PREFIX = 'dashboard.admin.';
+/** X08b PR 3 (ADR-M109 §2.5): the `dashboard.lessons.*` messages, in the lessons chunk. */
+const LESSONS_CATALOG_ID = 'virtual:dashboard-lessons-catalog';
+const LESSONS_PREFIX = 'dashboard.lessons.';
+const CHUNKS: Readonly<Record<string, string>> = {
+  [ADMIN_CATALOG_ID]: ADMIN_PREFIX,
+  [LESSONS_CATALOG_ID]: LESSONS_PREFIX,
+};
 
 /**
  * The `dashboard.*` and `intent.waiting*` (U02) messages of the catalog (`@sdlc/messages`, NFR-08), bundled at build time. The
@@ -20,15 +27,19 @@ export function dashboardCatalog(): Plugin {
   const file = path.resolve(root, '../../packages/messages/src/locales/en.json');
   return {
     name: 'sdlc-dashboard-catalog',
-    resolveId: (id) => (id === CATALOG_ID || id === ADMIN_CATALOG_ID ? `\0${id}` : null),
+    resolveId: (id) => (id === CATALOG_ID || id in CHUNKS ? `\0${id}` : null),
     load(id) {
-      if (id !== `\0${CATALOG_ID}` && id !== `\0${ADMIN_CATALOG_ID}`) return null;
-      const admin = id === `\0${ADMIN_CATALOG_ID}`;
+      const name = id.startsWith('\0') ? id.slice(1) : '';
+      if (name !== CATALOG_ID && !(name in CHUNKS)) return null;
+      const prefix = CHUNKS[name];
+      const chunked = Object.values(CHUNKS);
       this.addWatchFile(file);
       const all = JSON.parse(readFileSync(file, 'utf8')) as Record<string, string>;
       const own = Object.fromEntries(
         Object.entries(all).filter(([key]) =>
-          admin ? key.startsWith(ADMIN_PREFIX) : !key.startsWith(ADMIN_PREFIX) && wanted(key),
+          prefix !== undefined
+            ? key.startsWith(prefix)
+            : !chunked.some((p) => key.startsWith(p)) && wanted(key),
         ),
       );
       return `export default ${JSON.stringify(own)};`;

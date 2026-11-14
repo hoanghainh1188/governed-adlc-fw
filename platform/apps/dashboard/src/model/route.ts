@@ -8,6 +8,8 @@ export type Route =
   | { readonly name: 'numbers'; readonly query: URLSearchParams }
   | { readonly name: 'audit'; readonly query: URLSearchParams }
   | { readonly name: 'passkeys'; readonly query: URLSearchParams }
+  // X08b PR 3 (ADR-M109 §2.5): the lessons of a project, read only.
+  | { readonly name: 'lessons'; readonly query: URLSearchParams }
   // L05 (ADR-M82 §2.7): evaluation plans of a project, one plan, its form, one evaluation.
   | { readonly name: 'evaluations'; readonly query: URLSearchParams }
   | { readonly name: 'eval-plan'; readonly id: string; readonly query: URLSearchParams }
@@ -42,6 +44,7 @@ export function parseRoute(hash: string): Route {
   if (parts[0] === 'numbers') return { name: 'numbers', query };
   if (parts[0] === 'audit') return { name: 'audit', query };
   if (parts[0] === 'passkeys') return { name: 'passkeys', query };
+  if (parts[0] === 'lessons') return { name: 'lessons', query };
   if (parts[0] === 'admin') {
     const slug = parts[2];
     if (parts[1] === 'projects' && slug !== undefined && PROJECT_SLUG.test(slug)) {

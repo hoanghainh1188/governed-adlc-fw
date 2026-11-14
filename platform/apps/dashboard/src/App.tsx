@@ -129,6 +129,7 @@ export function App() {
               <NavItem route={route} name="escalations" label={t('dashboard.nav.escalations')} />
               <NavItem route={route} name="numbers" label={t('dashboard.nav.numbers')} />
               <NavItem route={route} name="evaluations" label={t('dashboard.nav.evaluations')} />
+              <NavItem route={route} name="lessons" label={t('dashboard.nav.lessons')} />
               {me.tenant_admin === true && (
                 <NavItem route={route} name="audit" label={t('dashboard.nav.audit')} />
               )}
@@ -211,6 +212,11 @@ function Screen({ route, me }: { readonly route: Route; readonly me: Me }) {
       return <EvalPlanEdit id={route.id} />;
     case 'evaluation':
       return <Evaluation code={route.code} />;
+    // X08b PR 3: read only; lessons are recorded on GitHub or with the CLI (QUESTIONS #728).
+    case 'lessons':
+      return (
+        <Lazy load={loadAdmin}>{(screens) => <screens.Lessons me={me} query={route.query} />}</Lazy>
+      );
     case 'passkeys':
       return session.actions() ? <Passkeys /> : <IntentsBoard me={me} query={route.query} />;
     case 'audit':
@@ -235,7 +241,7 @@ function Screen({ route, me }: { readonly route: Route; readonly me: Me }) {
   }
 }
 
-/** U09 (QUESTIONS #686): the administration screens are a chunk of their own. */
+/** U09 (QUESTIONS #686): the administration screens, and X08b's lessons, are a chunk of their own. */
 const loadAdmin = () => import('./views/admin-screens.js');
 type AdminScreens = Awaited<ReturnType<typeof loadAdmin>>;
 

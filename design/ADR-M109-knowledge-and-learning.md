@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** with the merge of X08a PR 1 (Harry, 2026-11-14); 0.1 proposed by X08 (the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710); 0.2 adds the details of QUESTIONS #721–#725; 0.3 those of #726–#730; 0.4 the API and the CLI as built (X08b PR 2) |
-| Date | 2026-11-13; 0.2, 0.3 and 0.4 on 2026-11-14 |
+| Status | **Accepted** with the merge of X08a PR 1 (Harry, 2026-11-14); 0.1 proposed by X08 (the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710); 0.2 adds the details of QUESTIONS #721–#725; 0.3 those of #726–#730; 0.4 the API and the CLI as built (X08b PR 2); 0.5 the dashboard's list and the note for the handbook's authors (X08b PR 3) |
+| Date | 2026-11-13; 0.2 to 0.5 on 2026-11-14 |
 | Decided by | Harry (to accept); X08a and X08b build it |
 | Related | D-08 X08, X08a, X08b, X07, X12, X13; D-02 FR-11, FR-21, FR-40, FR-42, FR-44; D-05 §6.2, §6.12 (proposed), §10; codes table §4 row G8 ("Release / Learning"); handbook Ch.10 §10.7 (Close: retrospective), Ch.15 §15.6 (post-release note), Ch.16 §16.11 (monthly learning step), T14 §7 (lessons); ADR-M20 (codes and links only), ADR-M27 (comment commands), ADR-M48 (Evidence Pack), ADR-M49 (G8), ADR-M54 (dashboard), ADR-M74 (agent memory), ADR-M97 (client data deletion); QUESTIONS #361, #395, #706–#710 |
 
@@ -142,6 +142,18 @@ The platform never changes `AGENTS.md`, memory, the configuration or the handboo
 - `adlc lesson issue <lesson-id> [--repo <owner/name>]` prints a GitHub "new issue" address with the title, the label `handbook` and a body of codes, the intent code, the lesson ID and the comment link; the person opens it and adds the words (QUESTIONS #727). Default repository: `hoanghainh1188/governed-adlc-fw`.
 - `adlc metrics lessons` counts recorded, open, applied and dropped lessons, per category and target, and the median days from recording to the latest outcome.
 
+**As built (0.5, X08b PR 3, QUESTIONS #728).**
+
+- The dashboard has a **Lessons** screen (`#/lessons?project=<slug>&open=true`): one project of the person at a time, all lessons or the open ones, newest first. Each row shows the intent (a link to its screen), the category and target, the age, a link to the comment that holds the words, and the state with the outcome (the change's link, the drop reason, or a follow-up intent). It reads `GET /v1/lessons` only; it has no way to record a lesson or an outcome.
+- The screen is loaded on demand with the administration screens, in the same chunk, with its own messages (`dashboard.lessons.*`): a second on-demand chunk made the build split the first load into two files.
+
+<a id="authors-note"></a>**Note for the handbook's authors.** The platform parts are in Ch.19 §19.8b, §19.8c, §19.8e and Ch.20 §20.9b. The process chapters stay yours; these places may want a line:
+
+- Ch.15 §15.6 (post-release note, T14): the lessons of the release are recorded with `/lesson` on the intent's issue, and T14 can link them instead of repeating their words.
+- Ch.16 §16.11 ("Lessons are never applied", the monthly learning step): the step can start from `adlc lessons list --open` or the dashboard's Lessons screen, and `adlc metrics lessons` gives the counts and the median days to an outcome. Each lesson ends `applied` (with the change's link) or `dropped` (with a reason).
+- Ch.10 §10.7 (Close: retrospective): a lesson is one comment per point, so each can be followed on its own.
+- A lesson with the target `handbook` arrives as a GitHub issue with the label `handbook` (`adlc lesson issue`): codes and a link only, the person's words added before it is sent.
+
 ### 2.6. Relation to agent memory (X12, X13)
 
 - Memory (ADR-M74) is what an **agent** proposes and a person approves; a lesson is what a **person** records. A lesson with target `memory` is one way to start a memory change; it never writes memory by itself.
@@ -189,6 +201,7 @@ The platform never changes `AGENTS.md`, memory, the configuration or the handboo
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-13 | Claude Code (task X08) | First version, proposed |
+| 0.5 | 2026-11-14 | Claude Code (task X08b PR 3), approved by Harry in the X08b plan | §2.5 "As built": the dashboard's read-only Lessons screen in the on-demand chunk; the note for the handbook's authors (QUESTIONS #728) |
 | 0.4 | 2026-11-14 | Claude Code (task X08b PR 2), approved by Harry in the X08b plan | §2.5 "As built": the endpoints, the comment check with `commentIdOf`, migration 0058, `from_lesson`, `has_lessons`, the lesson links, `lesson issue`, `metrics lessons` (QUESTIONS #727, #729, #730) |
 | 0.3 | 2026-11-14 | Claude Code (task X08b PR 1), approved by Harry in the X08b plan | §2.3 "As built": three pull requests, the `/lesson` grammar and replies, the match of a finished intent, `lesson.refused` for the role and the window, the `released` invitation (QUESTIONS #726–#730) |
 | 0.2 | 2026-11-14 | Claude Code (task X08a PR 1), accepted by Harry with the merge | Accepted; §2.1 "As built": `has_lessons` and the lesson links move to X08b, `intents.closed_at`, `GitHostAdapter.webUrl`, the index measurement, `simple` without stemming, the tombstone on client data deletion (QUESTIONS #721–#725) |
