@@ -40,12 +40,12 @@ test('X08b: the lessons of a project, read only, with their filters in the URL',
   const comment = table.getByRole('link', { name: 'Open the comment' }).first();
   await expect(comment).toHaveAttribute('href', /#issuecomment-1001$/);
   await expect(comment).toHaveAttribute('rel', 'noopener noreferrer');
-  await expect(table.getByText('Applied')).toBeVisible();
+  await expect(table.getByText('Applied', { exact: true })).toBeVisible();
   await expect(table.getByRole('link', { name: 'Open the change' })).toHaveAttribute(
     'href',
     'https://github.com/harryforge/shop-demo/pull/31',
   );
-  await expect(table.getByText('Record only')).toBeVisible();
+  await expect(table.getByText('Record only', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /record|apply|drop/i })).toHaveCount(0);
 
   // Open only: in the URL and in the request.
