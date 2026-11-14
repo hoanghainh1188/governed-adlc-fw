@@ -15,6 +15,12 @@ export const MEMORY_DIR = '.sdlc/memory';
 /** The name of a memory file, without `.md`. */
 export const MEMORY_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
+/**
+ * The memory branch of one run (X13 PR 3a, ADR-M74 §2.5 step 4): `agent/INT-…-memory-<attempt>`.
+ * The only branches the platform deletes (`GitHostAdapter.deleteBranch`, PR 3b).
+ */
+export const MEMORY_BRANCH = /^agent\/INT-[0-9]{4}-[0-9]{4,9}-memory-[1-9][0-9]{0,3}$/;
+
 /** `memory.mode` of the project configuration (ADR-M74 §2.2). */
 export const MEMORY_MODES = ['off', 'read', 'read_propose'] as const;
 export type MemoryMode = (typeof MEMORY_MODES)[number];

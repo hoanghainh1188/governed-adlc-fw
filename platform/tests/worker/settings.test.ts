@@ -21,6 +21,7 @@ describe('worker settings', () => {
       heartbeatFile: '/tmp/sdlc-worker.heartbeat',
       escalationTickMs: 15_000,
       escalationBatch: 100,
+      memoryTickMs: 300_000,
       temporal: { address: 'temporal:7233', namespace: 'default' },
       reconcileMs: 600_000,
       reconcileBatch: 500,

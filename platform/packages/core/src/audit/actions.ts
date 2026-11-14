@@ -716,9 +716,23 @@ export const AUDIT_ACTIONS = {
   },
   /**
    * A memory approval was refused (X13, ADR-M74 §2.3): `cause` `bot`, `producer`,
-   * `too_many_commits` or `no_git_identity`; `source` `cli` or `memory_pr`. No version recorded.
+   * `too_many_commits` or `no_git_identity` (`cli`); `bot`, `producer`, `not_linked` or
+   * `not_allowed` (`memory_pr`, PR 3b); `source` `cli` or `memory_pr`. No version recorded.
    */
   'memory.approval_refused': { entityType: 'project', fields: { cause: 'code', source: 'code' } },
+  /**
+   * X13 PR 3b (ADR-M74 §2.5 step 5): the platform opened the memory pull request of the run whose
+   * code was merged at G7.
+   */
+  'memory.pr_opened': { entityType: 'intent', fields: { run_id: 'uuid', pr_number: 'version' } },
+  /** X13 PR 3b: the memory pull request was closed without a merge; no version recorded. */
+  'memory.pr_closed': { entityType: 'intent', fields: { run_id: 'uuid', pr_number: 'version' } },
+  /**
+   * X13 PR 3b (ADR-M74 §2.5 step 5): a run's memory branch that gets no pull request (another
+   * run's code was merged, or the intent closed without a merge). `result` `deleted`, `absent` or
+   * `moved` (someone else changed it: left as it is).
+   */
+  'memory.branch_deleted': { entityType: 'intent', fields: { run_id: 'uuid', result: 'code' } },
   /** A person revoked a memory version (X13, ADR-M74 §2.7): runs never read that set again. */
   'memory.revoked': { entityType: 'project', fields: { version: 'version', reason: 'code' } },
   /** A person put an intent's evidence on hold (E05, QUESTIONS #235): never purged until released. */

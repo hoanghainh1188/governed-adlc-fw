@@ -13,6 +13,7 @@ export {
   type AuthTenantStatus,
   type NewTenant,
   type DueEscalation,
+  type MemoryWork,
   type OpenIntent,
   type PollableProject,
   type ResolvedApiToken,

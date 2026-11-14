@@ -47,6 +47,14 @@ export interface DueEscalation {
   readonly escalationId: string;
 }
 
+/**
+ * Work of the memory loop (task X13 PR 3b, ADR-M74 §2.5): a run whose pushed memory branch has no
+ * proposal row yet, or a proposal still `pushed` or `opened`. IDs only.
+ */
+export type MemoryWork =
+  | { readonly tenantId: TenantId; readonly kind: 'run'; readonly runId: string }
+  | { readonly tenantId: TenantId; readonly kind: 'proposal'; readonly proposalId: string };
+
 /** An open intent whose workflow the worker wakes (task B07): IDs only. */
 export interface OpenIntent {
   readonly tenantId: TenantId;
@@ -204,6 +212,60 @@ export class SystemScope {
         .execute(),
     );
     return rows.map((row) => ({ tenantId: parseTenantId(row.tenant_id), escalationId: row.id }));
+  }
+
+  /**
+   * The memory loop's work (X13 PR 3b, ADR-M74 §2.5), of active tenants: first runs that pushed a
+   * memory branch (`memory_branch_pushed`) and have no proposal row, then proposals still
+   * `pushed` or `opened`, least recently looked at first. Crosses tenants, so IDs only.
+   */
+  async listMemoryWork(limit: number): Promise<MemoryWork[]> {
+    const runs = await run(
+      this.db
+        .selectFrom('run_events as re')
+        .innerJoin('tenants as tn', 'tn.id', 're.tenant_id')
+        .select(['re.tenant_id', 're.run_id'])
+        .where('re.event_type', '=', 'memory_branch_pushed')
+        .where('tn.status', '=', 'active')
+        .where((eb) =>
+          eb.not(
+            eb.exists(
+              eb
+                .selectFrom('memory_proposals as mp')
+                .select('mp.id')
+                .whereRef('mp.tenant_id', '=', 're.tenant_id')
+                .whereRef('mp.run_id', '=', 're.run_id'),
+            ),
+          ),
+        )
+        .orderBy('re.created_at')
+        .limit(limit)
+        .execute(),
+    );
+    const proposals = await run(
+      this.db
+        .selectFrom('memory_proposals as mp')
+        .innerJoin('tenants as tn', 'tn.id', 'mp.tenant_id')
+        .select(['mp.tenant_id', 'mp.id'])
+        .where('mp.state', 'in', ['pushed', 'opened'])
+        .where('tn.status', '=', 'active')
+        .orderBy('mp.updated_at')
+        .orderBy('mp.id')
+        .limit(limit)
+        .execute(),
+    );
+    return [
+      ...runs.map((row) => ({
+        tenantId: parseTenantId(row.tenant_id),
+        kind: 'run' as const,
+        runId: row.run_id,
+      })),
+      ...proposals.map((row) => ({
+        tenantId: parseTenantId(row.tenant_id),
+        kind: 'proposal' as const,
+        proposalId: row.id,
+      })),
+    ];
   }
 
   /**

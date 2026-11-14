@@ -77,6 +77,9 @@ export interface MergedChange {
  * and body from the message catalog with coded values only (QUESTIONS #123: the pilot repository
  * is public).
  */
+/** The result of `deleteBranch` (X13 PR 3b). */
+export type BranchDeletion = 'deleted' | 'absent' | 'moved';
+
 export interface NewPullRequest {
   /** The branch with the changes, for example `agent/INT-2026-0001`. */
   readonly head: string;
@@ -379,6 +382,13 @@ export interface GitHostAdapter {
    * (task C08: find before opening, so a repeated call never opens a second one).
    */
   findOpenPullRequest(ref: RepoRef, head: string, base: string): Promise<PullRequestInfo | null>;
+  /**
+   * Deletes a memory branch (`MEMORY_BRANCH`; task X13 PR 3b, ADR-M74 §2.5 step 5) when it still
+   * points to `expectedHead`: `deleted`; `absent` when there is no such branch; `moved` (nothing
+   * deleted) when someone else changed it. Any other branch name is `invalid_input`: the platform
+   * never deletes another branch. Uses a token that may write contents for this call only.
+   */
+  deleteBranch(ref: RepoRef, branch: string, expectedHead: string): Promise<BranchDeletion>;
   /**
    * The open security findings of a pull request (task C08 PR 2): counts per severity, or
    * unknown. Uses a token of its own that may read code-scanning alerts.

@@ -26,6 +26,7 @@ import {
   prepareTaskCheck,
   advanceEvaluationPlan,
   Registry,
+  stepMemoryWork,
 } from '@sdlc/core';
 import { t } from '@sdlc/messages';
 import { OpenBaoClient, SecretsError } from '@sdlc/secrets';
@@ -44,6 +45,7 @@ import { createIntentActivities } from './activities/intent-activities.js';
 import { CostSyncLoop } from './cost-sync-loop.js';
 import { openWorkerEvidence } from './evidence-store.js';
 import { EscalationLoop } from './escalation-loop.js';
+import { MemoryLoop } from './memory-loop.js';
 import { EvaluationLoop } from './evaluation-loop.js';
 import { TaskCheckLoop } from './evaluation-task-check-loop.js';
 import { EvaluationPlanLoop } from './evaluation-plan-loop.js';
@@ -195,6 +197,15 @@ async function main(): Promise<void> {
     batchSize: settings.escalationBatch,
   });
   escalations.start(settings.escalationTickMs);
+  // X13 PR 3b (ADR-M74 §2.5): memory pull requests and branches; state in PostgreSQL.
+  const memory = new MemoryLoop({
+    listWork: (limit) => db.system.listMemoryWork(limit),
+    step: (work) =>
+      stepMemoryWork(db.forTenant(work.tenantId), { gitHost, now: () => new Date() }, work),
+    logger,
+    batchSize: settings.escalationBatch,
+  });
+  memory.start(settings.memoryTickMs);
   // The scheduled spend sync (C12, ADR-M24 §2.5): needs the Cost Controller, so the cost AppRole.
   const costSync = workerRuns
     ? new CostSyncLoop({
@@ -417,6 +428,7 @@ async function main(): Promise<void> {
     void Promise.all([
       loop.stop(),
       escalations.stop(),
+      memory.stop(),
       reconcile?.stop(),
       costSync?.stop(),
       evaluations?.stop(),
