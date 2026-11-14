@@ -249,6 +249,9 @@ const UPDATABLE: Record<string, readonly string[]> = {
   project_memory_revocations: [],
   // X13 PR 3b (migration 0055): the memory loop moves a proposal's state; trigger SDA30.
   memory_proposals: ['state', 'pr_number', 'version', 'cause', 'updated_at'],
+  // X08b (migration 0057): append-only.
+  intent_lessons: [],
+  intent_lesson_outcomes: [],
   // U05 (migration 0027): seen time only grows; the end is set once (trigger SDA18). No DELETE.
   web_sessions: ['last_seen_at', 'revoked_at', 'end_reason'],
   // U06 (migration 0028): the counter and the last use only grow; revoked once (SDA20). No DELETE.
@@ -405,7 +408,9 @@ describeDb('AC2: migrations on PostgreSQL', () => {
     // X13: project_memory_versions → projects, users, intents, runs; project_memory_revocations →
     // project_memory_versions (by version), users (0053).
     // X13 PR 3b: memory_proposals → projects, intents, runs (0055).
-    expect(fks).toHaveLength(103);
+    // X08b: intent_lessons → projects, intents, users; intent_lesson_outcomes → intent_lessons,
+    // users, intents (the follow-up) (0057).
+    expect(fks).toHaveLength(109);
     for (const fk of fks) {
       expect(fk.on_delete, fk.name).toBe('r'); // RESTRICT: no hard deletes (D-05 D7)
       if (fk.name === 'gate_decisions_voids_fkey') {

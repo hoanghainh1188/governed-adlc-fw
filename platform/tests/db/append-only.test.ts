@@ -28,6 +28,9 @@ const APPEND_ONLY = [
   'knowledge_index_uses',
   'project_memory_versions',
   'project_memory_revocations',
+  // X08b (migration 0057).
+  'intent_lessons',
+  'intent_lesson_outcomes',
 ];
 
 const trigger = (event: string, table: string) =>

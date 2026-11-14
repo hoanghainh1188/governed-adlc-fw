@@ -22,6 +22,11 @@ import type {
   IntentStatus,
   KnowledgeIndexKind,
   MemoryRevocationReason,
+  LessonCategory,
+  LessonDropReason,
+  LessonOutcome,
+  LessonSource,
+  LessonTarget,
   MemorySource,
   ProjectRole,
   ProviderType,
@@ -1119,6 +1124,34 @@ export interface ProjectMemoryRevocationsTable {
   created_at: CreatedAt;
 }
 
+/** A lesson recorded on an intent (X08b, migration 0057, ADR-M109 §2.2). Append-only. */
+export interface IntentLessonsTable {
+  id: GeneratedId;
+  tenant_id: Immutable<string>;
+  project_id: Immutable<string>;
+  intent_id: Immutable<string>;
+  category: Immutable<LessonCategory>;
+  target: Immutable<LessonTarget>;
+  comment_url: Immutable<string>;
+  comment_id: Immutable<string>;
+  recorded_by: Immutable<string>;
+  source: Immutable<LessonSource>;
+  created_at: CreatedAt;
+}
+
+/** The outcome of a lesson (X08b, migration 0057, ADR-M109 §2.5). Append-only. */
+export interface IntentLessonOutcomesTable {
+  id: GeneratedId;
+  tenant_id: Immutable<string>;
+  lesson_id: Immutable<string>;
+  outcome: Immutable<LessonOutcome>;
+  link_url: ColumnType<string | null, string | null | undefined, never>;
+  reason: ColumnType<LessonDropReason | null, LessonDropReason | null | undefined, never>;
+  follow_up_intent_id: ColumnType<string | null, string | null | undefined, never>;
+  decided_by: Immutable<string>;
+  created_at: CreatedAt;
+}
+
 /** States of a memory proposal (X13 PR 3b, migration 0055, ADR-M74 §2.5). */
 export const MEMORY_PROPOSAL_STATES = [
   'pushed',
@@ -1219,6 +1252,8 @@ export interface Database {
   knowledge_index_uses: KnowledgeIndexUsesTable;
   project_memory_versions: ProjectMemoryVersionsTable;
   memory_proposals: MemoryProposalsTable;
+  intent_lessons: IntentLessonsTable;
+  intent_lesson_outcomes: IntentLessonOutcomesTable;
   project_memory_revocations: ProjectMemoryRevocationsTable;
   web_sessions: WebSessionsTable;
   webauthn_credentials: WebauthnCredentialsTable;
@@ -1913,6 +1948,30 @@ export const TABLE_COLUMNS = {
     'intent_id',
     'created_at',
   ]),
+  intent_lessons: columns<IntentLessonsTable>()([
+    'id',
+    'tenant_id',
+    'project_id',
+    'intent_id',
+    'category',
+    'target',
+    'comment_url',
+    'comment_id',
+    'recorded_by',
+    'source',
+    'created_at',
+  ]),
+  intent_lesson_outcomes: columns<IntentLessonOutcomesTable>()([
+    'id',
+    'tenant_id',
+    'lesson_id',
+    'outcome',
+    'link_url',
+    'reason',
+    'follow_up_intent_id',
+    'decided_by',
+    'created_at',
+  ]),
   memory_proposals: columns<MemoryProposalsTable>()([
     'id',
     'tenant_id',
@@ -2059,6 +2118,8 @@ export const TENANT_COLUMN = {
   knowledge_index_uses: 'tenant_id',
   project_memory_versions: 'tenant_id',
   memory_proposals: 'tenant_id',
+  intent_lessons: 'tenant_id',
+  intent_lesson_outcomes: 'tenant_id',
   project_memory_revocations: 'tenant_id',
   web_sessions: 'tenant_id',
   webauthn_credentials: 'tenant_id',
@@ -2113,6 +2174,8 @@ export type KnowledgeIndex = Selectable<KnowledgeIndexesTable>;
 export type KnowledgeIndexUse = Selectable<KnowledgeIndexUsesTable>;
 export type ProjectMemoryVersion = Selectable<ProjectMemoryVersionsTable>;
 export type MemoryProposal = Selectable<MemoryProposalsTable>;
+export type IntentLesson = Selectable<IntentLessonsTable>;
+export type IntentLessonOutcomeRow = Selectable<IntentLessonOutcomesTable>;
 export type ProjectMemoryRevocation = Selectable<ProjectMemoryRevocationsTable>;
 
 /** Insert input for a tenant table: the scope sets `tenant_id`, so callers never pass it. */

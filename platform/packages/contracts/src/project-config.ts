@@ -353,6 +353,11 @@ export interface ProjectConfig {
     /** All files together are cut after this many characters (1000–24000). */
     readonly max_total_chars: number;
   };
+  /** X08b (ADR-M109 §2.3): lessons are recorded from G8 until this many days after the close. */
+  readonly learning: {
+    /** 1–90, default 14. */
+    readonly lesson_window_days: number;
+  };
   /** Register tools (task X04, ADR-M69 §2.2–§2.7, ADR-M87). */
   readonly tools: {
     /** Maximum age of a tool's last recertification before a warning (rule M18: at most 3). */

@@ -66,6 +66,8 @@ export const APPEND_ONLY_TABLES = [
   'knowledge_index_uses',
   'project_memory_versions',
   'project_memory_revocations',
+  'intent_lessons',
+  'intent_lesson_outcomes',
 ] as const;
 export const SQL_TABLE_SIZES =
   "select coalesce(json_agg(json_build_object('table', c.relname, 'bytes', case c.relkind " +

@@ -179,6 +179,8 @@ export interface IntentNoticeView {
    * link to the human AI record, where the client's note is written.
    */
   readonly clientRecordRef?: string | null;
+  /** X08b (ADR-M109 §2.3): `released` invites lessons for this many days after the close. */
+  readonly lessonWindowDays?: number | null;
 }
 
 /** `YYYY-MM-DD HH:MM UTC`: the same text whatever the reader's locale. */
@@ -208,6 +210,7 @@ export function renderIntentNotice(
           : t('escalation.notice.nobody', {}, locale),
       reason: view.reasonCode ?? 'other',
       window_end: view.windowEnd ? formatUtcMinute(view.windowEnd) : '—',
+      lesson_days: view.lessonWindowDays ?? '—',
       agent: view.agentKey ?? '—',
       base_sha: view.baseSha ?? '—',
       percent: view.percent ?? '—',
@@ -252,6 +255,11 @@ async function viewOf(
     notice.kind === 'budget_warning' ? await lastWarningPercent(scope, intent.id) : null;
   const clientRecordRef =
     notice.kind === 'g8_review_needed' ? await clientNoteRef(scope, intent) : null;
+  const lessonWindowDays =
+    notice.kind === 'released'
+      ? (await loadEffectiveConfig(scope.projectConfigs, intent.project_id)).config.learning
+          .lesson_window_days
+      : null;
   const mentions = await mentionsFor(scope, intent.project_id, notice.audience_roles, []);
   // The recertification warning goes to the agent's owner (ADR-M31 §2.7), read now.
   if (agent) mentions.push(...(await loginsOf(scope, agent.owner_id)));
@@ -264,6 +272,7 @@ async function viewOf(
     agentKey: agent?.agent_key ?? (proposal ? await agentKeyOf(scope, proposal.agentId) : null),
     baseSha: proposal ? proposal.baseSha.slice(0, 12) : null,
     percent,
+    lessonWindowDays,
     clientRecordRef,
   };
 }

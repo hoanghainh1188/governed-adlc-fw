@@ -121,6 +121,20 @@ You can decide a gate by writing a comment on the GitHub issue or pull request o
 - Only new comments count. **Editing a comment never changes a decision.** To change your mind, write a new comment.
 - Text on later lines, quoted text (`> /approve G3`) and commands inside code blocks are not read.
 - `/kill` stops the intent's agent run with the kill switch: Chapter 18 §18.8d.
+- `/lesson <category> <target>` records a lesson (below, "Recording a lesson").
+
+**Recording a lesson.** When an intent reaches G8, or after it closed, write what it taught you as a comment on its issue (or pull request):
+
+```text
+/lesson rework agents_md
+The agent kept the old export format because AGENTS.md did not name the new one.
+```
+
+- The first line names the **category** (`gate`, `rework`, `agent_assumption`, `instructions`, `process`, `tooling`, `other`) and the **target**, what should change (`agents_md`, `memory`, `handbook`, `config`, or `none` to record only). Nothing else goes on that line.
+- The lesson in words goes on the lines below; it is required. The words stay in your comment, where you can edit or delete them. The platform keeps only the two codes and a link to the comment, and it replies when the lesson is recorded.
+- Person A or Person B of the project, or a tenant admin, may record a lesson, also the person who did the work. A bot never can.
+- From the moment the intent enters G8 until 14 days after it closed (the project setting `learning.lesson_window_days`, Chapter 20). The release never waits for a lesson; the notice that closes the intent reminds you.
+- A lesson changes nothing by itself. A person applies it through its own change (a new intent for `AGENTS.md`, a memory pull request, a configuration change, a handbook issue), which goes through its own gates.
 
 **Who may decide.**
 

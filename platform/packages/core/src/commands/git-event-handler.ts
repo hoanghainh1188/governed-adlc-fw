@@ -11,6 +11,7 @@
 //   comment URL (`reason_ref`) only.
 import type { CheckCompletedEvent, CommentCreatedEvent, GitEvent } from '@sdlc/contracts';
 
+import { isTenantAdmin } from '../admin/actor.js';
 import { DbError, TenantGuardError } from '../db/errors.js';
 import type { Escalation, GitEventReceipt, Intent } from '../db/schema.js';
 import type { TenantScope } from '../db/tenant-scope.js';
@@ -19,6 +20,7 @@ import { acknowledgeEscalation, decideEscalation } from '../escalation/decide.js
 import { EscalationError, type EscalationErrorCode } from '../escalation/errors.js';
 import { KillError, type KillErrorCode } from '../kill/errors.js';
 import { currentRunOf, requestRunKill } from '../kill/kill-run.js';
+import { loadEffectiveConfig } from '../registry/effective-config.js';
 import { RegistryError } from '../registry/errors.js';
 import type { Registry } from '../registry/registry.js';
 import {
@@ -39,6 +41,8 @@ export type GitEventOutcome =
   | 'escalation_decided'
   /** `/kill`: the kill of the intent's current run was recorded (C11). No reply: notice `run_killed`. */
   | 'killed'
+  /** `/lesson`: the lesson was recorded (X08b). A reply confirms it. */
+  | 'lesson_recorded'
   /** The command was understood but refused (permission, gate, input); a reply says why. */
   | 'refused'
   /** The command could not be read; a reply shows the syntax. */
@@ -97,6 +101,14 @@ export const COMMENT_REPLY_CODES = [
   // C11: `/kill` refusals.
   'kill_forbidden',
   'kill_no_active_run',
+  // X08b: `/lesson` (ADR-M109 §2.3).
+  'syntax_lesson_codes_missing',
+  'syntax_lesson_category_invalid',
+  'syntax_lesson_target_invalid',
+  'syntax_lesson_text_missing',
+  'lesson_recorded',
+  'lesson_not_allowed',
+  'lesson_window_closed',
   'failed',
 ] as const;
 export type CommentReplyCode = (typeof COMMENT_REPLY_CODES)[number];
@@ -140,6 +152,10 @@ const SYNTAX_REPLY: Readonly<Record<CommentSyntaxProblem, CommentReplyCode>> = {
   reason_missing: 'syntax_reason_missing',
   decision_missing: 'syntax_decision_missing',
   decision_invalid: 'syntax_decision_invalid',
+  lesson_codes_missing: 'syntax_lesson_codes_missing',
+  lesson_category_invalid: 'syntax_lesson_category_invalid',
+  lesson_target_invalid: 'syntax_lesson_target_invalid',
+  lesson_text_missing: 'syntax_lesson_text_missing',
 };
 
 /** Reply of an escalation refusal (B11). `frozen` and packet errors cannot come from a command. */
@@ -156,7 +172,10 @@ export function commandReplyParams(command: ParsedComment): Record<string, strin
   if (command.kind === 'gate_decision') return { gate: command.gate };
   if (command.kind === 'none') return {};
   // `invalid` carries the verb too; a gate verb has no gate param when its gate could not be read.
-  return command.verb === 'ack' || command.verb === 'decide' || command.verb === 'kill'
+  return command.verb === 'ack' ||
+    command.verb === 'decide' ||
+    command.verb === 'kill' ||
+    command.verb === 'lesson'
     ? { command: command.verb }
     : {};
 }
@@ -262,6 +281,9 @@ export function handleGitEvent(
     const actorId = await linkedUser(tx, project.provider, event);
     if (actorId === undefined) {
       return record('user_not_linked', { reply: { code: 'user_not_linked', params: gate } });
+    }
+    if (command.kind === 'lesson') {
+      return handleLessonCommand(tx, deps, project, event, command, actorId, record, options);
     }
     const intents = await tx.intents.findOpenByGitNumber(project.id, {
       kind: event.isPullRequest ? 'pull_request' : 'issue',
@@ -399,6 +421,100 @@ async function handleKillCommand(
     if (reply === undefined) throw error;
     return record(reply.code === 'failed' ? 'failed' : 'refused', { reply });
   }
+}
+
+/** Roles that may record a lesson, besides a tenant admin (ADR-M109 §2.3). */
+const LESSON_ROLES: readonly string[] = ['person_a', 'person_b'];
+const FINISHED: readonly string[] = ['done', 'rejected', 'cancelled', 'blocked'];
+const DAY_MS = 86_400_000;
+const COMMENT_ID = /^[0-9]{1,20}$/;
+
+/**
+ * `/lesson <category> <target>` (X08b, ADR-M109 §2.3): a Person A or Person B of the project, or a
+ * tenant admin, records a lesson on the intent of the issue or pull request, from G8 until
+ * `learning.lesson_window_days` after it closed. The words stay in the comment; the platform keeps
+ * the codes, the comment's link and its numeric ID. A refusal for the role or the window is also
+ * an audit event `lesson.refused`.
+ */
+async function handleLessonCommand(
+  tx: TenantScope,
+  deps: GitEventHandlerDeps,
+  project: GitEventProject,
+  event: CommentCreatedEvent,
+  command: Extract<ParsedComment, { kind: 'lesson' }>,
+  actorId: string,
+  record: Recorder,
+  options: HandleOptions,
+): Promise<HandledGitEvent> {
+  const params = { command: 'lesson' };
+  const now = deps.now();
+  const { config } = await loadEffectiveConfig(tx.projectConfigs, project.id);
+  const windowMs = config.learning.lesson_window_days * DAY_MS;
+  const linked = await tx.intents.findByGitNumber(project.id, {
+    kind: event.isPullRequest ? 'pull_request' : 'issue',
+    number: event.issueNumber,
+  });
+  const open = (intent: Intent) =>
+    FINISHED.includes(intent.status)
+      ? intent.closed_at !== null && now.getTime() - intent.closed_at.getTime() <= windowMs
+      : intent.current_gate === 'G8';
+  const candidates = linked.filter(open);
+  if (linked.length === 0) {
+    return record('intent_not_linked', { reply: { code: 'intent_not_linked', params } });
+  }
+  if (candidates.length > 1 || (candidates.length === 1 && options.linkedElsewhere === true)) {
+    return record('intent_ambiguous', { reply: { code: 'intent_ambiguous', params } });
+  }
+  const refuse = async (intent: Intent, cause: 'window_closed' | 'not_allowed') => {
+    await tx.audit.append({
+      action: 'lesson.refused',
+      actorType: 'human',
+      actorId,
+      entityId: intent.id,
+      payload: { cause },
+    });
+    const code = cause === 'window_closed' ? 'lesson_window_closed' : 'lesson_not_allowed';
+    return record('refused', {
+      reply: { code, params },
+    });
+  };
+  const intent = candidates[0];
+  if (intent === undefined) return refuse(linked[0]!, 'window_closed');
+  const roles = (await tx.roleBindings.listForUser(actorId))
+    .filter((binding) => binding.project_id === project.id)
+    .map((binding) => binding.role);
+  if (!roles.some((role) => LESSON_ROLES.includes(role)) && !(await isTenantAdmin(tx, actorId))) {
+    return refuse(intent, 'not_allowed');
+  }
+  if (!REASON_REF.test(event.url) || !COMMENT_ID.test(event.commentId)) {
+    return record('failed', { reply: { code: 'failed', params } });
+  }
+  const lesson = await tx.lessons.record({
+    project_id: project.id,
+    intent_id: intent.id,
+    category: command.category,
+    target: command.target,
+    comment_url: event.url,
+    comment_id: event.commentId,
+    recorded_by: actorId,
+    source: 'github_comment',
+  });
+  await tx.audit.append({
+    action: 'lesson.recorded',
+    actorType: 'human',
+    actorId,
+    entityId: intent.id,
+    payload: {
+      lesson_id: lesson.id,
+      category: lesson.category,
+      target: lesson.target,
+      comment_id: lesson.comment_id,
+      source: 'github_comment',
+    },
+  });
+  return record('lesson_recorded', {
+    reply: { code: 'lesson_recorded', params },
+  });
 }
 
 /** Reply of a kill refusal (C11). No role on the project: as for an unknown intent. */

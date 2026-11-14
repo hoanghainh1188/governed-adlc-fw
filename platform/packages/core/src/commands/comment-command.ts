@@ -6,6 +6,8 @@
 //   /ack [ESC-YYYY-NNNN]                                                  (B11, ADR-M28 §2.7)
 //   /decide [ESC-YYYY-NNNN] <resume|modify|roll-back|terminate|escalate> [<reason_code>] [<reason>]
 //   /kill [<reason>]                                                      (C11, ADR-M42 §2.6)
+//   /lesson <category> <target>                               (X08b, ADR-M109 §2.3, ADR-M27 1.x)
+//   <the lesson in words, on the following lines>
 //
 // The reason text may be left out when a reason code other than `other` is given. For `/ack` and
 // `/decide`, the escalation code may be left out when the intent has exactly one unresolved
@@ -16,7 +18,8 @@
 // Only the first non-empty line of a comment is read; text quoted or written further down is
 // never taken as a command. The reason text stays in the comment on the Git host: the parser
 // returns codes only, and the decision stores the comment URL as `reason_ref` (ADR-M20).
-// Other slash words (`/label`) are not ours and are ignored.
+// Other slash words (`/label`) are not ours and are ignored. `/lesson` needs both codes on its
+// line and words below it; the platform never reads or stores those words (ADR-M109 §2.3).
 import {
   GATE_CODES,
   GATE_REASON_CODES,
@@ -24,6 +27,10 @@ import {
   type EscalationDecision,
   type GateCode,
   type GateReasonCode,
+  LESSON_CATEGORIES,
+  LESSON_TARGETS,
+  type LessonCategory,
+  type LessonTarget,
 } from '@sdlc/contracts';
 
 import { ESCALATION_CODE_PATTERN } from '../escalation/code.js';
@@ -42,7 +49,10 @@ export const ESCALATION_VERBS = ['ack', 'decide'] as const;
 export type EscalationCommentVerb = (typeof ESCALATION_VERBS)[number];
 /** The kill switch (C11). */
 export const KILL_VERB = 'kill';
-export type CommentVerb = GateCommentVerb | EscalationCommentVerb | typeof KILL_VERB;
+/** A lesson recorded at G8 (X08b). */
+export const LESSON_VERB = 'lesson';
+export type CommentVerb =
+  GateCommentVerb | EscalationCommentVerb | typeof KILL_VERB | typeof LESSON_VERB;
 
 /** Decision words of `/decide` and the decision each one records (template T16 §4). */
 export const DECISION_WORDS: Readonly<Record<string, EscalationDecision>> = {
@@ -65,6 +75,11 @@ export const COMMENT_SYNTAX_PROBLEMS = [
   'reason_missing',
   'decision_missing',
   'decision_invalid',
+  // X08b: `/lesson`.
+  'lesson_codes_missing',
+  'lesson_category_invalid',
+  'lesson_target_invalid',
+  'lesson_text_missing',
 ] as const;
 export type CommentSyntaxProblem = (typeof COMMENT_SYNTAX_PROBLEMS)[number];
 
@@ -91,6 +106,12 @@ export type ParsedComment =
       readonly code: string | null;
     }
   | { readonly kind: 'kill'; readonly verb: typeof KILL_VERB }
+  | {
+      readonly kind: 'lesson';
+      readonly verb: typeof LESSON_VERB;
+      readonly category: LessonCategory;
+      readonly target: LessonTarget;
+    }
   | {
       readonly kind: 'escalation_decision';
       readonly verb: 'decide';
@@ -129,6 +150,7 @@ export function parseCommentCommand(body: string): ParsedComment {
   const words = (match[2] ?? '').split(/[ \t]+/).filter((word) => word !== '');
   if (isEscalationVerb(verb)) return parseEscalationCommand(verb, words);
   if (verb === KILL_VERB) return { kind: 'kill', verb: KILL_VERB };
+  if (verb === LESSON_VERB) return parseLessonCommand(words, lines.slice(first + 1));
   if (!isVerb(verb)) return { kind: 'none' };
 
   const [gateWord, ...rest] = words;
@@ -170,6 +192,38 @@ export function parseCommentCommand(body: string): ParsedComment {
     gate: gate as GateCode,
     decision,
     reasonCode: code ?? 'other',
+  };
+}
+
+/** A code word: `agent_assumption`, `agent-assumption` or any case. */
+function codeWord(word: string | undefined): string | undefined {
+  return word?.toLowerCase().replaceAll('-', '_');
+}
+
+/** `/lesson <category> <target>` and words on the lines below (X08b, ADR-M109 §2.3). */
+function parseLessonCommand(words: readonly string[], below: readonly string[]): ParsedComment {
+  const invalid = (problem: CommentSyntaxProblem): ParsedComment => ({
+    kind: 'invalid',
+    verb: LESSON_VERB,
+    problem,
+  });
+  if (words.length < 2) return invalid('lesson_codes_missing');
+  const category = codeWord(words[0]);
+  const target = codeWord(words[1]);
+  if (!(LESSON_CATEGORIES as readonly string[]).includes(category ?? '')) {
+    return invalid('lesson_category_invalid');
+  }
+  if (!(LESSON_TARGETS as readonly string[]).includes(target ?? '')) {
+    return invalid('lesson_target_invalid');
+  }
+  // Only the two codes on the command line: the words go below it.
+  if (words.length > 2) return invalid('unexpected_text');
+  if (!below.some((line) => line.trim() !== '')) return invalid('lesson_text_missing');
+  return {
+    kind: 'lesson',
+    verb: LESSON_VERB,
+    category: category as LessonCategory,
+    target: target as LessonTarget,
   };
 }
 

@@ -708,13 +708,13 @@ t("X08a","Later","Intent search and links for people","M",["X08"],"FR-40, FR-42,
  "Two pull requests (QUESTIONS #724): PR 1 the database, the API, the CLI and the links; PR 2 the dashboard. ADR-M109 accepted with PR 1")
 t("X08b","Later","Lessons at G8 and the learning loop","M",["X08","X08a"],"FR-11, FR-21, FR-40",
  "platform/packages/core (lessons, migration, poller command), platform/apps/api, platform/apps/cli, platform/apps/dashboard, platform/packages/config, platform/packages/messages, platform/tests/*, design/ADR-M27, handbook Ch.19, Ch.20",
- ["The comment command `/lesson <category> <target>` with the words below the first line, and `adlc lesson add` / the API / the dashboard with a comment URL; the platform stores codes, IDs and the link only, in the append-only tables `intent_lessons` and `intent_lesson_outcomes` (D-05 §6.12)",
+ ["The comment command `/lesson <category> <target>` with the words below the first line, and `adlc lesson add` / the API with a comment URL (checked: the intent's issue or pull request, and it exists, QUESTIONS #729); the platform stores codes, IDs and the link only, in the append-only tables `intent_lessons` and `intent_lesson_outcomes` (D-05 §6.12)",
   "Person A, Person B of the project or a tenant admin; never a bot or an agent; from G8 until `learning.lesson_window_days` (default 14) after the intent closes; G8 never waits for a lesson; the `released` notice invites people to record one",
-  "Outcomes `applied` (with a link) and `dropped` (a code); `adlc intent create --from-lesson`; `adlc lesson issue` opens a handbook issue with codes and the link only",
+  "Outcomes `applied` (with a link) and `dropped` (a code); `adlc intent create --from-lesson`; `adlc lesson issue` prints a filled-in new-issue link for the handbook with codes and the link only (QUESTIONS #727)",
   "The filter `has_lessons` of `GET /v1/intents` and `adlc intent list --has-lessons`, and `links.lessons` and `links.follow_ups` of the intent body (moved from X08a, QUESTIONS #721)",
-  "`adlc lessons list` and `adlc metrics lessons` for the monthly learning step; the dashboard list on a project; handbook Ch.19 and Ch.20 usage, a note for the handbook's authors (Ch.15, Ch.16, T14 stay theirs)",
+  "`adlc lessons list` and `adlc metrics lessons` for the monthly learning step; the dashboard's read-only list on a project (recording from the dashboard later, QUESTIONS #728); handbook Ch.19 and Ch.20 usage, a note for the handbook's authors (Ch.15, Ch.16, T14 stay theirs)",
   "Tests as ADR-M109 §5 (X08b)"],
- "Starts after X08a (ADR-M109 accepted, QUESTIONS #710); updates ADR-M27 §2.4 (one command may match a finished intent)")
+ "Three pull requests (QUESTIONS #726): PR 1 the tables, the setting and `/lesson`; PR 2 the API and the CLI; PR 3 the dashboard. Starts after X08a (ADR-M109 accepted, QUESTIONS #710); updates ADR-M27 §2.4 (one command may match a finished intent)")
 t("X10","Later","An adapter for a second Git host","L",["X09"],"NFR-05",
  "platform/packages/adapters/git-<host>/*, platform/tests/*, platform/deploy/README.md",
  ["The host ranked first in ADR-M70 implements `GitHostAdapter`; the gate tests pass on its stub",

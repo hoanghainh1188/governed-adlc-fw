@@ -104,6 +104,40 @@ describe('comment command grammar', () => {
     },
   );
 
+  // X08b (ADR-M109 §2.3): `/lesson <category> <target>` with the words on the lines below.
+  it.each([
+    ['/lesson rework agents_md\nThe agent assumed the old API.', 'rework', 'agents_md'],
+    ['  \n/LESSON Agent-Assumption memory\n\nwords', 'agent_assumption', 'memory'],
+    ['/lesson gate none\n  - a list item', 'gate', 'none'],
+  ])('%j is a lesson', (body, category, target) => {
+    expect(parseCommentCommand(body)).toEqual({ kind: 'lesson', verb: 'lesson', category, target });
+  });
+
+  it.each([
+    ['/lesson', 'lesson_codes_missing'],
+    ['/lesson rework\nwords', 'lesson_codes_missing'],
+    ['/lesson weird agents_md\nwords', 'lesson_category_invalid'],
+    ['/lesson rework somewhere\nwords', 'lesson_target_invalid'],
+    ['/lesson rework agents_md the words on the first line\nmore', 'unexpected_text'],
+    ['/lesson rework agents_md', 'lesson_text_missing'],
+    ['/lesson rework agents_md\n   \n', 'lesson_text_missing'],
+  ])('%j is refused (%s)', (body, problem) => {
+    expect(parseCommentCommand(body)).toEqual({ kind: 'invalid', verb: 'lesson', problem });
+  });
+
+  it.each([
+    ['> /lesson rework agents_md\nquoted'],
+    ['see /lesson rework none\nx'],
+    ['/lessons x y\nz'],
+  ])('%j is not a lesson', (body) => {
+    expect(parseCommentCommand(body)).toEqual({ kind: 'none' });
+  });
+
+  it('a lesson keeps only its codes, never its words', () => {
+    const parsed = parseCommentCommand('/lesson process handbook\nalice@example.com secret words');
+    expect(JSON.stringify(parsed)).not.toMatch(/secret|alice|example/);
+  });
+
   it('never returns text from the comment, only codes', () => {
     const parsed = parseCommentCommand('/reject G3 other secret-looking text alice@example.com');
     expect(JSON.stringify(parsed)).not.toMatch(/secret|alice|example/);
@@ -121,7 +155,15 @@ describe('reply comments (AC4)', () => {
   });
 
   it('syntax replies show the syntax and list every valid reason code', () => {
-    for (const code of COMMENT_REPLY_CODES.filter((c) => c.startsWith('syntax_'))) {
+    for (const code of COMMENT_REPLY_CODES.filter((c) => c.startsWith('syntax_lesson_'))) {
+      // X08b: a `/lesson` reply shows its own syntax, never the gate usage.
+      const body = renderCommentReply(code, { command: 'lesson' }, 'github:comment:9');
+      expect(body).not.toContain('/request-changes');
+      expect(body).not.toMatch(/\{[a-z_]+\}/);
+    }
+    for (const code of COMMENT_REPLY_CODES.filter(
+      (c) => c.startsWith('syntax_') && !c.startsWith('syntax_lesson_'),
+    )) {
       const body = renderCommentReply(code, {}, 'github:comment:9');
       expect(body).toContain('`/request-changes G<n> [reason code] <reason>`');
       for (const reason of GATE_REASON_CODES) expect(body, code).toContain(reason);

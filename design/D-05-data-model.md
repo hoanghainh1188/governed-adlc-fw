@@ -923,7 +923,7 @@ Memory text lives only in the project's repository (`.sdlc/memory/*.md`); these 
 - Codes, IDs and hashes only (R030): never a branch name, a path, a title or memory text.
 - The partial index `run_events_memory_pushed_idx` finds the new memory branches without reading every run event.
 
-### 6.12. Lessons (version 1.73, **proposed**, task X08, ADR-M109 §2.2–§2.5; built by X08b)
+### 6.12. Lessons (version 1.73, task X08, ADR-M109 §2.2–§2.5; approved with X08b PR 1, migration `0057-intent-lessons`)
 
 The words of a lesson live only in a GitHub comment on the intent's issue or pull request; these tables hold codes, IDs and the comment link.
 
@@ -936,7 +936,7 @@ The words of a lesson live only in a GitHub comment on the intent's issue or pul
 | category | text | A code: `gate`, `rework`, `agent_assumption`, `instructions`, `process`, `tooling`, `other` (CHECK) |
 | target | text | A code: `agents_md`, `memory`, `handbook`, `config`, `none` (CHECK) |
 | comment_url | text | The `https://` URL of the comment that holds the text (format CHECK, like `gate_decisions.reason_ref`) |
-| comment_id | bigint | The Git host's numeric comment ID; unique with `(tenant_id, project_id)`, so a comment records one lesson |
+| comment_id | text | The Git host's numeric comment ID, digits only (CHECK; text, as the adapter gives it); unique with `(tenant_id, project_id)`, so a comment records one lesson |
 | source | text | `github_comment`, `api`, `web` |
 | recorded_by | uuid FK users | Person A or Person B of the project, or a tenant admin; never a bot |
 | created_at | timestamptz | |
@@ -955,7 +955,7 @@ The words of a lesson live only in a GitHub comment on the intent's issue or pul
 
 - A lesson's state is its latest outcome; no outcome means `open`. Both tables are append-only (triggers and grants, like `agent_approvals`), listed in `platform/tests/db/append-only.test.ts`, and kept like the audit log; archiving a project keeps them. No text column.
 - Index (`tenant_id`, `project_id`, `created_at`) for the monthly list; `intents` gains no column (the `has_lessons` filter is an `EXISTS`).
-- Audit actions: `lesson.recorded`, `lesson.applied`, `lesson.dropped`, `lesson.refused` (cause `bot`, `user_not_linked`, `not_allowed`, `window_closed`, `syntax`).
+- Audit actions: `lesson.recorded` (`lesson_id`, `category`, `target`, `comment_id`, `source`), `lesson.applied`, `lesson.dropped` (X08b PR 2), `lesson.refused` (cause `not_allowed` or `window_closed`; as built, a bot, an unknown account and a syntax error get the receipt and the reply of every command, ADR-M109 0.3).
 - Version 1.73 also proposes, for X08a, the generated column `intents.search_tsv` (`tsvector`, `to_tsvector('simple', title || ' ' || description)`, stored) and its GIN index scoped by tenant (ADR-M109 §2.1). It is derived from the two editable columns, so clearing them for a client data deletion (§10.1) clears it.
 
 ## 7. Audit log: hash chain
