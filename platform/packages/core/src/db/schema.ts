@@ -1105,6 +1105,37 @@ export interface ProjectMemoryRevocationsTable {
   created_at: CreatedAt;
 }
 
+/** States of a memory proposal (X13 PR 3b, migration 0055, ADR-M74 §2.5). */
+export const MEMORY_PROPOSAL_STATES = [
+  'pushed',
+  'opened',
+  'recorded',
+  'refused',
+  'closed',
+  'deleted',
+  'failed',
+] as const;
+export type MemoryProposalState = (typeof MEMORY_PROPOSAL_STATES)[number];
+
+/**
+ * The memory branch a run pushed and what became of it (X13 PR 3b, migration 0055, ADR-M74
+ * §2.5). Mutable for its state only; codes, IDs and hashes only.
+ */
+export interface MemoryProposalsTable {
+  id: GeneratedId;
+  tenant_id: Immutable<string>;
+  project_id: Immutable<string>;
+  intent_id: Immutable<string>;
+  run_id: Immutable<string>;
+  head_sha: Immutable<string>;
+  state: ColumnType<MemoryProposalState, MemoryProposalState | undefined, MemoryProposalState>;
+  pr_number: ColumnType<number | null, number | null | undefined, number | null>;
+  version: ColumnType<number | null, number | null | undefined, number | null>;
+  cause: ColumnType<string | null, string | null | undefined, string | null>;
+  created_at: CreatedAt;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
 /** Outbox of the gate status comments (FR-22, B07, ADR-M30): codes and IDs only. */
 export interface IntentNoticesTable {
   /** bigint identity; `pg` returns int8 as a string. */
@@ -1173,6 +1204,7 @@ export interface Database {
   knowledge_indexes: KnowledgeIndexesTable;
   knowledge_index_uses: KnowledgeIndexUsesTable;
   project_memory_versions: ProjectMemoryVersionsTable;
+  memory_proposals: MemoryProposalsTable;
   project_memory_revocations: ProjectMemoryRevocationsTable;
   web_sessions: WebSessionsTable;
   webauthn_credentials: WebauthnCredentialsTable;
@@ -1864,6 +1896,20 @@ export const TABLE_COLUMNS = {
     'intent_id',
     'created_at',
   ]),
+  memory_proposals: columns<MemoryProposalsTable>()([
+    'id',
+    'tenant_id',
+    'project_id',
+    'intent_id',
+    'run_id',
+    'head_sha',
+    'state',
+    'pr_number',
+    'version',
+    'cause',
+    'created_at',
+    'updated_at',
+  ]),
   project_memory_versions: columns<ProjectMemoryVersionsTable>()([
     'id',
     'tenant_id',
@@ -1995,6 +2041,7 @@ export const TENANT_COLUMN = {
   knowledge_indexes: 'tenant_id',
   knowledge_index_uses: 'tenant_id',
   project_memory_versions: 'tenant_id',
+  memory_proposals: 'tenant_id',
   project_memory_revocations: 'tenant_id',
   web_sessions: 'tenant_id',
   webauthn_credentials: 'tenant_id',
@@ -2048,6 +2095,7 @@ export type ToolApproval = Selectable<ToolApprovalsTable>;
 export type KnowledgeIndex = Selectable<KnowledgeIndexesTable>;
 export type KnowledgeIndexUse = Selectable<KnowledgeIndexUsesTable>;
 export type ProjectMemoryVersion = Selectable<ProjectMemoryVersionsTable>;
+export type MemoryProposal = Selectable<MemoryProposalsTable>;
 export type ProjectMemoryRevocation = Selectable<ProjectMemoryRevocationsTable>;
 
 /** Insert input for a tenant table: the scope sets `tenant_id`, so callers never pass it. */

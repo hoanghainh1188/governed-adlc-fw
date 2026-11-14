@@ -19,6 +19,7 @@ export const WORKER_ENV = {
   heartbeatFile: 'SDLC_WORKER_HEARTBEAT_FILE',
   escalationTickMs: 'SDLC_WORKER_ESCALATION_TICK_MS',
   escalationBatch: 'SDLC_WORKER_ESCALATION_BATCH',
+  memoryTickMs: 'SDLC_WORKER_MEMORY_TICK_MS',
   temporalAddress: 'SDLC_WORKER_TEMPORAL_ADDRESS',
   temporalNamespace: 'SDLC_WORKER_TEMPORAL_NAMESPACE',
   reconcileMs: 'SDLC_WORKER_RECONCILE_MS',
@@ -101,6 +102,8 @@ const schema = z.object({
   // The shortest SLA clock is minutes long (codes table §6.3), so 15 s is precise enough.
   [WORKER_ENV.escalationTickMs]: z.coerce.number().int().min(1000).max(300_000).default(15_000),
   [WORKER_ENV.escalationBatch]: z.coerce.number().int().min(1).max(1000).default(100),
+  // X13 PR 3b: the memory loop (ADR-M74 §2.5); a memory pull request is never urgent.
+  [WORKER_ENV.memoryTickMs]: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
   // `off` runs the worker without the intent workflow: development mode only.
   [WORKER_ENV.temporalAddress]: z
     .string()
@@ -419,6 +422,8 @@ export interface WorkerSettings {
   readonly escalationTickMs: number;
   /** Escalations advanced per tick at most. */
   readonly escalationBatch: number;
+  /** How often the memory loop runs (X13 PR 3b, ADR-M74 §2.5). Technical, not a handbook rule. */
+  readonly memoryTickMs: number;
   /** The Temporal frontend of the intent workflow (B07); null: no workflow (development only). */
   readonly temporal: TemporalSettings | null;
   /** How often every open intent's workflow is woken, to catch up a lost signal (B07). */
@@ -527,6 +532,7 @@ export function loadSettings(env: Readonly<Record<string, string | undefined>>):
     heartbeatFile: v[WORKER_ENV.heartbeatFile],
     escalationTickMs: v[WORKER_ENV.escalationTickMs],
     escalationBatch: v[WORKER_ENV.escalationBatch],
+    memoryTickMs: v[WORKER_ENV.memoryTickMs],
     temporal: temporalOff
       ? null
       : {

@@ -390,7 +390,15 @@ adlc memory approve shop
 - Anything else in the folder stays in the code change, where G5 stops it as outside the plan (`out_of_scope`). Examples: a sub-folder, a link, another file type, a file over a cap, new files past `max_files`.
 - The secret scan reads the notes too: a secret in a note holds the run at G5, like a secret in the code.
 - After G5, the platform pushes the notes to a branch of their own, `agent/INT-…-memory-<attempt>`, next to the code branch. A failure there is recorded (run event `memory_publish_failed`) and never stops the run or a gate.
+- The platform opens the pull request for these notes only after the code is merged at G7 (see the next part).
 - The run events `memory_proposed` and `memory_branch_pushed` show the counts and hashes. They never hold a note's name or text.
+
+**Reviewing a memory pull request (Person A or Person B).** After the code pull request of an intent is merged at G7, the platform opens a second pull request with the notes of the run whose code was merged. Its title is `MEMORY INT-… run <attempt>`. It never blocks a gate.
+
+- Read every note. Merge only notes that are true, short and about this project. Close the pull request to drop them.
+- The merge counts as the approval when you hold the Person A or Person B role on the project and you are not a producer of the intent. Producers are its creator, the people who allowed its runs, the plan submitters and the commit authors of the memory pull request. The platform then records the merged set as the next version.
+- A merge by a producer, a bot, a person without the role or an account that is not linked records nothing (audit `memory.approval_refused`). Runs keep the last approved set until a person approves the new one with `adlc memory approve`.
+- When the code of an intent is not merged (the intent closed, or another run's code was merged), the platform deletes the other memory branches. A branch that someone changed is left as it is.
 
 **Removing memory.**
 

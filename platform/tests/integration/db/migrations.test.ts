@@ -244,6 +244,8 @@ const UPDATABLE: Record<string, readonly string[]> = {
   // Append-only (X13, migration 0053): approved and revoked agent memory sets.
   project_memory_versions: [],
   project_memory_revocations: [],
+  // X13 PR 3b (migration 0055): the memory loop moves a proposal's state; trigger SDA30.
+  memory_proposals: ['state', 'pr_number', 'version', 'cause', 'updated_at'],
   // U05 (migration 0027): seen time only grows; the end is set once (trigger SDA18). No DELETE.
   web_sessions: ['last_seen_at', 'revoked_at', 'end_reason'],
   // U06 (migration 0028): the counter and the last use only grow; revoked once (SDA20). No DELETE.
@@ -399,7 +401,8 @@ describeDb('AC2: migrations on PostgreSQL', () => {
     // intents (0039).
     // X13: project_memory_versions → projects, users, intents, runs; project_memory_revocations →
     // project_memory_versions (by version), users (0053).
-    expect(fks).toHaveLength(100);
+    // X13 PR 3b: memory_proposals → projects, intents, runs (0055).
+    expect(fks).toHaveLength(103);
     for (const fk of fks) {
       expect(fk.on_delete, fk.name).toBe('r'); // RESTRICT: no hard deletes (D-05 D7)
       if (fk.name === 'gate_decisions_voids_fkey') {

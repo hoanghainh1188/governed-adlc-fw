@@ -1,5 +1,6 @@
 // GitHub implementation of `GitHostAdapter` (design/D-03 section 7.1, D-08 B05, ADR-M23).
 import type {
+  BranchDeletion,
   Approval,
   PullRequestFile,
   PullRequestFileStatus,
@@ -26,7 +27,7 @@ import type {
   ShortLivedToken,
   TokenScope,
 } from '@sdlc/contracts';
-import { GitHostError } from '@sdlc/contracts';
+import { GitHostError, MEMORY_BRANCH } from '@sdlc/contracts';
 
 import { AppAuth, checkScope } from './app-auth.js';
 import { oldestCursor } from './cursor.js';
@@ -541,6 +542,47 @@ export class GitHubAdapter implements GitHostAdapter {
       repo,
       permissions: minted.permissions,
     };
+  }
+
+  /**
+   * Deletes a memory branch that still points to `expectedHead` (X13 PR 3b, ADR-M74 §2.5 step 5).
+   * Reads the branch first: absent → `absent`; another commit → `moved`, nothing deleted. The
+   * delete uses a token with `contents: write` for this call only, revoked right after.
+   */
+  async deleteBranch(ref: RepoRef, branch: string, expectedHead: string): Promise<BranchDeletion> {
+    const repo = checkRepo(ref);
+    if (typeof branch !== 'string' || !MEMORY_BRANCH.test(branch)) {
+      throw new GitHostError('invalid_input', { field: 'branch' });
+    }
+    if (!isSha(expectedHead)) throw new GitHostError('invalid_input', { field: 'head' });
+    let head: string;
+    try {
+      head = await this.getBranchHead(repo, branch);
+    } catch (error) {
+      if (error instanceof GitHostError && error.code === 'not_found') return 'absent';
+      throw error;
+    }
+    if (head !== expectedHead) return 'moved';
+    const minted = await this.#auth.mint(repo, { contents: 'write' });
+    try {
+      await this.#http.json('DELETE', `${repoPath(repo)}/git/refs/heads/${encodeBranch(branch)}`, {
+        auth: `Bearer ${minted.token}`,
+      });
+    } catch (error) {
+      // Deleted meanwhile: GitHub answers 404, or 422 "Reference does not exist".
+      if (error instanceof GitHostError && error.code === 'not_found') return 'absent';
+      if (error instanceof GitHostError && error.code === 'rejected') {
+        const gone = await this.getBranchHead(repo, branch).then(
+          () => false,
+          (again: unknown) => again instanceof GitHostError && again.code === 'not_found',
+        );
+        if (gone) return 'absent';
+      }
+      throw error;
+    } finally {
+      await this.revokeShortLivedToken(new SecretString(minted.token)).catch(() => undefined);
+    }
+    return 'deleted';
   }
 
   /**

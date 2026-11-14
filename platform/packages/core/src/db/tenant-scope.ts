@@ -7,6 +7,7 @@ import { parseTenantId, type TenantId } from './tenant-id.js';
 import { AgentApprovalRepository } from './repositories/agent-approvals.js';
 import { AgentRepository } from './repositories/agents.js';
 import { KnowledgeIndexRepository } from './repositories/knowledge-indexes.js';
+import { MemoryProposalRepository } from './repositories/memory-proposals.js';
 import { MemoryVersionRepository } from './repositories/memory-versions.js';
 import { ToolApprovalRepository } from './repositories/tool-approvals.js';
 import { ToolRepository } from './repositories/tools.js';
@@ -97,6 +98,8 @@ export class TenantScope {
   readonly toolApprovals: ToolApprovalRepository;
   readonly knowledgeIndexes: KnowledgeIndexRepository;
   readonly memoryVersions: MemoryVersionRepository;
+  /** X13 PR 3b: the memory branches runs pushed (migration 0055). */
+  readonly memoryProposals: MemoryProposalRepository;
   readonly webSessions: WebSessionRepository;
   readonly webauthnCredentials: WebauthnCredentialRepository;
   readonly passkeyChallenges: PasskeyChallengeRepository;
@@ -155,6 +158,7 @@ export class TenantScope {
     this.toolApprovals = new ToolApprovalRepository(this.db, this.tenantId);
     this.knowledgeIndexes = new KnowledgeIndexRepository(this.db, this.tenantId);
     this.memoryVersions = new MemoryVersionRepository(this.db, this.tenantId);
+    this.memoryProposals = new MemoryProposalRepository(this.db, this.tenantId);
     this.webSessions = new WebSessionRepository(this.db, this.tenantId);
     this.webauthnCredentials = new WebauthnCredentialRepository(this.db, this.tenantId);
     this.passkeyChallenges = new PasskeyChallengeRepository(this.db, this.tenantId);

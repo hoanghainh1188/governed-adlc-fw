@@ -4,3 +4,4 @@ export * from './service.js';
 export * from './set.js';
 export type { MemoryVersionRow } from '../db/repositories/memory-versions.js';
 export * from './run.js';
+export * from './proposals.js';

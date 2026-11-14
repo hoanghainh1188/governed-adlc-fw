@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** with the merge of X13 PR 1 (Harry, 2026-11-13, QUESTIONS #711); 0.1 proposed by X12 (the plan approved by Harry on 2026-10-24 with the recommended answers to QUESTIONS #571–#575); 0.2 adds the details of QUESTIONS #712, #715; 0.4 those of QUESTIONS #716 (the X13 PR 3 plan approved by Harry on 2026-11-14) |
-| Date | 2026-10-24; 0.2 on 2026-11-13; 0.4 on 2026-11-14 |
+| Status | **Accepted** with the merge of X13 PR 1 (Harry, 2026-11-13, QUESTIONS #711); 0.1 proposed by X12 (the plan approved by Harry on 2026-10-24 with the recommended answers to QUESTIONS #571–#575); 0.2 adds the details of QUESTIONS #712, #715; 0.4 and 0.5 those of QUESTIONS #716 (the X13 PR 3 plan approved by Harry on 2026-11-14) |
+| Date | 2026-10-24; 0.2 on 2026-11-13; 0.4 and 0.5 on 2026-11-14 |
 | Decided by | Harry (to accept); X13 builds it |
 | Related | D-08 X12, X13, X07, X08; D-02 FR-11, FR-33, FR-40, FR-44; D-03 §8, §9; D-05 §6.4, §6.11 (proposed); ADR-M29 (OpenHands adapter, §2.10 condensing), ADR-M31 §2.5 (pinned instructions), ADR-M34 §2.4 (`instructions_unpinned`), ADR-M38 (push and pull request), ADR-M40 §2.7 (the plan in the prompt), ADR-M41 (G7 producers), ADR-M69 and ADR-M89 (tools, `read_documents`), ADR-M80 ASI06 (memory and context poisoning), ADR-M88 (OpenCode adapter), ADR-M90 (context snapshot); QUESTIONS #94, #395, #571–#575, #711–#715 |
 
@@ -73,6 +73,21 @@ The platform pins what a person approved, as it pins the plan and the agent's in
   - Step 4: the runner pushes the memory branch in the same `publishRun` activity as the code, with the same token, right after the code branch is pushed and recorded. The commit is made the same way as the code commit (`apply --cached` on `base_sha` in a private index; same author and dates; message `sdlc: <INT-…> run <run_id> memory`), and its paths must hash to `paths_sha256`. The branch must be absent, at `base_sha` or at the commit (`branch_moved` otherwise; no force). A failure is the run event `memory_publish_failed` with the code of `publish_refused` or `publish_failed`; the push of the code keeps its outcome.
   - A run that changed only memory has an empty code change: the push refuses it (`empty_diff`) as before, and its memory is not pushed.
 - **PR 3b, the worker** (steps 5–6 and §2.3 "A memory pull request"): a mutable table `memory_proposals` (one row per memory branch pushed: codes, IDs and hashes; each change of state is audited) and a worker loop, not the poller, because each step calls the Git host outside the poll's transaction. The loop opens the memory pull request after the code pull request's merge at G7 (the last succeeded run's branch only), deletes the other memory branches of the intent and those of an intent closed without a merge (a new Git host method `deleteBranch`, D-03 §7.1), and records a version, or `memory.approval_refused`, when the memory pull request is merged.
+
+**PR 3b as built (0.5).**
+
+- **The table.** `memory_proposals` (D-05 §6.11, migration `0055-memory-proposals`) has one row per run whose memory branch was pushed. Its state moves `pushed` → `opened` → `recorded`, `refused` or `closed`; or `pushed` → `deleted` or `failed`. A final state never changes (trigger `SDA30`).
+- **The loop.** The worker's memory loop (`SDLC_WORKER_MEMORY_TICK_MS`, default 5 minutes) reads the work (`SystemScope.listMemoryWork`), then steps each item in its tenant (`stepMemoryWork`, core). Each step reads the Git host first, then records the move in one transaction with a compare-and-set on the state.
+- **Which branch gets a pull request.** The memory pull request is opened only for the run whose code pull request was merged at G7 (its `pr_merged` event). A pull request found open for the branch is reused. Its head must be the pushed commit, otherwise the row is `failed` with cause `branch_moved`. Every other memory branch of the intent is deleted (`GitHostAdapter.deleteBranch`, D-03 1.56), and so is the branch of an intent closed without a merge. A branch that someone else moved is left as it is.
+- **The merge.** A merge records the next version, `source memory_pr`, at the pull request's merge commit, when the merger is:
+  - a person (not a bot);
+  - linked by the numeric account ID;
+  - holding the Person A or Person B role on the project;
+  - not a producer: the G7 producers of the intent, plus the commit authors of the memory pull request.
+
+  Otherwise the row is `refused` with cause `bot`, `producer`, `not_linked` or `not_allowed`, and the audit event `memory.approval_refused` names that cause. The same set as the latest version (not revoked) records nothing (`unchanged`).
+- **Closed without a merge.** The row is `closed`.
+- **Never blocks.** A Git host error leaves the row for the next pass. Nothing here pauses an intent or raises an escalation.
 
 ### 2.6. How a run reads memory (`read` and `read_propose`)
 
@@ -153,5 +168,6 @@ The platform pins what a person approved, as it pins the plan and the agent's in
 |---|---|---|---|
 | 0.1 | 2026-10-24 | Claude (task X12) | First version, proposed (QUESTIONS #571–#575) |
 | 0.2 | 2026-11-13 | Claude (task X13 PR 1), accepted by Harry with the merge | Accepted (QUESTIONS #711); the contract schema 5 (QUESTIONS #712); which files are memory, the commit `adlc memory approve` records, `not_head`, `unchanged`, `no_git_identity`, the Git host methods `listFolder` and `listPathCommits` (QUESTIONS #715); the CLI is `adlc` (ADR-M100) |
+| 0.5 | 2026-11-14 | Claude (task X13 PR 3b), approved by Harry in the X13 PR 3 plan | §2.5 "PR 3b as built": the table `memory_proposals` (migration 0055), the worker's memory loop, `deleteBranch` (D-03 1.56), the refusal causes `not_linked` and `not_allowed`, the merge commit as the version's commit; audit `memory.pr_closed`, `memory.branch_deleted` (QUESTIONS #716) |
 | 0.4 | 2026-11-14 | Claude (task X13 PR 3a), approved by Harry in the X13 PR 3 plan | §2.5 "As built": PR 3a (the split in the runner's index, the evidence kind `memory_diff`, the memory push in the same activity after the code) and PR 3b (the table `memory_proposals`, a worker loop instead of the poller, `GitHostAdapter.deleteBranch`); §2.8 the fields `memory_sha256`, `paths_sha256` and `changes_checked.memory_files` (QUESTIONS #716) |
 | 0.3 | 2026-11-14 | Claude (task X13 PR 2) | As built: the contract's `memory` is `{ reason, version, set_sha256 }` (`approved` or why not); `memory_read` before the agent starts, `off` when memory was turned off since G4; the runner reads at most `max_files` files of at most 32 KiB each; the snapshot's `memory` without `path_sha256` (QUESTIONS #712) |

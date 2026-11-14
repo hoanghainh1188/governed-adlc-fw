@@ -903,7 +903,23 @@ Memory text lives only in the project's repository (`.sdlc/memory/*.md`); these 
 
 - Both tables are append-only (triggers and grants, like `agent_approvals`) and kept like the audit log; archiving a project keeps them. No text, no path in clear.
 - A version is never recorded twice in a row for the same set: approving the set of the latest version that is not revoked records nothing (`unchanged`, ADR-M74 0.2).
-- Audit actions: `memory.approved`, `memory.approval_refused` (cause `bot`, `producer`, `too_many_commits`, `no_git_identity`), `memory.revoked`, `memory.pr_opened` (pull request number).
+- Audit actions: `memory.approved`, `memory.approval_refused` (cause `bot`, `producer`, `too_many_commits`, `no_git_identity` for `cli`; `bot`, `producer`, `not_linked`, `not_allowed` for `memory_pr`), `memory.revoked`; X13 PR 3b: `memory.pr_opened` and `memory.pr_closed` (`run_id`, pull request number), `memory.branch_deleted` (`run_id`, `result` `deleted`, `absent` or `moved`).
+
+**`memory_proposals`** (X13 PR 3b, migration `0055-memory-proposals`, ADR-M74 0.5, QUESTIONS #716; mutable for its state only)
+
+| Column | Type | Notes |
+|---|---|---|
+| tenant_id, project_id, intent_id, run_id | uuid FK | One row per run (`UNIQUE (tenant_id, run_id)`) whose memory branch was pushed (`memory_branch_pushed`) |
+| head_sha | char(40) | The commit the runner pushed to the memory branch |
+| state | text | `pushed`, `opened`, `recorded`, `refused`, `closed`, `deleted`, `failed`; the last five are final (trigger `SDA30`) |
+| pr_number | int null | The memory pull request, from `opened` on |
+| version | int null | The version recorded, only with `recorded` |
+| cause | text null | A code: why `refused` (`bot`, `producer`, `not_linked`, `not_allowed`), `closed` (`not_merged`), `deleted` (`not_merged`, `intent_closed`, `absent`, `moved`), `failed` (`branch_moved`), `recorded` (`unchanged`) |
+| created_at, updated_at | timestamptz | `updated_at` is when the worker's memory loop last looked at it |
+
+- The worker's memory loop is the only writer after the insert: `platform_app` may insert and update `state`, `pr_number`, `version`, `cause`, `updated_at`; never delete. Every change of state is also an audit event.
+- Codes, IDs and hashes only (R030): never a branch name, a path, a title or memory text.
+- The partial index `run_events_memory_pushed_idx` finds the new memory branches without reading every run event.
 
 ### 6.12. Lessons (version 1.73, **proposed**, task X08, ADR-M109 §2.2–§2.5; built by X08b)
 
