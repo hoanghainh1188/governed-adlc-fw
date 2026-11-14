@@ -94,6 +94,9 @@ export function intentRow(overrides: Partial<Intent> = {}): Intent {
     pr_number: null,
     updated_at: AT,
     created_at: AT,
+    // X08a (migration 0056).
+    search_tsv: '',
+    closed_at: null,
     ...overrides,
   };
 }

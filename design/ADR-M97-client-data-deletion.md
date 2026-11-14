@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** (Harry, 2026-10-27; task H03 design) |
+| Status | **Accepted** (Harry, 2026-10-27; task H03 design); 1.1 with X08a PR 1 (Harry, 2026-11-14, QUESTIONS #725) |
 | Date | 2026-10-27 |
 | Decided by | Harry (2026-10-27, H03 design with answers to QUESTIONS #611–#615) |
 | Related | D-08 task H03 (AC1–AC3); D-02 FR-44, §10; D-03 §7.5, §8.2, §10; D-05 §10, §10.1; ADR-M26 (operator tokens), ADR-M35 & ADR-M53 (Langfuse traces & purges), ADR-M51 (evidence retention, object lock & holds), ADR-M74 (project memory), ADR-M89 (project document index); Japan APPI (Act on the Protection of Personal Information, Art. 34–35); GDPR Art. 17; QUESTIONS #611–#615 |
@@ -62,6 +62,7 @@ The platform categorizes all data assets into two distinct tiers: **Proprietary 
 | **Project Memory** (X12 / ADR-M74) | Context memory files, project summaries | **Hard Purged** | Memory branch deleted in Git; memory file payloads purged; `project_memory_revocations` written to prevent future reference. |
 | **User Directory** (`users` table) | `display_name`, `email` | **Anonymized / Scrubbed (In-Place)** | Rows are **not deleted**. Fields are overwritten: `email = 'deleted-' || id || '@redacted.invalid'`, `display_name = 'Redacted User ' || substring(id::text, 1, 8)`, `status = 'disabled'`. Satisfies APPI/GDPR right to erasure while preserving foreign keys. |
 | **User Identities & Auth** (`user_identities`, `passkeys`, `web_sessions`) | OAuth logins (`external_login`), passkeys, active sessions | **Revoked & Redacted** | `user_identities.external_login` set to `'redacted-' || id`; all `web_sessions` terminated (`revoked_at = now()`, `end_reason = 'client_purged'`); all `passkeys` revoked (`revoked_at = now()`). |
+| **Intents** (`intents`, version 1.1, X08a, QUESTIONS #725) | `title`, `description` (and the search vector `search_tsv` generated from them) | **Scrubbed (In-Place)** | `title = 'Redacted intent ' || code`, `description = ''`; the trigger `intents_scrub_only` (SDA31) allows no other change; `client_data.deleted` counts them (`intents_scrubbed`). Codes, gates and dates stay. |
 | **Project Configurations** (`project_configs`) | `config_yaml` | **Scrubbed** | Replaced with minimal tombstone YAML (`redacted: true`, `purged_at: <iso8601>`); `config_hash` updated to SHA-256 of tombstone. |
 | **Append-Only Tables** (`audit_log`, `gate_decisions`, `run_events`, `cost_records`) | Decision records, event timestamps, run metadata, cost USD, token counts, SHA-256 hashes | **Retained Intact (Minimum 2 years)** | **Zero rows modified or deleted.** Triggers `SDA01` remain active. None of these tables contain raw user code, plain prompts, or client secrets (verified by schema rules [R047], [R078], D-05 §6.4). Hashes and UUIDs alone cannot reconstruct source code. |
 
@@ -205,3 +206,10 @@ In compliance with AC3 (pure design in H03), the implementation is decomposed in
   - Act on the Protection of Personal Information (Act No. 57 of 2003, amended 2020/2022, Japan), Articles 34 & 35.
   - General Data Protection Regulation (GDPR, EU 2016/679), Article 17 ("Right to erasure") & Recital 26 (Anonymization).
   - AICPA Trust Services Criteria (SOC 2) Common Criteria 6.5 & CC7.3 (Disposal and Retention of Data).
+
+## Version history
+
+| Version | Date | Author | Notes |
+|---|---|---|---|
+| 1.0 | 2026-10-27 | Claude (task H03) | Accepted |
+| 1.1 | 2026-11-14 | Claude Code (task X08a PR 1), approved by Harry | §2.1: the intents' title and description become a tombstone (QUESTIONS #725) |

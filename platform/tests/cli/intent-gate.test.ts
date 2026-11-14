@@ -162,9 +162,87 @@ describe('adlc intent list and show', () => {
     ]);
   });
 
+  it('X08a: sends the search and filter options as query parameters', async () => {
+    const h = await harness({
+      routes: { 'GET /v1/intents': { status: 200, body: { items: [], next_cursor: null } } },
+    });
+    expect(
+      await h.run([
+        'intent',
+        'list',
+        '--gate',
+        'G3',
+        '--risk',
+        'high',
+        '--created-from',
+        '2026-11-01',
+        '--created-to',
+        '2026-11-30',
+        '--closed-from',
+        '2026-11-02',
+        '--closed-to',
+        '2026-11-03',
+        '--sealed',
+        'no',
+        '--search',
+        '  hủy đơn hàng ',
+      ]),
+    ).toBe(EXIT.ok);
+    expect(Object.fromEntries(h.requests[0]?.url.searchParams ?? [])).toEqual({
+      gate: 'G3',
+      risk_tier: 'high',
+      created_from: '2026-11-01',
+      created_to: '2026-11-30',
+      closed_from: '2026-11-02',
+      closed_to: '2026-11-03',
+      sealed: 'false',
+      q: 'hủy đơn hàng',
+    });
+    expect(h.out).toEqual([t('cli.intent.none')]);
+  });
+
+  it('X08a: show prints the links, from the catalog', async () => {
+    const h = await harness({
+      routes: {
+        'GET /v1/intents/INT-2026-0007': {
+          status: 200,
+          body: {
+            ...intentDetailBody(),
+            links: {
+              issue: { number: 12, url: 'https://github.com/acme/pilot/issues/12' },
+              pull_request: null,
+              spec: { path: 'docs/specs/t07.md', commit_sha: 'c'.repeat(40), url: null },
+              plan: null,
+              evidence: { path: '/v1/intents/INT-2026-0007/evidence', sealed: true },
+            },
+          },
+        },
+      },
+    });
+    expect(await h.run(['intent', 'show', 'INT-2026-0007'])).toBe(EXIT.ok);
+    expect(h.out).toEqual(
+      expect.arrayContaining([
+        t('cli.intent.link', {
+          kind: t('cli.intent.link_issue'),
+          target: 'https://github.com/acme/pilot/issues/12',
+        }),
+        t('cli.intent.link', { kind: t('cli.intent.link_spec'), target: 'docs/specs/t07.md' }),
+        t('cli.intent.link', {
+          kind: t('cli.intent.link_evidence'),
+          target: '/v1/intents/INT-2026-0007/evidence',
+        }),
+      ]),
+    );
+  });
+
   it.each([
     [['intent', 'list', '--status', 'weird']],
     [['intent', 'list', '--limit', '101']],
+    [['intent', 'list', '--gate', 'G9']],
+    [['intent', 'list', '--risk', 'huge']],
+    [['intent', 'list', '--created-from', '1 Nov']],
+    [['intent', 'list', '--sealed', 'maybe']],
+    [['intent', 'list', '--search', 'x']],
     [['intent', 'show']],
     [['intent', 'show', 'INT-26-1']],
   ])('refuses %j', async (argv) => {

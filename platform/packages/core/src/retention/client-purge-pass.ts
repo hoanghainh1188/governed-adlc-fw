@@ -7,7 +7,8 @@
 // 2. Purge finished, not-held evidence (GOVERNANCE bypass), Langfuse traces and knowledge schemas.
 // 3. Open intents or active holds: record `client_data.purge_blocked_by_hold` and stop short of
 //    completing.
-// 4. When nothing purgeable remains: anonymize people, scrub configs, write `client_data.deleted`,
+// 4. When nothing purgeable remains: anonymize people, scrub configs and the intents' titles and
+//    descriptions (X08a, QUESTIONS #725), write `client_data.deleted`,
 //    refresh the daily audit anchor when a writer is provided, set the tenant to `purged`.
 //
 // Codes, IDs and counts only in logs and audit events. Append-only tables are never updated or
@@ -557,12 +558,15 @@ async function completePurge(
 ): Promise<void> {
   const users = await scope.users.list();
   let usersAnonymized = 0;
+  let intentsScrubbed = 0;
   await scope.transaction(async (tx) => {
     for (const user of users) {
       await tx.clientDataDeletion.anonymizeUser(user.id);
       usersAnonymized += 1;
     }
     await tx.clientDataDeletion.scrubProjectConfigs(now);
+    // X08a (QUESTIONS #725): the intents' titles and descriptions, and so their search vectors.
+    intentsScrubbed = await tx.clientDataDeletion.scrubIntents();
   });
   counts.usersAnonymized += usersAnonymized;
 
@@ -584,6 +588,7 @@ async function completePurge(
       langfuse_intents_purged: local.langfuse,
       knowledge_indexes_dropped: local.knowledge,
       users_anonymized: usersAnonymized,
+      intents_scrubbed: intentsScrubbed,
       retained_audit_rows: auditRows + 1,
       deletion_receipt_hash: hash,
     },

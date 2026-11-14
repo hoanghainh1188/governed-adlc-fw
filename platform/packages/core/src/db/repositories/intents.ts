@@ -61,6 +61,51 @@ export interface IntentPageQuery {
   /** 1 to `MAX_INTENT_PAGE`. */
   readonly limit: number;
   readonly after?: IntentPosition;
+  /** X08a (ADR-M109 §2.1): the filters of `GET /v1/intents`. Dates are UTC days, both included. */
+  readonly filters?: IntentFilters;
+}
+
+export interface IntentFilters {
+  /** Open intents whose current gate is this gate. */
+  readonly gate?: GateCode;
+  readonly riskTier?: RiskTier;
+  readonly createdFrom?: string;
+  readonly createdTo?: string;
+  readonly closedFrom?: string;
+  readonly closedTo?: string;
+  /** Has a sealed Evidence Pack (G8 passed), or has none. */
+  readonly sealed?: boolean;
+  /** A search text (2–200 characters): an intent code, `#<number>` or words. Client data. */
+  readonly q?: string;
+}
+
+/** How a search text is read (ADR-M109 §2.1): an intent code, an issue or PR number, or words. */
+export type IntentSearch =
+  | { readonly kind: 'code'; readonly code: string }
+  | { readonly kind: 'number'; readonly number: number }
+  | { readonly kind: 'words'; readonly text: string };
+
+const CODE_SEARCH = /^INT-\d{4}-\d{4,9}$/i;
+const NUMBER_SEARCH = /^#(\d{1,9})$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const FINISHED = ['done', 'rejected', 'cancelled', 'blocked'] as const;
+
+export function parseIntentSearch(q: string): IntentSearch {
+  const text = q.trim();
+  if (CODE_SEARCH.test(text)) return { kind: 'code', code: text.toUpperCase() };
+  const number = NUMBER_SEARCH.exec(text);
+  if (number) return { kind: 'number', number: Number(number[1]) };
+  return { kind: 'words', text };
+}
+
+/** The start of a UTC day, or of the next day (`end`), for the inclusive date filters. */
+function dayBound(day: string, end: boolean): Date {
+  if (!DAY.test(day)) throw new DbError('invalid_value', 'a date filter must be YYYY-MM-DD');
+  const at = new Date(`${day}T00:00:00.000Z`);
+  if (Number.isNaN(at.getTime()) || at.toISOString().slice(0, 10) !== day) {
+    throw new DbError('invalid_value', 'a date filter must be a real day');
+  }
+  return end ? new Date(at.getTime() + 86_400_000) : at;
 }
 
 export const MAX_INTENT_PAGE = 100;
@@ -255,6 +300,15 @@ export class IntentRepository extends TenantRepository {
     }
     if (query.projectIds.length === 0) return Promise.resolve([]);
     const after = query.after;
+    const f = query.filters ?? {};
+    const search = f.q === undefined ? undefined : parseIntentSearch(f.q);
+    const bound = (day: string | undefined, end: boolean) =>
+      day === undefined ? undefined : dayBound(day, end);
+    const createdFrom = bound(f.createdFrom, false);
+    const createdTo = bound(f.createdTo, true);
+    const closedFrom = bound(f.closedFrom, false);
+    const closedTo = bound(f.closedTo, true);
+    const tenantId = this.tenantId;
     return this.run(
       this.db
         .selectFrom('intents')
@@ -262,6 +316,42 @@ export class IntentRepository extends TenantRepository {
         .where('tenant_id', '=', this.tenantId)
         .where('project_id', 'in', [...query.projectIds])
         .$if(query.status !== undefined, (qb) => qb.where('status', '=', query.status!))
+        .$if(f.gate !== undefined, (qb) =>
+          qb.where('current_gate', '=', f.gate!).where('status', 'not in', [...FINISHED]),
+        )
+        .$if(f.riskTier !== undefined, (qb) => qb.where('risk_tier', '=', f.riskTier!))
+        .$if(createdFrom !== undefined, (qb) => qb.where('created_at', '>=', createdFrom!))
+        .$if(createdTo !== undefined, (qb) => qb.where('created_at', '<', createdTo!))
+        .$if(closedFrom !== undefined, (qb) => qb.where('closed_at', '>=', closedFrom!))
+        .$if(closedTo !== undefined, (qb) => qb.where('closed_at', '<', closedTo!))
+        .$if(f.sealed !== undefined, (qb) =>
+          qb.where((eb) => {
+            const packs = eb
+              .selectFrom('evidence_packs as ep')
+              .select('ep.id')
+              .where('ep.tenant_id', '=', tenantId)
+              .whereRef('ep.intent_id', '=', 'intents.id')
+              .where('ep.sealed_at', 'is not', null);
+            return f.sealed ? eb.exists(packs) : eb.not(eb.exists(packs));
+          }),
+        )
+        .$if(search?.kind === 'code', (qb) =>
+          qb.where('code', '=', (search as { code: string }).code),
+        )
+        .$if(search?.kind === 'number', (qb) =>
+          qb.where((eb) =>
+            eb.or([
+              eb('issue_number', '=', (search as { number: number }).number),
+              eb('pr_number', '=', (search as { number: number }).number),
+            ]),
+          ),
+        )
+        .$if(search?.kind === 'words', (qb) =>
+          // A bound parameter, never a string in the SQL text (ADR-M109 §2.1).
+          qb.where(
+            sql<boolean>`search_tsv @@ websearch_to_tsquery('simple', ${(search as { text: string }).text})`,
+          ),
+        )
         .$if(after !== undefined, (qb) =>
           qb.where((eb) =>
             eb.or([

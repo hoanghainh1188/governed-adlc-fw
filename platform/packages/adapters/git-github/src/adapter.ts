@@ -1,6 +1,7 @@
 // GitHub implementation of `GitHostAdapter` (design/D-03 section 7.1, D-08 B05, ADR-M23).
 import type {
   BranchDeletion,
+  WebTarget,
   Approval,
   PullRequestFile,
   PullRequestFileStatus,
@@ -542,6 +543,30 @@ export class GitHubAdapter implements GitHostAdapter {
       repo,
       permissions: minted.permissions,
     };
+  }
+
+  /**
+   * The web address of an issue, a pull request or a file at a commit (X08a, ADR-M109 §2.1):
+   * `https://github.com/<owner>/<repo>/…`, or the GitHub Enterprise Server's own host when the
+   * API is not `api.github.com`. No call to GitHub.
+   */
+  webUrl(ref: RepoRef, target: WebTarget): string {
+    const repo = checkRepo(ref);
+    const api = this.#options.apiUrl;
+    const web = api.hostname === 'api.github.com' ? 'https://github.com' : api.origin;
+    const base = `${web}/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
+    if (target.kind === 'issue' || target.kind === 'pull_request') {
+      if (!Number.isSafeInteger(target.number) || target.number < 1) {
+        throw new GitHostError('invalid_input', { field: 'number' });
+      }
+      return `${base}/${target.kind === 'issue' ? 'issues' : 'pull'}/${String(target.number)}`;
+    }
+    if (!isSha(target.commitSha)) throw new GitHostError('invalid_input', { field: 'sha' });
+    const parts = typeof target.path === 'string' ? target.path.split('/') : [];
+    if (parts.length === 0 || parts.some((p) => p === '' || p === '.' || p === '..')) {
+      throw new GitHostError('invalid_input', { field: 'path' });
+    }
+    return `${base}/blob/${target.commitSha}/${parts.map(encodeURIComponent).join('/')}`;
   }
 
   /**

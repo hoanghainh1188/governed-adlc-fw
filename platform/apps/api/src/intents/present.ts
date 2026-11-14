@@ -1,6 +1,15 @@
 // Response bodies (snake_case, like the database and the codes table). Presenters pick fields
 // explicitly, so a new column never leaks into the API by accident.
-import type { GateDecisionRow, Intent, Plan, Project, SpecRef, WaitingFor } from '@sdlc/core';
+import type { GitHostAdapter, RepoRef, WebTarget } from '@sdlc/contracts';
+import {
+  planPath,
+  type GateDecisionRow,
+  type Intent,
+  type Plan,
+  type Project,
+  type SpecRef,
+  type WaitingFor,
+} from '@sdlc/core';
 
 export interface IntentBody {
   readonly id: string;
@@ -130,4 +139,66 @@ export function presentWaitingFor(waiting: WaitingFor | null): Record<string, un
         approvals_needed: waiting.approvalsNeeded,
       }
     : null;
+}
+
+/** The repository of a project as a Git host reference, or null. */
+function repoRefOf(project: Pick<Project, 'repo_full_name'>): RepoRef | null {
+  const [owner, name, ...rest] = project.repo_full_name.split('/');
+  return owner && name && rest.length === 0 ? { owner, name } : null;
+}
+
+/**
+ * X08a (ADR-M109 §2.1): what a person follows from one intent, built from stored codes and
+ * numbers only. `url` comes from the Git host adapter (no call to it); null without one.
+ */
+export function presentLinks(
+  intent: Pick<Intent, 'code' | 'issue_number' | 'pr_number'>,
+  project: Pick<Project, 'repo_full_name'>,
+  facts: {
+    readonly spec: SpecRef | undefined;
+    readonly plan: Plan | undefined;
+    readonly sealed: boolean;
+  },
+  web: Pick<GitHostAdapter, 'webUrl'> | undefined,
+): Record<string, unknown> {
+  const ref = repoRefOf(project);
+  const url = (target: WebTarget): string | null => {
+    if (!web || !ref) return null;
+    try {
+      return web.webUrl(ref, target);
+    } catch {
+      return null;
+    }
+  };
+  const { spec, plan } = facts;
+  const planFile = planPath(intent.code);
+  return {
+    issue:
+      intent.issue_number === null
+        ? null
+        : { number: intent.issue_number, url: url({ kind: 'issue', number: intent.issue_number }) },
+    pull_request:
+      intent.pr_number === null
+        ? null
+        : {
+            number: intent.pr_number,
+            url: url({ kind: 'pull_request', number: intent.pr_number }),
+          },
+    spec: spec
+      ? {
+          path: spec.path,
+          commit_sha: spec.commit_sha,
+          url: url({ kind: 'file', path: spec.path, commitSha: spec.commit_sha }),
+        }
+      : null,
+    // A plan read from its file (B09) has a commit; a plan sent as text has none.
+    plan: plan?.commit_sha
+      ? {
+          path: planFile,
+          commit_sha: plan.commit_sha,
+          url: url({ kind: 'file', path: planFile, commitSha: plan.commit_sha }),
+        }
+      : null,
+    evidence: { path: `/v1/intents/${intent.code}/evidence`, sealed: facts.sealed },
+  };
 }

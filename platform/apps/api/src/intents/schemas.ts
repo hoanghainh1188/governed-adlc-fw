@@ -37,9 +37,21 @@ export const createIntentSchema = z.strictObject({
   issue_number: z.number().int().positive().optional(),
 });
 
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const flag = z.enum(['true', 'false']).transform((value) => value === 'true');
+
 export const listIntentsSchema = z.strictObject({
   project: slug.optional(),
   status: z.enum(INTENT_STATUSES).optional(),
+  // X08a (ADR-M109 §2.1): codes, dates and a short search text only.
+  gate: z.enum(GATE_CODES).optional(),
+  risk_tier: z.enum(RISK_TIERS).optional(),
+  created_from: day.optional(),
+  created_to: day.optional(),
+  closed_from: day.optional(),
+  closed_to: day.optional(),
+  sealed: flag.optional(),
+  q: z.string().trim().min(2).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_INTENT_PAGE).default(50),
   cursor: z.string().max(200).optional(),
 });

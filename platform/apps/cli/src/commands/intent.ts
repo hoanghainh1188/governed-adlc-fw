@@ -50,6 +50,15 @@ const OPTIONS = {
     status: { type: 'string' },
     limit: { type: 'string' },
     cursor: { type: 'string' },
+    // X08a (ADR-M109 §2.1): the filters of `GET /v1/intents`.
+    gate: { type: 'string' },
+    risk: { type: 'string' },
+    'created-from': { type: 'string' },
+    'created-to': { type: 'string' },
+    'closed-from': { type: 'string' },
+    'closed-to': { type: 'string' },
+    sealed: { type: 'string' },
+    search: { type: 'string' },
   },
   show: {},
   estimate: { hours: { type: 'string' } },
@@ -179,6 +188,48 @@ async function description(ctx: CliContext, values: Values): Promise<string> {
   return text;
 }
 
+const GATE = /^G[1-8]$/;
+const RISKS = ['low', 'medium', 'high', 'critical'];
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** X08a: the filter options as API query parameters; undefined when one is not valid. */
+function listFilters(values: Values): Record<string, string> | undefined {
+  const text = (name: string) => (typeof values[name] === 'string' ? values[name] : undefined);
+  const out: Record<string, string> = {};
+  const gate = text('gate');
+  if (gate !== undefined) {
+    if (!GATE.test(gate)) return undefined;
+    out.gate = gate;
+  }
+  const risk = text('risk');
+  if (risk !== undefined) {
+    if (!RISKS.includes(risk)) return undefined;
+    out.risk_tier = risk;
+  }
+  for (const [option, param] of [
+    ['created-from', 'created_from'],
+    ['created-to', 'created_to'],
+    ['closed-from', 'closed_from'],
+    ['closed-to', 'closed_to'],
+  ] as const) {
+    const day = text(option);
+    if (day === undefined) continue;
+    if (!DAY.test(day)) return undefined;
+    out[param] = day;
+  }
+  const sealed = text('sealed');
+  if (sealed !== undefined) {
+    if (sealed !== 'yes' && sealed !== 'no') return undefined;
+    out.sealed = sealed === 'yes' ? 'true' : 'false';
+  }
+  const search = text('search')?.trim();
+  if (search !== undefined) {
+    if (search.length < 2 || search.length > 200) return undefined;
+    out.q = search;
+  }
+  return out;
+}
+
 async function list(args: readonly string[], ctx: CliContext): Promise<number> {
   const values = parseCommand(args, OPTIONS.list)?.values;
   if (!values) return usage(ctx);
@@ -192,6 +243,8 @@ async function list(args: readonly string[], ctx: CliContext): Promise<number> {
   if (limit !== undefined && !(Number.isInteger(limit) && limit >= 1 && limit <= MAX_PAGE)) {
     return usage(ctx);
   }
+  const filters = listFilters(values);
+  if (filters === undefined) return usage(ctx);
   const json = values.json === true;
   return withApi(ctx, json, async (client) => {
     const page = await client.get('/v1/intents', intentPageSchema, {
@@ -199,6 +252,7 @@ async function list(args: readonly string[], ctx: CliContext): Promise<number> {
       status: values.status as string | undefined,
       limit,
       cursor: values.cursor as string | undefined,
+      ...filters,
     });
     if (json) {
       ctx.stdout(toJson(page));
@@ -292,9 +346,25 @@ function printDetail(ctx: CliContext, intent: IntentDetail): void {
   } else {
     say(ctx, 'cli.intent.plan_none');
   }
+  printLinks(ctx, intent);
   if (intent.decisions.length === 0) say(ctx, 'cli.intent.decisions_none');
   for (const decision of intent.decisions)
     say(ctx, 'cli.intent.decision', decisionParams(decision));
+}
+
+/** X08a (ADR-M109 §2.1): the addresses to follow, one line each; nothing when there are none. */
+function printLinks(ctx: CliContext, intent: IntentDetail): void {
+  const links = intent.links;
+  if (!links) return;
+  const line = (kind: MessageKey, url: string | null | undefined, ref: string) =>
+    say(ctx, 'cli.intent.link', { kind: t(kind), target: url ?? ref });
+  if (links.issue) line('cli.intent.link_issue', links.issue.url, `#${String(links.issue.number)}`);
+  if (links.pull_request) {
+    line('cli.intent.link_pr', links.pull_request.url, `#${String(links.pull_request.number)}`);
+  }
+  if (links.spec) line('cli.intent.link_spec', links.spec.url, links.spec.path);
+  if (links.plan) line('cli.intent.link_plan', links.plan.url, links.plan.path);
+  if (links.evidence.sealed) line('cli.intent.link_evidence', undefined, links.evidence.path);
 }
 
 /** U02 (ADR-M54 §2.4b): what holds the intent, as the workflow's step recorded it. */

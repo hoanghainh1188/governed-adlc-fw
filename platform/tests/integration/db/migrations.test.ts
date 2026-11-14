@@ -59,6 +59,9 @@ const UPDATABLE: Record<string, readonly string[]> = {
   // B07: when the intent entered its gate (waiting time, FR-12).
   // C07 (migration 0015): the budgets, only up (trigger SDA12).
   intents: [
+    // X08a (migration 0056): only to the tombstone of a client data deletion (trigger SDA31).
+    'title',
+    'description',
     'budget_usd',
     'current_gate',
     'status',

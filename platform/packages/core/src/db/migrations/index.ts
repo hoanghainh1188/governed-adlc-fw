@@ -55,6 +55,7 @@ import { migration0052ReadCodePermission } from './0052-read-code-permission.js'
 import { migration0053MemoryVersions } from './0053-memory-versions.js';
 import { migration0054MemoryDiffEvidence } from './0054-memory-diff-evidence.js';
 import { migration0055MemoryProposals } from './0055-memory-proposals.js';
+import { migration0056IntentSearch } from './0056-intent-search.js';
 import type { SqlMigration } from './define.js';
 
 export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
@@ -113,4 +114,5 @@ export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
   '0053-memory-versions': migration0053MemoryVersions,
   '0054-memory-diff-evidence': migration0054MemoryDiffEvidence,
   '0055-memory-proposals': migration0055MemoryProposals,
+  '0056-intent-search': migration0056IntentSearch,
 };

@@ -16,11 +16,12 @@ import {
   RegistryError,
   stepUpRequestSha256,
   type Intent,
+  type IntentFilters,
   type Project,
   type Registry,
   type TenantScope,
 } from '@sdlc/core';
-import type { GateCode, IntentWorkflowSignals } from '@sdlc/contracts';
+import type { GateCode, GitHostAdapter, IntentWorkflowSignals } from '@sdlc/contracts';
 import type { z } from 'zod';
 
 import type { Principal } from '../auth/principal.js';
@@ -31,6 +32,7 @@ import { decodeCursor, encodeCursor } from './cursor.js';
 import {
   presentDecision,
   presentIntent,
+  presentLinks,
   presentPlan,
   presentSpec,
   presentWaitingFor,
@@ -48,12 +50,27 @@ export interface IntentPage {
   readonly next_cursor: string | null;
 }
 
+/** X08a (ADR-M109 §2.1): the list filters, in the repository's words. */
+function listFilters(query: z.infer<typeof listIntentsSchema>): IntentFilters {
+  return {
+    ...(query.gate === undefined ? {} : { gate: query.gate }),
+    ...(query.risk_tier === undefined ? {} : { riskTier: query.risk_tier }),
+    ...(query.created_from === undefined ? {} : { createdFrom: query.created_from }),
+    ...(query.created_to === undefined ? {} : { createdTo: query.created_to }),
+    ...(query.closed_from === undefined ? {} : { closedFrom: query.closed_from }),
+    ...(query.closed_to === undefined ? {} : { closedTo: query.closed_to }),
+    ...(query.sealed === undefined ? {} : { sealed: query.sealed }),
+    ...(query.q === undefined ? {} : { q: query.q }),
+  };
+}
+
 export class IntentsService {
   constructor(
     private readonly registry: Registry,
     private readonly signals: IntentWorkflowSignals,
     private readonly logger: WakeLogger,
     private readonly passkeys?: PasskeysService,
+    private readonly webLinks?: Pick<GitHostAdapter, 'webUrl'>,
   ) {}
 
   async create(p: Principal, body: z.infer<typeof createIntentSchema>): Promise<IntentBody> {
@@ -85,13 +102,15 @@ export class IntentsService {
 
   async show(p: Principal, ref: string): Promise<Record<string, unknown>> {
     const { intent, project } = await this.readable(p, ref);
-    const [decisions, spec, plan, waitingFor, gateInputSha256] = await Promise.all([
+    const [decisions, spec, plan, waitingFor, gateInputSha256, packs] = await Promise.all([
       p.scope.gateDecisions.listForIntent(intent.id),
       p.scope.specRefs.latest(intent.id),
       p.scope.plans.latest(intent.id),
       this.waitingFor(p, intent),
       this.gateInput(p, intent),
+      p.scope.evidencePacks.listForIntent(intent.id),
     ]);
+    const sealed = packs.some((pack) => pack.sealed_at !== null);
     return {
       ...presentIntent(intent, project),
       gate_input_sha256: gateInputSha256,
@@ -99,6 +118,7 @@ export class IntentsService {
       spec: presentSpec(spec),
       plan: presentPlan(plan),
       decisions: decisions.map(presentDecision),
+      links: presentLinks(intent, project, { spec, plan, sealed }, this.webLinks),
     };
   }
 
@@ -126,6 +146,7 @@ export class IntentsService {
       ...(query.status === undefined ? {} : { status: query.status }),
       limit: query.limit + 1,
       ...(query.cursor === undefined ? {} : { after: decodeCursor(query.cursor) }),
+      filters: listFilters(query),
     });
     const page = rows.slice(0, query.limit);
     const bySlug = new Map(projects.map((project) => [project.id, project]));

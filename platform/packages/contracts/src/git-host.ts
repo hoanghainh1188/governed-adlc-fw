@@ -77,6 +77,12 @@ export interface MergedChange {
  * and body from the message catalog with coded values only (QUESTIONS #123: the pilot repository
  * is public).
  */
+/** A page of the Git host's web interface (X08a, ADR-M109 §2.1: the `links` of an intent). */
+export type WebTarget =
+  | { readonly kind: 'issue'; readonly number: number }
+  | { readonly kind: 'pull_request'; readonly number: number }
+  | { readonly kind: 'file'; readonly path: string; readonly commitSha: string };
+
 /** The result of `deleteBranch` (X13 PR 3b). */
 export type BranchDeletion = 'deleted' | 'absent' | 'moved';
 
@@ -389,6 +395,12 @@ export interface GitHostAdapter {
    * never deletes another branch. Uses a token that may write contents for this call only.
    */
   deleteBranch(ref: RepoRef, branch: string, expectedHead: string): Promise<BranchDeletion>;
+  /**
+   * The web address of an issue, a pull request or a file at a commit (X08a, ADR-M109 §2.1). A
+   * pure function of its input and the adapter's configuration: no call to the Git host. Throws
+   * `invalid_input` for a number, path or commit it cannot name.
+   */
+  webUrl(ref: RepoRef, target: WebTarget): string;
   /**
    * The open security findings of a pull request (task C08 PR 2): counts per severity, or
    * unknown. Uses a token of its own that may read code-scanning alerts.
