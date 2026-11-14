@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-14
+
+**Agent memory: approved notes for agents, proposed by runs in their own pull request; and a load test.**
+
 ### Added
 - **Load test** (task O07, QUESTIONS #717–#720). `pnpm test:load` takes many intents of many tenants from G1 to `done` at once: the real poller reads the people's comment commands from GitHub API stubs, the intent workflow runs on a throw-away Compose Temporal, a fake runner answers the runner's task queue, and the database is a throw-away PostgreSQL. The default is 20 tenants × 25 intents (500); `SDLC_LOAD_*` changes it. It writes a JSON report: time per gate, intents per minute, database growth, memory and CPU, and the GitHub API calls per project and hour against GitHub's limit. The CI job `load` runs it on manual runs only, with 100 intents. The numbers and the limits are in the deploy README, section "Capacity".
 - **Design: knowledge for people and the G8 learning loop** (task X08, ADR-M109 proposed, QUESTIONS #706–#710). How people will find past intents (filters and a full-text search on the title and description, links from an intent to its issue, pull request, spec, plan, Evidence Pack and lessons) and how a lesson learned at G8 is recorded (`/lesson <category> <target>` on the intent's issue; the words stay on GitHub, the platform keeps codes and the link) and linked to the change that applies it. Proposed D-05 1.73 (§6.12). No behaviour change yet: X08a (search) and X08b (lessons) build it after the ADR is accepted.
@@ -11,10 +15,11 @@
 - **Agent memory, part 1: approve and revoke memory sets** (task X13 PR 1, ADR-M74 0.2 accepted, QUESTIONS #711–#715). A project can keep short notes for its agents in `.sdlc/memory/<name>.md` of its repository. A Person A or Person B who wrote none of the memory changes since the last approved version approves the set at the head of the default branch: `adlc memory approve <project> [--commit <SHA>]` (refused for its producer, past 100 commits, or without a linked GitHub account). `adlc memory revoke <project> <version> --reason poisoned|wrong|other` revokes a version at once (Person A, Person B or governance; never undone); `adlc memory list <project>` shows the versions. The platform keeps only hashes, counts and versions in two new append-only tables (`project_memory_versions`, `project_memory_revocations`, migration 0053) and the audit events `memory.approved`, `memory.approval_refused`, `memory.revoked`. New project configuration `memory` (`mode` `off` by default, `read`, `read_propose`; caps; rule M36). Runs do not read memory yet: X13 PR 2 adds that. The Git host interface has two new methods, `listFolder` and `listPathCommits` (D-03 1.55). Handbook Ch.13 §13.10.7, Ch.20 §20.5d.
 
 ### Upgrade notes
-- The runner accepts Run Contracts of schema 5. Upgrade the worker and the runner together (as with every release); projects with `memory.mode: off` (the default) keep schema 3 or 4.
-- Migration `0055-memory-proposals` adds the table `memory_proposals`; `pnpm db:migrate` runs it. The GitHub App needs no new permission: deleting a memory branch uses `contents: write`, which the push already uses.
-- Migration `0054-memory-diff-evidence` adds the evidence kind `memory_diff`; `pnpm db:migrate` runs it. Upgrade the worker and the runner together: the push of a memory branch is in the runner.
-- Migration `0053-memory-versions` adds two tables; run `pnpm db:migrate` (the deploy's upgrade step does it). No configuration change is needed: `memory.mode` is `off` by default.
+- **On a running stack:** (1) `pnpm install`; (2) `pnpm db:migrate`: migrations `0053-memory-versions`, `0054-memory-diff-evidence` and `0055-memory-proposals`; (3) the new images on the platform host and, at the same time, on the runner host (`pnpm runner-host:up`): the worker and the runner must run the same release; (4) `npm install -g @hoanghainh/governed-adlc@0.15.0` for the new `adlc memory` commands. No credentials command to run again, no new GitHub App permission, no setting to add.
+- **Agent memory (X13):** `memory.mode` is `off` by default, so nothing changes until a tenant admin turns it on in a project configuration (handbook Ch.20 §20.5d). The default project configuration gains `memory`, so its hash changes; nothing to do. Migration `0053-memory-versions` adds `project_memory_versions` and `project_memory_revocations` (append-only), `0054-memory-diff-evidence` the evidence kind `memory_diff`, `0055-memory-proposals` the table `memory_proposals`.
+- **Run Contract (X13 PR 2):** the runner accepts schema 5, which only projects with memory on get; others keep schema 3 or 4. An older runner refuses a schema 5 contract, which is why the worker and the runner upgrade together.
+- **Worker (X13 PR 3b):** a new memory loop. Optional setting `SDLC_WORKER_MEMORY_TICK_MS` (default 300000, 5 minutes); it is not in the env file and needs no change. Deleting a memory branch uses `contents: write`, which the push already uses.
+- **Load test (O07):** `pnpm test:load` is for developer machines and manual CI runs only; nothing to do on a server.
 
 ## [0.14.0] - 2026-11-13
 
