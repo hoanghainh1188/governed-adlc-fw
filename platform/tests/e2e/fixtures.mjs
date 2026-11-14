@@ -496,9 +496,26 @@ export function fixtures(url) {
   const all = INTENTS();
   if (p === '/v1/me') return { body: ME };
   if (p === '/v1/intents') {
-    const project = url.searchParams.get('project');
+    const q = url.searchParams;
+    const project = q.get('project');
+    // X08a PR 2: a stand-in for the API's filters (the database test checks the real search):
+    // whole words of the title, the code, the gate and the risk tier.
+    const words = (q.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const match = (i) => {
+      const title = i.title.toLowerCase().split(/[^a-z0-9_%/-]+/);
+      return words.every((w) => title.includes(w) || i.code.toLowerCase() === w);
+    };
     return {
-      body: { items: all.filter((i) => !project || i.project.slug === project), next_cursor: null },
+      body: {
+        items: all.filter(
+          (i) =>
+            (!project || i.project.slug === project) &&
+            (!q.get('gate') || i.current_gate === q.get('gate')) &&
+            (!q.get('risk_tier') || i.risk_tier === q.get('risk_tier')) &&
+            match(i),
+        ),
+        next_cursor: null,
+      },
     };
   }
   const m = /^\/v1\/intents\/(INT-2026-[0-9]{4})(\/.*)?$/.exec(p);

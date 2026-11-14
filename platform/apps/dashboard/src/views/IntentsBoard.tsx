@@ -1,5 +1,7 @@
 // Intents and gates (U01 AC4): open intents in one row per gate, the longest wait first. Filters
-// (project, open or finished) are kept in the URL.
+// (project, open or finished) are kept in the URL. X08a PR 2 (ADR-M109 §2.1): a search box and
+// the filters of `GET /v1/intents`, also in the URL; with any of them set, the board shows the
+// matching intents as one list, newest first, as the API returns them.
 import { useState } from 'preact/hooks';
 import type { IntentView, Me } from '@sdlc/api-schemas';
 
@@ -7,6 +9,8 @@ import { readIntents, readOpenEscalations } from '../api/reads.js';
 import { useApi } from '../api/use-api.js';
 import { Bar, codeClass, Duration, Empty, Label, Show, Txt } from '../components/common.js';
 import { CreateIntentModal } from '../components/CreateIntentModal.js';
+import { IntentSearchForm } from '../components/IntentSearchForm.js';
+import { SearchResults } from '../components/SearchResults.js';
 import { holdOf } from '../model/hold.js';
 import { t } from '../i18n.js';
 import {
@@ -17,6 +21,7 @@ import {
   type BoardCard,
   type LaneId,
 } from '../model/intents.js';
+import { isSearching, searchOf, type IntentSearch } from '../model/search.js';
 import { href, intentHref } from '../router.js';
 import { session } from '../session.js';
 import { ProjectFilter, projectsOf } from './filters.js';
@@ -38,15 +43,29 @@ export function IntentsBoard({ me, query }: { readonly me: Me; readonly query: U
   const projects = projectsOf(me);
   const project = projects.includes(query.get('project') ?? '') ? query.get('project')! : undefined;
   const finished = query.get('show') === 'finished';
+  const search = searchOf(query);
+  const searching = isSearching(search);
+  const searchKey = JSON.stringify(search);
+  const go = (next: {
+    project?: string | undefined;
+    search?: IntentSearch;
+    finished?: boolean;
+  }) => {
+    window.location.hash = href('intents', {
+      project: 'project' in next ? next.project : project,
+      show: (next.finished ?? finished) ? 'finished' : undefined,
+      ...(next.search ?? search),
+    });
+  };
   const { result, reload } = useApi(
     async (signal) => {
       const [intents, escalations] = await Promise.all([
-        readIntents(project, { signal }),
+        readIntents(project, { signal }, search),
         readOpenEscalations(undefined, { signal }),
       ]);
       return { intents, escalations };
     },
-    [project],
+    [project, searchKey],
   );
 
   return (
@@ -60,12 +79,7 @@ export function IntentsBoard({ me, query }: { readonly me: Me; readonly query: U
           <ProjectFilter
             projects={projects}
             value={project}
-            onChange={(slug) => {
-              window.location.hash = href('intents', {
-                project: slug,
-                show: finished ? 'finished' : undefined,
-              });
-            }}
+            onChange={(slug) => go({ project: slug })}
           />
           <div class="segmented" role="group" aria-label={t('dashboard.board.show_label')}>
             <a href={href('intents', { project })} aria-current={finished ? undefined : 'true'}>
@@ -92,9 +106,22 @@ export function IntentsBoard({ me, query }: { readonly me: Me; readonly query: U
           )}
         </div>
       </div>
+      <IntentSearchForm
+        key={searchKey}
+        value={search}
+        onSearch={(next) => go({ search: next })}
+        clearHref={
+          searching
+            ? href('intents', { project, show: finished ? 'finished' : undefined })
+            : undefined
+        }
+      />
+
       <Show loaded={result}>
         {({ intents, escalations }, at) =>
-          finished ? (
+          searching ? (
+            <SearchResults items={intents.items} truncated={intents.truncated} />
+          ) : finished ? (
             <FinishedList
               items={intents.items.filter((i) => FINISHED_STATUSES.includes(i.status))}
             />
