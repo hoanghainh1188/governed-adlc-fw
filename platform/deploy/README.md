@@ -861,6 +861,26 @@ Measured with `docker stats` on a development machine (Docker Desktop, 8 GiB VM)
 - Profile `models-local`: the GPU memory comes from the model (a 30B-class model in 16-bit needs about 60 GB of GPU memory plus room for the context; task L03 gives the sizing). On the host: RAM about the size of the weights while loading, `SDLC_VLLM_SHM_SIZE` (8 GB) of shared memory, and disk for the weights in the volume `vllm-models` (about 60 GB for the default model) plus about 10 GB for the image.
 - Profile `sandbox` (estimates, A10 measures): socket proxy about 10 MiB, runner about 100–150 MiB, Verdaccio about 100–200 MiB, registry about 20 MiB, so about 0.3–0.4 GiB in total, plus **up to 2 GiB per sandbox** (`SDLC_RUNNER_SANDBOX_MEMORY_MB`, 1 sandbox by default). Disk: the `node24` image is about 0.85 GB compressed and about 3 GB unpacked; the npm cache grows with use (1–5 GB typical); clones up to `SDLC_RUNNER_WORKSPACE_MAX_MB` per running sandbox.
 
+## Capacity
+
+`pnpm test:load` (task O07) measures how the platform behaves with many intents and tenants at once (`platform/DEVELOPMENT.md`). It uses the real poller, the real intent workflow on the Compose Temporal and the real database, with a fake runner and GitHub API stubs (QUESTIONS #717–#720). These numbers come from a **development machine** (Apple M4 Pro, 12 cores, 24 GB; Docker Desktop) on 2026-11-14. Task A10 measures the target server.
+
+| Measure (500 Medium intents: 20 tenants × 25, every one from G1 to `done`) | Result |
+|---|---|
+| Wall time | 7.4 minutes, about 68 intents a minute |
+| Time of one intent, G1 to `done` | p50 397 s, p95 421 s |
+| Time per gate, p50 / p95 | G1–G3 (comment approvals) 11–12 s / 12–14 s; G4 6 s / 12 s; G5 132 s / 251 s (waiting for a runner slot); G6 139 s / 242 s (the one-minute HOTL block window and the push); G7 under 1 s; G8 65 s / 75 s (the block window and the release pack) |
+| Fake runner | 500 runs of 1 s on 2 slots; the slots were the limit |
+| Database | 21 MB more, about 42 KB per intent |
+| Temporal container | under 5 % of one core, about 270 MiB |
+| Worker, poller and the test driver (one process) | about 660 MiB at the peak, 133 CPU seconds |
+
+What limits one server:
+
+- **Runs.** A run holds a sandbox for minutes, not one second, and a server runs 1–2 sandboxes (`SDLC_RUNNER_MAX_SANDBOXES`). The number of intents an hour is therefore about the number of slots × 60 ÷ the minutes of one run. With 2 slots and runs of 10 minutes, that is about 12 intents an hour. The database, Temporal and the worker are far from their limits at that rate: they took 500 intents in under 8 minutes.
+- **Tenants and intents at once.** 20 tenants and 500 open intents ran without a failed event, a stuck workflow or an escalation. The worker's memory grows with the open workflows; plan 1 GiB for the worker at this size.
+- **GitHub API calls.** An App installation may make **5,000 requests an hour** (GitHub's documented limit, QUESTIONS #720). One poll of one repository took 7.9 requests on average while its intents were busy: the listings and the platform's replies and status comments. At the default `github.poll_interval_seconds` (30 s), that is about 950 requests an hour for each busy repository, so **about 5 busy repositories per installation**. A quiet repository (nothing new) took 5 requests a poll, 600 an hour, so **about 8 repositories**. G4–G8 add about 19 reads and writes per intent (branch heads, pull requests, checks, reviews). To watch more repositories, raise `github.poll_interval_seconds` for the quiet projects, or use a second GitHub App installation. These are upper bounds: answers that GitHub gives from its cache (`304 Not Modified`) do not count against the limit, and the stubs count every request.
+
 ## Backup and restore
 
 `pnpm backup` backs up the whole platform into one encrypted folder: every database, OpenBao's snapshot, the volumes of SeaweedFS (evidence, audit anchors), OpenBao's audit log and ClickHouse, the env file and OpenBao's TLS folder (task A10, `design/ADR-M63-openbao-tls-and-backups.md`). Each part is encrypted with `age` as it streams; the server holds only the public key, so it cannot read its own backups.

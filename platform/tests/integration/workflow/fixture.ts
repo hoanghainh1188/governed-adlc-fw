@@ -52,12 +52,17 @@ export interface WorkflowFixture {
 export async function createWorkflowFixture(
   db: TestDatabase,
   now: () => Date,
+  /** O07: the load test makes one tenant per fixture, each with its own slug. */
+  options: { readonly tenantSlug?: string } = {},
 ): Promise<WorkflowFixture> {
   const registry = new Registry({
     policyFactory: (config) => createSimplePolicyEngine({ config }),
     now,
   });
-  const tenant = await db.app.system.createTenant({ slug: 'internal', name: 'Internal' });
+  const tenant = await db.app.system.createTenant({
+    slug: options.tenantSlug ?? 'internal',
+    name: 'Internal',
+  });
   const tenantId = parseTenantId(tenant.id);
   const scope = db.app.forTenant(tenantId);
   const project = await scope.projects.create({
