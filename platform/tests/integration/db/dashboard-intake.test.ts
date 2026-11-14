@@ -238,6 +238,15 @@ describeDb('U08: create, spec link, plan and Evidence Pack from a dashboard sess
       expect(shown.json()).toMatchObject({ code, spec: null });
     });
 
+    it('X08b (QUESTIONS #728): a session never sends from_lesson; nothing is created', async () => {
+      const refused = await post('a', '/v1/intents', {
+        ...intentBody('From a lesson'),
+        from_lesson: crypto.randomUUID(),
+      });
+      expect(refused.statusCode, refused.body).toBe(403);
+      expect(refused.json().error?.code).toBe('session_write_not_allowed');
+    });
+
     it('a viewer creates nothing (M16); Person B links no spec (access.spec_link_roles)', async () => {
       const refused = await post('viewer', '/v1/intents', intentBody('Not mine'));
       expect(refused.statusCode, refused.body).toBe(403);

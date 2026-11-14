@@ -97,11 +97,26 @@ describe('getIssueComment (E01 PR 2)', () => {
     });
     expect(await h.adapter().getIssueComment(new Redacted(token), REPO, '901')).toEqual({
       commentId: '901',
+      issueNumber: null,
       author: { id: '3002', login: 'bob', type: 'user' },
       body: '/request-changes G7 fix the totals',
     });
     const [request] = h.stub.requestsTo('GET', '/repos/acme/shop/issues/comments/901');
     expect(request?.headers.authorization).toBe(`Bearer ${token}`);
     expect(h.secrets.reads).toBe(0);
+  });
+
+  it('X08b: names the issue or pull request of the comment from its issue_url', async () => {
+    h.stub.on('GET', '/repos/acme/shop/issues/comments/902', {
+      status: 200,
+      body: {
+        id: 902,
+        user: USER,
+        body: 'words',
+        issue_url: 'https://api.github.com/repos/acme/shop/issues/42',
+      },
+    });
+    const comment = await h.adapter().getIssueComment(new Redacted(issued()), REPO, '902');
+    expect(comment.issueNumber).toBe(42);
   });
 });

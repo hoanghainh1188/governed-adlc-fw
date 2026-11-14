@@ -5,6 +5,10 @@
 import {
   CommandError,
   consumeStepUp,
+  decideLesson,
+  LessonError,
+  mayRecordLessons,
+  readLesson,
   currentGateWaitingFor,
   decideGate,
   gateInputSha256,
@@ -32,6 +36,7 @@ import { decodeCursor, encodeCursor } from './cursor.js';
 import {
   presentDecision,
   presentIntent,
+  presentLessonLinks,
   presentLinks,
   presentPlan,
   presentSpec,
@@ -60,6 +65,7 @@ function listFilters(query: z.infer<typeof listIntentsSchema>): IntentFilters {
     ...(query.closed_from === undefined ? {} : { closedFrom: query.closed_from }),
     ...(query.closed_to === undefined ? {} : { closedTo: query.closed_to }),
     ...(query.sealed === undefined ? {} : { sealed: query.sealed }),
+    ...(query.has_lessons === undefined ? {} : { hasLessons: query.has_lessons }),
     ...(query.q === undefined ? {} : { q: query.q }),
   };
 }
@@ -82,6 +88,12 @@ export class IntentsService {
     if (!access.canCreateIntent) {
       throw new CommandError('forbidden', 'the caller may not create intents in this project');
     }
+    // X08b: check the lesson before the intent exists, so a refusal creates nothing. The
+    // dashboard never records a lesson outcome (QUESTIONS #728): a session may not send it.
+    if (body.from_lesson !== undefined) {
+      if (p.credential.kind === 'session') throw new ApiError(403, 'session_write_not_allowed');
+      await this.followableLesson(p, body.from_lesson);
+    }
     const intent = await this.registry.createIntent(p.scope, {
       projectId: project.id,
       title: body.title,
@@ -92,6 +104,13 @@ export class IntentsService {
       ...(body.budget_usd === undefined ? {} : { budgetUsd: body.budget_usd }),
       ...(body.issue_number === undefined ? {} : { issueNumber: body.issue_number }),
     });
+    if (body.from_lesson !== undefined) {
+      await decideLesson(p.scope, {
+        lessonId: body.from_lesson,
+        actorId: p.userId,
+        outcome: { kind: 'applied', followUpIntentId: intent.id },
+      });
+    }
     await wakeQuietly(
       this.signals,
       { tenantId: p.scope.tenantId, intentId: intent.id },
@@ -100,16 +119,27 @@ export class IntentsService {
     return presentIntent(intent, project);
   }
 
+  /** A lesson the caller may read and decide (ADR-M109 §2.5); else the lesson refusal. */
+  private async followableLesson(p: Principal, lessonId: string): Promise<void> {
+    const { lesson } = await readLesson(p.scope, lessonId, p.userId);
+    if (!(await mayRecordLessons(p.scope, lesson.project_id, p.userId))) {
+      throw new LessonError('forbidden', 'only Person A, Person B or a tenant admin');
+    }
+  }
+
   async show(p: Principal, ref: string): Promise<Record<string, unknown>> {
     const { intent, project } = await this.readable(p, ref);
-    const [decisions, spec, plan, waitingFor, gateInputSha256, packs] = await Promise.all([
-      p.scope.gateDecisions.listForIntent(intent.id),
-      p.scope.specRefs.latest(intent.id),
-      p.scope.plans.latest(intent.id),
-      this.waitingFor(p, intent),
-      this.gateInput(p, intent),
-      p.scope.evidencePacks.listForIntent(intent.id),
-    ]);
+    const [decisions, spec, plan, waitingFor, gateInputSha256, packs, lessons, followUps] =
+      await Promise.all([
+        p.scope.gateDecisions.listForIntent(intent.id),
+        p.scope.specRefs.latest(intent.id),
+        p.scope.plans.latest(intent.id),
+        this.waitingFor(p, intent),
+        this.gateInput(p, intent),
+        p.scope.evidencePacks.listForIntent(intent.id),
+        p.scope.lessons.listForIntent(intent.id),
+        this.followUps(p, intent),
+      ]);
     const sealed = packs.some((pack) => pack.sealed_at !== null);
     return {
       ...presentIntent(intent, project),
@@ -118,8 +148,18 @@ export class IntentsService {
       spec: presentSpec(spec),
       plan: presentPlan(plan),
       decisions: decisions.map(presentDecision),
-      links: presentLinks(intent, project, { spec, plan, sealed }, this.webLinks),
+      links: {
+        ...presentLinks(intent, project, { spec, plan, sealed }, this.webLinks),
+        ...presentLessonLinks(lessons, followUps),
+      },
     };
+  }
+
+  /** X08b: the codes of the intents created from this intent's lessons. */
+  private async followUps(p: Principal, intent: Intent): Promise<string[]> {
+    const ids = await p.scope.lessons.followUpsOf(intent.id);
+    const intents = await Promise.all(ids.map((id) => p.scope.intents.getById(id)));
+    return intents.flatMap((i) => (i ? [i.code] : []));
   }
 
   /** U07: the current gate's input hash the confirmation step shows. */

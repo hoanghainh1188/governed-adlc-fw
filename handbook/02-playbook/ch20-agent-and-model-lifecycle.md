@@ -325,6 +325,22 @@ block new runs → keep active state → remove write capability → read-only d
 
 Person B or leadership can suspend or quarantine an agent **at any time** (Chapter 4 §4.10).
 
+### 20.9b. Changes that start from a lesson (platform usage)
+
+> **Platform usage section, owned by Claude Code** (CLAUDE.md "Documentation rules"). Written with task X08b, 2026-11-14 (`design/ADR-M109-knowledge-and-learning.md` §2.5).
+
+A lesson recorded at G8 (Chapter 19 §19.8b) can name what should change in an agent: its instructions (`agents_md`), its memory (`memory`) or the project's settings (`config`). The lesson changes nothing by itself; a person makes the change through the usual path:
+
+| Target | The change | On the platform |
+|---|---|---|
+| `agents_md` | A new intent that changes the instruction file, through G1–G8 | `adlc intent create --from-lesson <lesson ID> …`; after the merge, the register records the new agent version (§20.5b) |
+| `memory` | A memory pull request, approved by a person who did not write it (§20.5d) | `adlc lesson apply <lesson ID> --link <pull request link>` |
+| `config` | `adlc admin project apply` or the dashboard's Admin screen | `adlc lesson apply <lesson ID> --link <link>` |
+
+- The person who recorded the lesson may make the change. The change's own gates still apply, so its producer never approves it.
+- Lessons never reach an agent's prompt. Only the approved instruction file and approved memory do.
+- To see the lessons for one target, use `adlc lessons list --json` and read the field `target`. `adlc metrics lessons` counts the lessons per target.
+
 ---
 
 ## 20.10. Stage 7 — Retire
@@ -423,3 +439,4 @@ Old context must not quietly come back through caches, indexes or copied instruc
 | 1.6 | 2026-11-12 | Claude (task O06, PR 2b) | §20.5: a monorepo project's agent uses the adapter `openhands` |
 | 1.7 | 2026-11-13 | Claude Code (task X06, PR 2) | §20.5c: the second register tool, `read_code` (find a symbol, its uses and related files; no model; ADR-M108) |
 | 1.8 | 2026-11-13 | Claude (task X13, PR 1) | New §20.5d: agent memory settings (`memory`, rule M36); §20.10: approved and revoked memory (ADR-M74) |
+| 1.9 | 2026-11-14 | Claude Code (task X08b, PR 2) | New §20.9b: changes that start from a lesson: `--from-lesson`, `adlc lesson apply` (ADR-M109 0.4) |

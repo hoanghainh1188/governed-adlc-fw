@@ -1,6 +1,9 @@
 import type { IntentLesson, IntentLessonOutcomeRow, TenantInsert } from '../schema.js';
 import { TenantRepository } from './base.js';
 
+/** The most lessons one list returns (newest first). */
+export const LIST_LIMIT = 500;
+
 /** A lesson with its latest outcome (ADR-M109 §2.4: none means `open`). */
 export interface LessonRow extends IntentLesson {
   readonly outcome: IntentLessonOutcomeRow | null;
@@ -61,6 +64,53 @@ export class LessonRepository extends TenantRepository {
         .execute(),
     );
     return this.withOutcomes(lessons);
+  }
+
+  /** One lesson of this tenant with its latest outcome, or undefined. */
+  async get(id: string): Promise<LessonRow | undefined> {
+    const lesson = await this.run(
+      this.db
+        .selectFrom('intent_lessons')
+        .selectAll()
+        .where('tenant_id', '=', this.tenantId)
+        .where('id', '=', id)
+        .executeTakeFirst(),
+    );
+    return lesson ? (await this.withOutcomes([lesson]))[0] : undefined;
+  }
+
+  /** The lessons of these projects, newest first, recorded on or after `since` if given. */
+  async listForProjects(projectIds: readonly string[], since?: Date): Promise<LessonRow[]> {
+    if (projectIds.length === 0) return [];
+    let query = this.db
+      .selectFrom('intent_lessons')
+      .selectAll()
+      .where('tenant_id', '=', this.tenantId)
+      .where('project_id', 'in', [...projectIds]);
+    if (since !== undefined) query = query.where('created_at', '>=', since);
+    const lessons = await this.run(
+      query.orderBy('created_at', 'desc').orderBy('id', 'desc').limit(LIST_LIMIT).execute(),
+    );
+    return this.withOutcomes(lessons);
+  }
+
+  /** The intents created from the lessons of an intent (`--from-lesson`), oldest first. */
+  async followUpsOf(intentId: string): Promise<string[]> {
+    const rows = await this.run(
+      this.db
+        .selectFrom('intent_lesson_outcomes as o')
+        .innerJoin('intent_lessons as l', (join) =>
+          join.onRef('l.id', '=', 'o.lesson_id').onRef('l.tenant_id', '=', 'o.tenant_id'),
+        )
+        .select('o.follow_up_intent_id')
+        .where('o.tenant_id', '=', this.tenantId)
+        .where('l.tenant_id', '=', this.tenantId)
+        .where('l.intent_id', '=', intentId)
+        .where('o.follow_up_intent_id', 'is not', null)
+        .orderBy('o.created_at')
+        .execute(),
+    );
+    return [...new Set(rows.map((r) => r.follow_up_intent_id!))];
   }
 
   private async withOutcomes(lessons: readonly IntentLesson[]): Promise<LessonRow[]> {

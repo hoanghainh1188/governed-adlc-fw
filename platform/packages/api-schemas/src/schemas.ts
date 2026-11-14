@@ -161,6 +161,20 @@ export const intentDetailSchema = intentSchema.extend({
         .object({ path: z.string().max(1024), commit_sha: code, url: webUrl.nullable() })
         .nullable(),
       evidence: z.object({ path: z.string().max(200), sealed: z.boolean() }),
+      /** X08b (ADR-M109 §2.5): the intent's lessons and the intents created from them. */
+      lessons: z
+        .array(
+          z.object({
+            id: code,
+            category: code,
+            target: code,
+            state: z.enum(['open', 'applied', 'dropped']),
+            comment_url: webUrl,
+          }),
+        )
+        .max(500)
+        .optional(),
+      follow_ups: z.array(code).max(500).optional(),
     })
     .optional(),
 });
@@ -461,6 +475,43 @@ export const memoryApproveSchema = z.object({
   version: memoryVersionSchema,
 });
 export type MemoryApproveView = z.infer<typeof memoryApproveSchema>;
+
+/** A lesson recorded at G8 (X08b PR 2, ADR-M109 §2.4): codes, IDs, times and links only. */
+export const lessonSchema = z.object({
+  id,
+  intent: code.nullable(),
+  project: code.nullable(),
+  category: code,
+  target: code,
+  source: code,
+  comment_url: webUrl,
+  comment_id: code,
+  recorded_by: id,
+  created_at: time,
+  state: z.enum(['open', 'applied', 'dropped']),
+  outcome: z
+    .object({
+      outcome: z.enum(['applied', 'dropped']),
+      link_url: webUrl.nullable(),
+      reason: code.nullable(),
+      follow_up_intent_id: id.nullable(),
+      decided_by: id,
+      created_at: time,
+    })
+    .nullable(),
+});
+export type LessonView = z.infer<typeof lessonSchema>;
+export const lessonListSchema = z.object({ items: z.array(lessonSchema).max(500) });
+export const lessonMetricsSchema = z.object({
+  recorded: z.number().int().min(0),
+  open: z.number().int().min(0),
+  applied: z.number().int().min(0),
+  dropped: z.number().int().min(0),
+  by_category: z.record(z.string().max(64), z.number().int().min(0)),
+  by_target: z.record(z.string().max(64), z.number().int().min(0)),
+  median_days_to_outcome: z.number().nullable(),
+});
+export type LessonMetricsView = z.infer<typeof lessonMetricsSchema>;
 export const memoryRevokeSchema = z.object({
   project: z.object({ id, slug: code }),
   version: memoryVersionSchema,

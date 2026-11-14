@@ -218,6 +218,9 @@ describeDb('X08a: finding past intents on PostgreSQL', () => {
       spec: null,
       plan: null,
       evidence: { path: `/v1/intents/${code('cancel')}/evidence`, sealed: true },
+      // X08b PR 2: no lesson on this intent yet.
+      lessons: [],
+      follow_ups: [],
     });
   });
 

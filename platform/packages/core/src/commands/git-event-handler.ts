@@ -9,9 +9,9 @@
 //   (QUESTIONS.md #45).
 // - No text from the Git host is stored: the receipt and the decision hold codes, IDs and the
 //   comment URL (`reason_ref`) only.
+import { lessonWindowOpen, mayRecordLessons } from '../lessons/service.js';
 import type { CheckCompletedEvent, CommentCreatedEvent, GitEvent } from '@sdlc/contracts';
 
-import { isTenantAdmin } from '../admin/actor.js';
 import { DbError, TenantGuardError } from '../db/errors.js';
 import type { Escalation, GitEventReceipt, Intent } from '../db/schema.js';
 import type { TenantScope } from '../db/tenant-scope.js';
@@ -423,10 +423,6 @@ async function handleKillCommand(
   }
 }
 
-/** Roles that may record a lesson, besides a tenant admin (ADR-M109 §2.3). */
-const LESSON_ROLES: readonly string[] = ['person_a', 'person_b'];
-const FINISHED: readonly string[] = ['done', 'rejected', 'cancelled', 'blocked'];
-const DAY_MS = 86_400_000;
 const COMMENT_ID = /^[0-9]{1,20}$/;
 
 /**
@@ -449,16 +445,13 @@ async function handleLessonCommand(
   const params = { command: 'lesson' };
   const now = deps.now();
   const { config } = await loadEffectiveConfig(tx.projectConfigs, project.id);
-  const windowMs = config.learning.lesson_window_days * DAY_MS;
   const linked = await tx.intents.findByGitNumber(project.id, {
     kind: event.isPullRequest ? 'pull_request' : 'issue',
     number: event.issueNumber,
   });
-  const open = (intent: Intent) =>
-    FINISHED.includes(intent.status)
-      ? intent.closed_at !== null && now.getTime() - intent.closed_at.getTime() <= windowMs
-      : intent.current_gate === 'G8';
-  const candidates = linked.filter(open);
+  const candidates = linked.filter((intent) =>
+    lessonWindowOpen(intent, config.learning.lesson_window_days, now),
+  );
   if (linked.length === 0) {
     return record('intent_not_linked', { reply: { code: 'intent_not_linked', params } });
   }
@@ -480,10 +473,7 @@ async function handleLessonCommand(
   };
   const intent = candidates[0];
   if (intent === undefined) return refuse(linked[0]!, 'window_closed');
-  const roles = (await tx.roleBindings.listForUser(actorId))
-    .filter((binding) => binding.project_id === project.id)
-    .map((binding) => binding.role);
-  if (!roles.some((role) => LESSON_ROLES.includes(role)) && !(await isTenantAdmin(tx, actorId))) {
+  if (!(await mayRecordLessons(tx, project.id, actorId))) {
     return refuse(intent, 'not_allowed');
   }
   if (!REASON_REF.test(event.url) || !COMMENT_ID.test(event.commentId)) {

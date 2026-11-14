@@ -663,6 +663,7 @@ describeDb('E01 PR 2: a request for changes at G7 starts a new run, on PostgreSQ
       const fake = fakeReader({
         comment: (id) => ({
           commentId: id,
+          issueNumber: null,
           author,
           body: `/request-changes G7 tests_insufficient add a test for ${MARKER}\nand the 8% rate`,
         }),
@@ -710,6 +711,7 @@ describeDb('E01 PR 2: a request for changes at G7 starts a new run, on PostgreSQ
       const fake = fakeReader({
         comment: (id) => ({
           commentId: id,
+          issueNumber: null,
           author,
           body: '/request-changes G7 tests_insufficient',
         }),
