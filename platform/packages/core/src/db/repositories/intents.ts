@@ -257,6 +257,29 @@ export class IntentRepository extends TenantRepository {
     );
   }
 
+  /**
+   * X08b (ADR-M109 §2.3, ADR-M27 1.x): every intent of a project linked to an issue or a pull
+   * request, open or finished, newest first, at most five. A `/lesson` comment may match a
+   * finished intent whose lesson window is open; gate commands keep `findOpenByGitNumber`.
+   */
+  findByGitNumber(
+    projectId: string,
+    link: { readonly kind: 'issue' | 'pull_request'; readonly number: number },
+  ): Promise<Intent[]> {
+    const column = link.kind === 'issue' ? 'issue_number' : 'pr_number';
+    return this.run(
+      this.db
+        .selectFrom('intents')
+        .selectAll()
+        .where('tenant_id', '=', this.tenantId)
+        .where('project_id', '=', projectId)
+        .where(column, '=', link.number)
+        .orderBy('created_at', 'desc')
+        .limit(5)
+        .execute(),
+    );
+  }
+
   /** Whether the project has an intent that is not finished (E05: an archive refuses it). */
   async hasOpenInProject(projectId: string): Promise<boolean> {
     if (!isUuid(projectId)) return false;

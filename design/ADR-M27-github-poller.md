@@ -82,6 +82,7 @@ These points were open:
 
 - **Link to an intent.** A comment on an issue matches `intents.issue_number`; a comment on a pull request matches `intents.pr_number`.
   - The match is limited to the polled project and to open intents (not `done`, `rejected` or `cancelled`).
+  - Version 0.4 (X08b, ADR-M109 §2.3): one command, `/lesson`, may also match a finished intent (`done`, `rejected`, `cancelled`, `blocked`) whose lesson window (`learning.lesson_window_days` after `closed_at`) is open, or the intent at G8. Gate and escalation commands keep matching open intents only.
   - 0 matches → reply `intent_not_linked`. More than 1 match → reply `intent_ambiguous` (QUESTIONS #68).
 - **Actor.**
   - An actor with `type: 'bot'` is ignored without a reply. This includes the platform's own replies, so replies never loop (QUESTIONS #45).
@@ -192,3 +193,4 @@ These points were open:
 | 0.1 | 2026-09-27 | Claude (task B06) | First version |
 | 0.2 | 2026-09-27 | Claude (task B06, review of PR #94) | §2.2: failed attempts counted per event outside the batch, `failed_internal` after `SDLC_WORKER_MAX_EVENT_ATTEMPTS`; §2.3: exact rule for a reason code alone; §2.7: live test scope, human-account check later; §3 updated |
 | 0.3 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
+| 0.4 | 2026-11-14 | Claude Code (task X08b PR 1), approved by Harry | §2.4: `/lesson` may match a finished intent inside its lesson window (ADR-M109 §2.3, QUESTIONS #708) |

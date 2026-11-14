@@ -737,6 +737,22 @@ export const AUDIT_ACTIONS = {
   'memory.branch_deleted': { entityType: 'intent', fields: { run_id: 'uuid', result: 'code' } },
   /** A person revoked a memory version (X13, ADR-M74 §2.7): runs never read that set again. */
   'memory.revoked': { entityType: 'project', fields: { version: 'version', reason: 'code' } },
+  /**
+   * X08b (ADR-M109 §2.4): a person recorded a lesson on an intent. Codes, the lesson's ID and the
+   * GitHub comment's numeric ID only; the words stay in the comment.
+   */
+  'lesson.recorded': {
+    entityType: 'intent',
+    fields: {
+      lesson_id: 'uuid',
+      category: 'code',
+      target: 'code',
+      comment_id: 'code',
+      source: 'code',
+    },
+  },
+  /** X08b: a `/lesson` was refused: `cause` `not_allowed` or `window_closed`. */
+  'lesson.refused': { entityType: 'intent', fields: { cause: 'code' } },
   /** A person put an intent's evidence on hold (E05, QUESTIONS #235): never purged until released. */
   'evidence.hold_set': { entityType: 'intent', fields: { hold_id: 'uuid' } },
   /** A person released the hold on an intent's evidence (E05, QUESTIONS #235). */

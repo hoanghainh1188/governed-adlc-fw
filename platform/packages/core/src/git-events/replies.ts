@@ -39,6 +39,13 @@ export const COMMENT_REPLY_KEYS: Readonly<Record<CommentReplyCode, MessageKey>> 
   escalation_decision_not_allowed: 'comment.reply.escalation_decision_not_allowed',
   kill_forbidden: 'comment.reply.kill_forbidden',
   kill_no_active_run: 'comment.reply.kill_no_active_run',
+  syntax_lesson_codes_missing: 'comment.reply.syntax_lesson_codes_missing',
+  syntax_lesson_category_invalid: 'comment.reply.syntax_lesson_category_invalid',
+  syntax_lesson_target_invalid: 'comment.reply.syntax_lesson_target_invalid',
+  syntax_lesson_text_missing: 'comment.reply.syntax_lesson_text_missing',
+  lesson_recorded: 'comment.reply.lesson_recorded',
+  lesson_not_allowed: 'comment.reply.lesson_not_allowed',
+  lesson_window_closed: 'comment.reply.lesson_window_closed',
   failed: 'comment.reply.failed',
 };
 
@@ -68,7 +75,8 @@ export function renderCommentReply(
       t('comment.reply.reason', { reason: refusalReasonMessage(params.reason, locale) }, locale),
     );
   }
-  if (code.startsWith('syntax_')) {
+  // X08b: a `/lesson` syntax reply names its own syntax and codes; no gate usage.
+  if (code.startsWith('syntax_') && !code.startsWith('syntax_lesson_')) {
     const usage = command ? 'comment.reply.usage_escalation' : 'comment.reply.usage';
     parts.push(t(usage, { codes: GATE_REASON_CODES.join(', ') }, locale));
   }

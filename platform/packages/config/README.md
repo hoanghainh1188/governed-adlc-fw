@@ -47,6 +47,7 @@ escalation:
 | `model_routing.allowed_provider_types` | `api` / `self_hosted` per data class |
 | `retention.evidence_retention_days` | Default 180; between 180 and 3650 (rule M31, E05). The worker purges evidence files this long after the intent ends (ADR-M51) |
 | `github.poll_interval_seconds` | Default 30 |
+| `learning.lesson_window_days` | X08b (ADR-M109 §2.3): lessons may be recorded with `/lesson` from G8 until this many days after the intent closed. Default 14; 1 to 90 |
 | `verification.required_checks` | C08: the CI checks G6 waits for, by name; default `[]` (every check). The pilot: `[ci-ok]` |
 | `verification.ci_timeout_minutes` | C08: CI still pending after this → paused at G6, technical escalation; default 60, at most 1440 |
 | `verification.ci_missing_minutes` | O06 (ADR-M106): no check at all on the pushed commit after this → paused at G6, technical escalation `ci_missing`; default 15, at most 1440; the shorter of this and `ci_timeout_minutes` applies |

@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Status | **Accepted** with the merge of X08a PR 1 (Harry, 2026-11-14); 0.1 proposed by X08 (the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710); 0.2 adds the details of QUESTIONS #721–#725 |
-| Date | 2026-11-13; 0.2 on 2026-11-14 |
+| Status | **Accepted** with the merge of X08a PR 1 (Harry, 2026-11-14); 0.1 proposed by X08 (the plan approved by Harry on 2026-11-13 with the recommended answers to QUESTIONS #706–#710); 0.2 adds the details of QUESTIONS #721–#725; 0.3 those of #726–#730 |
+| Date | 2026-11-13; 0.2 and 0.3 on 2026-11-14 |
 | Decided by | Harry (to accept); X08a and X08b build it |
 | Related | D-08 X08, X08a, X08b, X07, X12, X13; D-02 FR-11, FR-21, FR-40, FR-42, FR-44; D-05 §6.2, §6.12 (proposed), §10; codes table §4 row G8 ("Release / Learning"); handbook Ch.10 §10.7 (Close: retrospective), Ch.15 §15.6 (post-release note), Ch.16 §16.11 (monthly learning step), T14 §7 (lessons); ADR-M20 (codes and links only), ADR-M27 (comment commands), ADR-M48 (Evidence Pack), ADR-M49 (G8), ADR-M54 (dashboard), ADR-M74 (agent memory), ADR-M97 (client data deletion); QUESTIONS #361, #395, #706–#710 |
 
@@ -101,6 +101,14 @@ A **lesson** is something a person learned from one intent that should change ho
 
 **Never blocks a release.** G8 never waits for a lesson. The notice `released` (ADR-M49 §2.1 step 5) gains a line that invites Person A and Person B to record lessons, with the command and the window's end date. Lessons recorded after the seal are not part of the sealed Evidence Pack; a later pack version (for example after a hold) lists the lesson codes and links.
 
+**As built (0.3, X08b PR 1, QUESTIONS #726–#730).**
+
+- Three pull requests (QUESTIONS #726): PR 1 the tables, the setting `learning.lesson_window_days` and `/lesson`; PR 2 the API and the CLI; PR 3 the dashboard's read-only list (QUESTIONS #728: recording from the dashboard is a later task; the source code `web` is kept for it).
+- `/lesson` takes the two codes on its line (a code may be written with `-`, any case), and nothing else there (`syntax_unexpected_text`); its words must follow on later lines (`syntax_lesson_text_missing`). The syntax replies `syntax_lesson_codes_missing`, `syntax_lesson_category_invalid` and `syntax_lesson_target_invalid` list the codes; no reply quotes the comment.
+- The comment matches the intents of the issue or pull request in any state; the intent at G8, or finished with `closed_at` inside the window, is the one. None of them → `lesson_window_closed`; two → `intent_ambiguous`. A refusal for the role or the window is an audit event `lesson.refused` (cause `not_allowed` or `window_closed`) besides the reply. A bot is ignored and an unknown account gets `user_not_linked`, as for every command, with a receipt and no audit event.
+- A lesson is recorded with the reply `lesson_recorded`; the reply never repeats its words. One comment records one lesson (`UNIQUE (tenant_id, project_id, comment_id)`, and the receipt).
+- The notice `released` ends with the invitation and the number of days of the window.
+
 ### 2.4. Storage
 
 A new append-only table `intent_lessons` and an append-only table `intent_lesson_outcomes` (D-05 §6.12, proposed). Codes, IDs and links only, never text. The state of a lesson is its latest outcome; a lesson with no outcome is `open`.
@@ -172,4 +180,5 @@ The platform never changes `AGENTS.md`, memory, the configuration or the handboo
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-13 | Claude Code (task X08) | First version, proposed |
+| 0.3 | 2026-11-14 | Claude Code (task X08b PR 1), approved by Harry in the X08b plan | §2.3 "As built": three pull requests, the `/lesson` grammar and replies, the match of a finished intent, `lesson.refused` for the role and the window, the `released` invitation (QUESTIONS #726–#730) |
 | 0.2 | 2026-11-14 | Claude Code (task X08a PR 1), accepted by Harry with the merge | Accepted; §2.1 "As built": `has_lessons` and the lesson links move to X08b, `intents.closed_at`, `GitHostAdapter.webUrl`, the index measurement, `simple` without stemming, the tombstone on client data deletion (QUESTIONS #721–#725) |

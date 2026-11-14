@@ -331,6 +331,11 @@ export const projectConfigSchema = z.strictObject({
     max_file_chars: positiveInt.min(500).max(8000),
     max_total_chars: positiveInt.min(1000).max(24_000),
   }),
+  // X08b (ADR-M109 §2.3, QUESTIONS #708): lessons may be recorded from G8 until this many days
+  // after the intent closed.
+  learning: z.strictObject({
+    lesson_window_days: positiveInt.max(90),
+  }),
   // X04 (ADR-M69 §2.2–§2.7, ADR-M87): register tools. Rule M18 keeps the recertification age at 3
   // months or less, as for agents. `gateway.image`: the run's MCP gateway, by digest; null until a
   // gateway is set up (no register tool runs without one).

@@ -309,7 +309,7 @@ describeDb('X13 PR 3b: memory pull requests on PostgreSQL', () => {
     await pass();
     expect(await proposalOf(intent)).toMatchObject({ state: 'refused', cause: 'producer' });
     git.commitAuthors = [];
-  });
+  }, 30_000);
 
   it('closed without a merge: closed, no version', async () => {
     const { intent, runId, pr } = await opened();

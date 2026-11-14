@@ -376,6 +376,12 @@ memory:
   max_file_chars: 4000
   max_total_chars: 12000
 
+learning:
+  # Task X08b, ADR-M109 §2.3, QUESTIONS #708 (Harry, 2026-11-13): a person records a lesson with
+  # `/lesson <category> <target>` from the moment the intent enters G8 until this many days after
+  # it closed (the observation window of template T14 §7). 1 to 90.
+  lesson_window_days: 14
+
 tools:
   # Task X04, ADR-M69 §2.2: register tools (`tool:<key>`) are recertified like agents. Mandatory
   # rule M18: never more than 3 months. An overdue tool gives a warning; it does not block a run.

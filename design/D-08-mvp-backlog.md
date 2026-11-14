@@ -1915,14 +1915,14 @@ flowchart LR
 
 **Acceptance criteria**
 
-- [ ] AC1: The comment command `/lesson <category> <target>` with the words below the first line, and `adlc lesson add` / the API / the dashboard with a comment URL; the platform stores codes, IDs and the link only, in the append-only tables `intent_lessons` and `intent_lesson_outcomes` (D-05 §6.12)
+- [ ] AC1: The comment command `/lesson <category> <target>` with the words below the first line, and `adlc lesson add` / the API with a comment URL (checked: the intent's issue or pull request, and it exists, QUESTIONS #729); the platform stores codes, IDs and the link only, in the append-only tables `intent_lessons` and `intent_lesson_outcomes` (D-05 §6.12)
 - [ ] AC2: Person A, Person B of the project or a tenant admin; never a bot or an agent; from G8 until `learning.lesson_window_days` (default 14) after the intent closes; G8 never waits for a lesson; the `released` notice invites people to record one
-- [ ] AC3: Outcomes `applied` (with a link) and `dropped` (a code); `adlc intent create --from-lesson`; `adlc lesson issue` opens a handbook issue with codes and the link only
+- [ ] AC3: Outcomes `applied` (with a link) and `dropped` (a code); `adlc intent create --from-lesson`; `adlc lesson issue` prints a filled-in new-issue link for the handbook with codes and the link only (QUESTIONS #727)
 - [ ] AC4: The filter `has_lessons` of `GET /v1/intents` and `adlc intent list --has-lessons`, and `links.lessons` and `links.follow_ups` of the intent body (moved from X08a, QUESTIONS #721)
-- [ ] AC5: `adlc lessons list` and `adlc metrics lessons` for the monthly learning step; the dashboard list on a project; handbook Ch.19 and Ch.20 usage, a note for the handbook's authors (Ch.15, Ch.16, T14 stay theirs)
+- [ ] AC5: `adlc lessons list` and `adlc metrics lessons` for the monthly learning step; the dashboard's read-only list on a project (recording from the dashboard later, QUESTIONS #728); handbook Ch.19 and Ch.20 usage, a note for the handbook's authors (Ch.15, Ch.16, T14 stay theirs)
 - [ ] AC6: Tests as ADR-M109 §5 (X08b)
 
-> Note: Starts after X08a (ADR-M109 accepted, QUESTIONS #710); updates ADR-M27 §2.4 (one command may match a finished intent)
+> Note: Three pull requests (QUESTIONS #726): PR 1 the tables, the setting and `/lesson`; PR 2 the API and the CLI; PR 3 the dashboard. Starts after X08a (ADR-M109 accepted, QUESTIONS #710); updates ADR-M27 §2.4 (one command may match a finished intent)
 
 #### X10. An adapter for a second Git host
 
