@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Version | 1.10 |
-| Date | 2026-10-10 |
+| Version | 1.11 |
+| Date | 2026-11-15 |
 | Status | **Approved** (Harry, 2026-09-24) — version 1.0, aligned with the handbook (tag `design-v1.0`); 1.1 approved by Harry on 2026-09-27 in the C05 session 2 plan (local Ollama model on developer machines for the C05 proof only; QUESTIONS #78); 1.2 approved by Harry on 2026-10-03 in the C08 plan (§5 flow: the runner pushes after G5, the platform opens the pull request; QUESTIONS #52); 1.3 approved by Harry on 2026-10-06 (§4.2, §12: the trial M-E runs with the local Ollama model; the API-model run moves to before M-F; QUESTIONS #81); 1.4 approved by Harry on 2026-10-07 (§4.2: a read-only dashboard starts before MVP+1; QUESTIONS #255); 1.5 approved by Harry on 2026-10-08 (citations of an unpublished earlier draft removed before the repository goes public; meaning unchanged); 1.6 approved by Harry on 2026-10-08 (§4.2: the BMAD / Spec Kit spec tasks and WeKnora come before the trial M-E; QUESTIONS #285); 1.7 approved by Harry on 2026-10-09 (§5 flow: the order of the merge and G7 corrected; the rest is wording); 1.8 approved by Harry on 2026-10-09 (§13.3: the trial M-E is run by the community; QUESTIONS #340); 1.9 approved by Harry on 2026-10-10 (wording only: "MVP" retired, v0.1 baseline and Later; meaning unchanged; QUESTIONS #360); 1.10 approved by Harry on 2026-10-10 in the V11 plan (§4.2: the dashboard's actions in waves; ADR-M73; QUESTIONS #375–#380) |
 | Readers | Leadership (sections 1–4, 10–12), tech lead / developers (all), Claude Code (sections 5–9, 13) |
 | Related documents | D-01 (build vs buy), D-07 (models and tokens), handbook codes table and Chapters 2–6, 10–20 |
@@ -186,7 +186,7 @@ HOTL at a human gate means: the gate passes automatically when the policy condit
 
 [Proposal] Using comments on the Git host instead of a web UI means we do not build a UI, and users already know how to do it.
 
-**Receiving GitHub events (decided by Harry, 2026-09-24):** the internal server does not accept connections from the internet → v0.1 **polls** the GitHub API (default every 30 seconds, configurable). Webhooks are enabled later when public infrastructure exists. Both paths feed the same event handler (ADR-M11).
+**Receiving GitHub events (decided by Harry, 2026-09-24):** the internal server does not accept connections from the internet → v0.1 **polls** the GitHub API (default every 30 seconds, configurable). Webhooks are enabled later when public infrastructure exists. Both paths feed the same event handler (ADR-M11). Version 1.11 (ADR-M112): webhooks may be turned on, off by default, where GitHub can reach a separate webhook listener through the company's own edge; a delivery only wakes the poller for that repository, and polling stays as reconciliation with a longer interval (default 300 seconds).
 
 ### 6.4. Running the agent
 
@@ -410,3 +410,4 @@ v0.1 is done when **all** of the following are true:
 | 1.8 | 2026-10-09 | Claude (coordinator, task V01), approved by Harry | §13.3: the trial M-E is run by the community, with a trial guide and a report template; M-F adjusts from their reports (QUESTIONS #340) |
 | 1.9 | 2026-10-10 | Claude (coordinator), approved by Harry | Wording only: "MVP" retired; v0.1.0 is the "v0.1 baseline", unscheduled work is "Later"; meaning unchanged (QUESTIONS #360) |
 | 1.10 | 2026-10-10 | Claude (task V11), approved by Harry | §4.2: the dashboard's actions in three waves through the same API checks; wave 1 in the milestone UX (ADR-M73, `design/MVP1-UI-SCOPE.md` 1.2, QUESTIONS #375–#380) |
+| 1.11 | 2026-11-15 | Claude (task O08, PR 1), approved by Harry in the O08 plan (QUESTIONS #746–#750) | §6.3 "Receiving GitHub events": webhooks may be turned on where GitHub can reach a webhook listener; polling stays as reconciliation (ADR-M112) |
