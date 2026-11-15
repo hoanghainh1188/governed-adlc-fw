@@ -68,6 +68,8 @@ import { MeController } from './me/me.controller.js';
 import { MeTokensController } from './me/tokens.controller.js';
 import { MemoryController } from './memory/memory.controller.js';
 import { MemoryService } from './memory/memory.service.js';
+import { BreakGlassController } from './break-glass/break-glass.controller.js';
+import { BreakGlassService } from './break-glass/break-glass.service.js';
 import { LessonsController } from './lessons/lessons.controller.js';
 import { LessonsService } from './lessons/lessons.service.js';
 import { PlansController } from './plans/plans.controller.js';
@@ -95,6 +97,7 @@ import {
   PLANS,
   MEMORY,
   LESSONS,
+  BREAK_GLASS,
   RUNS,
   COST,
   METRICS,
@@ -148,7 +151,8 @@ export interface ApiDeps {
   /**
    * The Git host reads of `adlc lesson add` (X08b PR 2, ADR-M109 §2.3, QUESTIONS #729): the
    * comment's address and the comment itself, with a read token used once. Undefined: adding a
-   * lesson answers `git_host_unavailable`.
+   * lesson answers `git_host_unavailable`. Break-glass (H08, ADR-M111 §2.1) checks its reason and
+   * review comments with the same reads.
    */
   readonly lessonGitHost?: LessonGitHost['gitHost'];
   /**
@@ -243,6 +247,7 @@ class ApiModule {
         AiRecordsController,
         MemoryController,
         LessonsController,
+        BreakGlassController,
         ProjectEvalPlansController,
         EvalPlansController,
         EvaluationsController,
@@ -294,6 +299,13 @@ class ApiModule {
           provide: MEMORY,
           useValue: new MemoryService(
             deps.memoryGitHost ? { gitHost: deps.memoryGitHost } : undefined,
+          ),
+        },
+        {
+          provide: BREAK_GLASS,
+          useValue: new BreakGlassService(
+            deps.lessonGitHost ? { gitHost: deps.lessonGitHost } : undefined,
+            now,
           ),
         },
         {

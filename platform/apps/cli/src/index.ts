@@ -9,6 +9,7 @@ import { renderBanner } from './banner.js';
 import { runAdminApi } from './commands/admin-api.js';
 import { runAiRecord } from './commands/ai-record.js';
 import { runMemory } from './commands/memory.js';
+import { runBreakGlass } from './commands/break-glass.js';
 import { runLesson, runLessons } from './commands/lesson.js';
 import { runClient } from './commands/client.js';
 import { runEval } from './commands/eval.js';
@@ -53,6 +54,7 @@ const USER_COMMANDS: Readonly<
   memory: runMemory,
   lesson: runLesson,
   lessons: runLessons,
+  'break-glass': runBreakGlass,
   eval: runEval,
   spec: runSpec,
   plan: runPlan,

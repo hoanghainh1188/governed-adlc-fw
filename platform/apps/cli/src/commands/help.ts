@@ -28,6 +28,7 @@ export const COMMAND_HELP = {
   memory: { usage: 'cli.memory.usage', example: 'cli.help.example.memory' },
   lesson: { usage: 'cli.lesson.usage', example: 'cli.help.example.lesson' },
   lessons: { usage: 'cli.lesson.usage', example: 'cli.help.example.lessons' },
+  'break-glass': { usage: 'cli.break_glass.usage', example: 'cli.help.example.break_glass' },
   spec: { usage: 'cli.spec.usage', example: 'cli.help.example.spec' },
   plan: { usage: 'cli.plan.usage', example: 'cli.help.example.plan' },
   run: { usage: 'cli.run.usage', example: 'cli.help.example.run' },

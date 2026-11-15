@@ -476,6 +476,33 @@ export const memoryApproveSchema = z.object({
 });
 export type MemoryApproveView = z.infer<typeof memoryApproveSchema>;
 
+/** A break-glass grant (H08 PR 3a, ADR-M111 §2.1): codes, IDs, times and links only. */
+export const breakGlassSchema = z.object({
+  id,
+  intent: code.nullable(),
+  project: code.nullable(),
+  status: z.enum(['requested', 'active', 'refused', 'revoked', 'expired', 'lapsed']),
+  scopes: z.array(code).min(1).max(3),
+  duration_seconds: z.number().int().min(60).max(28_800),
+  budget_increase_usd: usd6.nullable(),
+  reason_url: webUrl,
+  operator_id: id,
+  approver_id: id.nullable(),
+  incident: code.nullable(),
+  created_at: time,
+  lapses_at: time,
+  decided_at: time.nullable(),
+  expires_at: time.nullable(),
+  ended_at: time.nullable(),
+  revoked_by: id.nullable(),
+  review_url: webUrl.nullable(),
+  reviewed_by: id.nullable(),
+  reviewed_at: time.nullable(),
+  review_overdue_at: time.nullable(),
+});
+export type BreakGlassView = z.infer<typeof breakGlassSchema>;
+export const breakGlassListSchema = z.object({ items: z.array(breakGlassSchema).max(500) });
+
 /** A lesson recorded at G8 (X08b PR 2, ADR-M109 §2.4): codes, IDs, times and links only. */
 export const lessonSchema = z.object({
   id,

@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2 builds §2.1, §2.4–§2.7, §2.11 and the core of §2.8 (migration 0061, D-05 1.76); PR 3–PR 4 build the rest |
+| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2 builds §2.1, §2.4–§2.7, §2.11 and the core of §2.8 (migration 0061, D-05 1.76); PR 3a builds §2.9; PR 3b and PR 4 build the rest |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); H08 builds it |
 | Related | D-08 H08 (AC1–AC5); D-02 FR-41, FR-44, NFR-03; handbook Ch.6 §6.7, §6.9, §6.11; codes table §2.1, §4, §5, §6.3; ADR-M28 (escalations); ADR-M34 (budgets); ADR-M41 (G7 producers); ADR-M42 (kill switch); ADR-M49 (G8); ADR-M54 (waiting reasons); ADR-M101 (operational alerts); ADR-M110 (row-level security); CLAUDE.md R028–R031, R044–R047; QUESTIONS #731, #741–#744 |
@@ -191,7 +191,8 @@ The schema keeps `max_hours` at 1–8, `request_ttl_minutes` at 5–240 and `rev
 |---|---|
 | PR 1 | This ADR; QUESTIONS #741–#744; number blocks (docs only) |
 | PR 2 | After ADR-M110's PR 2 is merged: migration (table, status trigger, RLS policies, `migrations.lock.json`), contracts (scopes, trigger, configuration and mandatory rules), core module `break-glass` (request, approve, refuse, revoke, expire, lapse, review, `activeGrant`), audit actions, messages, tests |
-| PR 3 | API routes, `adlc break-glass …`, `adlc ops break-glass list|revoke`, the worker loop, the G8 waiting reason, the three scope effects, handbook Ch.18–20, CHANGELOG |
+| PR 3a | API routes, `adlc break-glass …`, `adlc ops break-glass list|revoke`, handbook Ch.18 §18.8e, CHANGELOG |
+| PR 3b | The worker loop and its notice, the G8 waiting reason, the three scope effects, handbook Ch.18 §18.8e update |
 | PR 4 | Doctor check and alert, deploy README, `platform/DEVELOPMENT.md`, `design/RULES.md` rows and the `CLAUDE.md` rule line |
 
 ## Version history
@@ -199,4 +200,5 @@ The schema keeps `max_hours` at 1–8, `request_ttl_minutes` at 5–240 and `rev
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-15 | Claude (task H08, PR 1) | First version, from the plan Harry approved on 2026-11-15 (QUESTIONS #741–#744) |
+| 0.3 | 2026-11-15 | Claude (task H08, PR 3a) | §2.9 built: the API routes, `adlc break-glass`, `adlc ops break-glass list|revoke`, refusal code `break_glass_refused`; PR 3 split into 3a (interfaces) and 3b (worker, scope effects, G8) |
 | 0.2 | 2026-11-15 | Claude (task H08, PR 2) | As built in the core: migration 0061 (`created_at` is the request time, trigger `SDA32`); the producers are those known before G7; the schema bounds and rule M37 instead of separate rules for the hours; refusal codes `break_glass.error.*` |
