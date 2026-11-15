@@ -244,6 +244,12 @@ retention:
 github:
   # D-02 §6.3; ADR-M11.
   poll_interval_seconds: 30
+  # O08, ADR-M112 §2.6: off by default. With `enabled: true`, a webhook delivery starts a poll at
+  # once and the poller only reconciles, every `reconcile_interval_seconds` (never below
+  # `poll_interval_seconds`). Turn it on only after GitHub's deliveries arrive (ADR-M112 §2.2).
+  webhooks:
+    enabled: false
+    reconcile_interval_seconds: 300
 
 verification:
   # C08 PR 2, design/QUESTIONS.md #159, ADR-M38 §2.7. The CI checks G6 waits for, by name: empty =

@@ -264,7 +264,23 @@ export const projectConfigSchema = z.strictObject({
     }),
   }),
   retention: z.strictObject({ evidence_retention_days: positiveInt }),
-  github: z.strictObject({ poll_interval_seconds: positiveInt }),
+  github: z
+    .strictObject({
+      poll_interval_seconds: positiveInt,
+      // O08 (ADR-M112 §2.6): with webhooks on, the poller only reconciles, at a longer interval.
+      webhooks: z.strictObject({
+        enabled: z.boolean(),
+        reconcile_interval_seconds: positiveInt.max(24 * 60 * 60),
+      }),
+    })
+    .superRefine((github, ctx) => {
+      if (github.webhooks.reconcile_interval_seconds < github.poll_interval_seconds) {
+        addIssue(ctx, 'config.schema.reconcile_interval_too_short', {
+          reconcile: String(github.webhooks.reconcile_interval_seconds),
+          poll: String(github.poll_interval_seconds),
+        });
+      }
+    }),
   // C08 PR 2 (QUESTIONS #159, ADR-M38 §2.7): what G6 reads from CI.
   verification: z.strictObject({
     required_checks: uniqueList(checkName).max(50),

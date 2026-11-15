@@ -10,19 +10,46 @@
 //   cursor compare-and-set in `pollRepository` rolls a second poll back.
 // - All state (cursor, receipts) is in PostgreSQL: after a restart, every group is polled once
 //   right away and continues from its stored cursors.
-import { GitHostError } from '@sdlc/contracts';
-import { withLogContext, type PollableProject, type PollableRepository } from '@sdlc/core';
+// - O08 (ADR-M112 §2.6): a webhook hint makes the groups of its repository due at once, without
+//   waiting for the next tick. A hint never polls earlier than GitHub's rate-limit reset, and a
+//   hint for a group being polled gives one more poll after it, however many hints came.
+import { GitHostError, type ProjectConfig } from '@sdlc/contracts';
+import {
+  repositoryKey,
+  withLogContext,
+  type PollableProject,
+  type PollableRepository,
+} from '@sdlc/core';
 
 import type { WorkerLogger } from './logger.js';
 
 /** After configurations that cannot be read, the group is tried again this much later. */
 export const INVALID_CONFIG_RETRY_MS = 60_000;
 
+/**
+ * O08 (ADR-M112 §2.6): after a failed poll without a rate-limit reset time, a hint waits this
+ * long, so a stream of deliveries never repeats a failing poll at once.
+ */
+export const HINT_FAILURE_BACKOFF_MS = 30_000;
+
+/** How a poll was started: by the schedule, or by a webhook hint (O08). */
+export type PollReason = 'scheduled' | 'hinted';
+
+/**
+ * The project's interval in seconds (ADR-M27 §2.1, ADR-M112 §2.6): `poll_interval_seconds`, or
+ * `webhooks.reconcile_interval_seconds` when webhooks are on.
+ */
+export function pollIntervalSeconds(github: ProjectConfig['github']): number {
+  return github.webhooks.enabled
+    ? github.webhooks.reconcile_interval_seconds
+    : github.poll_interval_seconds;
+}
+
 export interface PollerLoopDeps {
   listProjects(): Promise<readonly PollableProject[]>;
-  /** The project's `github.poll_interval_seconds`; throws when the configuration is invalid. */
+  /** The project's interval (`pollIntervalSeconds`); throws when the configuration is invalid. */
   intervalSeconds(project: PollableProject): Promise<number>;
-  poll(group: PollableRepository): Promise<unknown>;
+  poll(group: PollableRepository, reason: PollReason): Promise<unknown>;
   /** Milliseconds since the epoch. */
   now(): number;
   readonly logger: WorkerLogger;
@@ -46,8 +73,18 @@ export class PollerLoop {
   readonly #deps: PollerLoopDeps;
   readonly #nextDue = new Map<string, number>();
   readonly #running = new Map<string, Promise<void>>();
+  /** O08: GitHub's rate-limit reset per group; a hint never polls before it. */
+  readonly #notBefore = new Map<string, number>();
+  /** O08: repository keys hinted since the last tick, and groups to poll again after their poll. */
+  readonly #hinted = new Set<string>();
+  readonly #again = new Set<string>();
+  /** O08: groups whose next poll was started by a hint. */
+  readonly #hintedGroups = new Set<string>();
+  #allHinted = false;
   #timer: NodeJS.Timeout | undefined;
   #ticking: Promise<void> | undefined;
+  #loop: (() => void) | undefined;
+  #kickPending = false;
   #stopped = false;
 
   constructor(deps: PollerLoopDeps) {
@@ -61,6 +98,7 @@ export class PollerLoop {
     for (const known of [...this.#nextDue.keys()]) {
       if (!listed.has(known)) this.#nextDue.delete(known);
     }
+    this.#applyHints(groups);
     // Longest-waiting first, so a group late in the list is never starved when more groups are
     // due than `maxConcurrentPolls`.
     const now = this.#deps.now();
@@ -76,6 +114,21 @@ export class PollerLoop {
     this.#deps.heartbeat?.();
   }
 
+  /**
+   * O08 (ADR-M112 §2.6): a webhook hint for `repository` (`owner/name`). Its groups are polled at
+   * once; a hint for a repository that no project polls is dropped at the next tick.
+   */
+  hint(repository: string): void {
+    this.#hinted.add(repositoryKey(repository));
+    this.#kick();
+  }
+
+  /** O08: every group is due at once (after the hint connection came back: hints may be lost). */
+  hintAll(): void {
+    this.#allHinted = true;
+    this.#kick();
+  }
+
   /** Waits for the polls in progress (tests, shutdown). */
   async idle(): Promise<void> {
     await Promise.all(this.#running.values());
@@ -84,15 +137,47 @@ export class PollerLoop {
   start(tickMs: number): void {
     const loop = (): void => {
       if (this.#stopped) return;
+      this.#kickPending = false;
       this.#ticking = this.tick()
         .catch((error: unknown) => {
           this.#deps.logger.log('error', 'worker.tick_failed', { error: errorCode(error) });
         })
         .finally(() => {
-          if (!this.#stopped) this.#timer = setTimeout(loop, tickMs);
+          this.#ticking = undefined;
+          if (!this.#stopped) this.#timer = setTimeout(loop, this.#kickPending ? 0 : tickMs);
         });
     };
+    this.#loop = loop;
     loop();
+  }
+
+  /** Runs the next tick now: at once when no tick runs, or right after the one that runs. */
+  #kick(): void {
+    if (this.#stopped || !this.#loop) return;
+    if (this.#ticking) {
+      this.#kickPending = true;
+      return;
+    }
+    clearTimeout(this.#timer);
+    this.#loop();
+  }
+
+  /** Makes the hinted groups due now (never before their rate-limit reset). */
+  #applyHints(groups: readonly Group[]): void {
+    const all = this.#allHinted;
+    this.#allHinted = false;
+    if (!all && this.#hinted.size === 0) return;
+    for (const group of groups) {
+      if (!all && !this.#hinted.has(repositoryKey(group.repoFullName))) continue;
+      const id = key(group);
+      if (this.#running.has(id)) {
+        this.#again.add(id);
+        continue;
+      }
+      this.#nextDue.set(id, this.#notBefore.get(id) ?? 0);
+      this.#hintedGroups.add(id);
+    }
+    this.#hinted.clear();
   }
 
   async stop(): Promise<void> {
@@ -130,6 +215,8 @@ export class PollerLoop {
     const intervalMs = await this.#intervalMs(group);
     if (intervalMs === undefined) {
       this.#nextDue.set(id, this.#deps.now() + INVALID_CONFIG_RETRY_MS);
+      this.#hintedGroups.delete(id);
+      this.#again.delete(id);
       return;
     }
     const target: PollableRepository = {
@@ -137,19 +224,41 @@ export class PollerLoop {
       repoFullName: group.repoFullName,
       projectIds: group.projectIds,
     };
+    const reason: PollReason = this.#hintedGroups.delete(id) ? 'hinted' : 'scheduled';
     try {
       // The GitHub adapter's and OpenBao's log lines of this poll carry the tenant (A08).
-      await withLogContext({ tenantId: group.tenantId }, () => this.#deps.poll(target));
+      await withLogContext({ tenantId: group.tenantId }, () => this.#deps.poll(target, reason));
       this.#nextDue.set(id, this.#deps.now() + intervalMs);
+      this.#notBefore.delete(id);
     } catch (error) {
       let due = this.#deps.now() + intervalMs;
       if (error instanceof GitHostError && error.code === 'rate_limited') {
         const retryAt = Date.parse(String(error.params.retry_at ?? ''));
-        if (Number.isFinite(retryAt)) due = Math.max(due, retryAt);
+        if (Number.isFinite(retryAt)) {
+          due = Math.max(due, retryAt);
+          this.#notBefore.set(id, retryAt);
+        }
+      }
+      if (!this.#notBefore.has(id) || (this.#notBefore.get(id) ?? 0) < this.#deps.now()) {
+        this.#notBefore.set(id, this.#deps.now() + HINT_FAILURE_BACKOFF_MS);
       }
       this.#nextDue.set(id, due);
       this.#deps.logger.log('error', 'worker.poll_failed', { ...fields, error: errorCode(error) });
+    } finally {
+      this.#pollAgainIfHinted(id);
     }
+  }
+
+  /** A hint came while the group was polled: one more poll, as soon as the limits allow. */
+  #pollAgainIfHinted(id: string): void {
+    if (!this.#again.delete(id)) return;
+    this.#nextDue.set(id, this.#notBefore.get(id) ?? 0);
+    this.#hintedGroups.add(id);
+    // A macrotask: it runs after `#running` drops this group (the caller's `finally`), so the
+    // tick can start it.
+    setImmediate(() => {
+      this.#kick();
+    });
   }
 }
 

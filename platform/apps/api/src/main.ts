@@ -19,6 +19,7 @@ import { connectDatabase } from './database.js';
 import { openEvidenceStore } from './evidence/store.js';
 import { createApiLogger, NestJsonLogger } from './observability/logging.js';
 import { loadSettings, SettingsError } from './settings.js';
+import { OpenBaoWebhookVerifier, WebhookSecretMissing } from './webhooks/verifier.js';
 
 const log = createApiLogger();
 
@@ -74,6 +75,29 @@ async function main(): Promise<void> {
   if (settings.webSignIn && !webSignIn) {
     log.log('warn', 'api.web_signin_off', { message: t('api.start.web_signin_dev_mode') });
   }
+  // GitHub webhooks (O08, ADR-M112 §2.7): the secret must be readable at start.
+  let githubWebhooks: Parameters<typeof createApp>[0]['githubWebhooks'];
+  if (settings.githubWebhooks && secrets) {
+    const verifier = new OpenBaoWebhookVerifier({
+      secrets,
+      secretPath: settings.githubWebhooks.secretPath,
+      apiUrl: settings.githubApiUrl,
+      log,
+    });
+    try {
+      await verifier.load();
+    } catch (error) {
+      if (error instanceof WebhookSecretMissing) {
+        throw new SettingsError(
+          'api.settings.webhook_secret_missing',
+          settings.githubWebhooks.secretPath,
+        );
+      }
+      throw error;
+    }
+    githubWebhooks = { settings: settings.githubWebhooks, verifier };
+    log.log('info', 'api.webhooks_on', { message: t('api.start.webhooks_on') });
+  }
   const app = await createApp({
     db,
     settings,
@@ -90,6 +114,7 @@ async function main(): Promise<void> {
       : {}),
     ...(evidence ? { evidence } : {}),
     ...(dashboard ? { dashboard } : {}),
+    ...(githubWebhooks ? { githubWebhooks } : {}),
     ...(webSignIn ? { webSignIn } : {}),
     ...(temporal ? { intentSignals: new TemporalIntentSignals(temporal.client) } : {}),
   });

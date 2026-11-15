@@ -212,7 +212,14 @@ export interface ProjectConfig {
    * 3650 (mandatory rule M31, task E05, ADR-M51, QUESTIONS #236).
    */
   readonly retention: { readonly evidence_retention_days: number };
-  readonly github: { readonly poll_interval_seconds: number };
+  readonly github: {
+    readonly poll_interval_seconds: number;
+    /**
+     * O08 (ADR-M112 §2.6): with `enabled`, a webhook delivery starts a poll at once and the poller
+     * reconciles every `reconcile_interval_seconds` (never below `poll_interval_seconds`).
+     */
+    readonly webhooks: { readonly enabled: boolean; readonly reconcile_interval_seconds: number };
+  };
   /** What G6 reads from CI (task C08 PR 2, QUESTIONS #159, ADR-M38 §2.7). */
   readonly verification: {
     /** Check names G6 waits for; empty: every check on the pushed commit. */

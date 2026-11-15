@@ -50,6 +50,8 @@ describe('default configuration (AC1)', () => {
     });
     expect(config.model_routing.allowed_provider_types.client_restricted).toEqual(['self_hosted']);
     expect(config.github.poll_interval_seconds).toBe(30);
+    // O08 (ADR-M112 §2.6): webhooks off by default, reconciliation every 5 minutes when on.
+    expect(config.github.webhooks).toEqual({ enabled: false, reconcile_interval_seconds: 300 });
     expect(config.escalation.calendar.holidays).toEqual([]);
   });
 
@@ -221,6 +223,12 @@ describe('schema errors (AC1, messages from the catalog: AC2)', () => {
       "escalation:\n  calendar:\n    working_hours: { start: '9am', end: '18:00' }\n",
       'config.schema.invalid_time',
       'escalation.calendar.working_hours.start',
+    ],
+    [
+      'O08: reconciliation interval below the poll interval',
+      'github:\n  poll_interval_seconds: 60\n  webhooks: { enabled: true, reconcile_interval_seconds: 30 }\n',
+      'config.schema.reconcile_interval_too_short',
+      'github',
     ],
     [
       'working hours reversed',

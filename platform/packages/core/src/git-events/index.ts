@@ -18,3 +18,12 @@ export {
   type NoticeDeps,
   type NoticeLogEvent,
 } from './escalation-notices.js';
+export {
+  encodeGitHint,
+  GIT_HINT_CHANNEL,
+  GIT_HINT_HOSTS,
+  parseGitHint,
+  repositoryKey,
+  type GitHint,
+  type GitHintHost,
+} from './hints.js';

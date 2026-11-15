@@ -84,6 +84,7 @@ import { registerDashboard, type DashboardFiles, type RouteHost } from './dashbo
 import { LogContextInterceptor } from './observability/log-context.interceptor.js';
 import { createApiLogger } from './observability/logging.js';
 import type { ApiSettings, WebSignInSettings } from './settings.js';
+import { registerGitHubWebhooks, type GitHubWebhookDeps } from './webhooks/github-webhooks.js';
 import {
   AI_RECORDS,
   CLOCK,
@@ -167,6 +168,12 @@ export interface ApiDeps {
    * (`SDLC_API_DASHBOARD_DIR=off`): no dashboard routes.
    */
   readonly dashboard?: DashboardFiles;
+  /**
+   * GitHub webhooks (O08, ADR-M112 §2.4): `POST /v1/webhooks/github`. Undefined
+   * (`SDLC_API_GITHUB_WEBHOOKS=off`): no webhook route.
+   */
+  readonly githubWebhooks?: Omit<GitHubWebhookDeps, 'log' | 'notify'> &
+    Partial<Pick<GitHubWebhookDeps, 'notify'>>;
   /**
    * Dashboard sign-in with GitHub (U05, ADR-M73 §2.2): the settings and the GitHub App's OAuth
    * client. Undefined (`SDLC_API_WEB_SIGNIN=off`): no sign-in, session cookies are ignored.
@@ -380,6 +387,13 @@ export async function createApp(deps: ApiDeps): Promise<NestFastifyApplication> 
   app.enableShutdownHooks();
   if (deps.dashboard) {
     registerDashboard(app.getHttpAdapter().getInstance() as unknown as RouteHost, deps.dashboard);
+  }
+  if (deps.githubWebhooks) {
+    registerGitHubWebhooks(app, {
+      notify: (hint) => deps.db.notifyGitHint(hint),
+      ...deps.githubWebhooks,
+      log: deps.log ?? createApiLogger(),
+    });
   }
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
