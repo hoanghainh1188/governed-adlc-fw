@@ -71,6 +71,9 @@ const REFUSED: [string, string][] = [
   ['pnpm openbao:bootstrap rotate-credentials', 'R035'],
   ['pnpm run openbao:bootstrap init', 'R035'],
   ['platform/deploy/openbao/bootstrap.sh init', 'R035'],
+  // O08 (ADR-M112 §2.8): shows the webhook secret once.
+  ['pnpm openbao:bootstrap github-webhook-secret', 'R035'],
+  ['platform/deploy/openbao/bootstrap.sh github-webhook-secret', 'R035'],
   ['pnpm sdlc ops bootstrap --tenant t1', 'R035'],
   ['pnpm sdlc ops token issue', 'R035'],
   // ADR-M100 §2.5: the new name, the bare binaries and `pnpm run` too

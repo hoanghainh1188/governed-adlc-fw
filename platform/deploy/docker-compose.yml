@@ -871,6 +871,8 @@ services:
       # Team access (V09, ADR-M67 §2.5): the proxy's fixed address on `access`; only its
       # X-Forwarded-For counts. Empty (the default): no forwarded header is trusted.
       SDLC_API_TRUSTED_PROXY: ${SDLC_API_TRUSTED_PROXY:-}
+      # GitHub webhooks (O08, ADR-M112 §2.7): off by default; on needs kv/api/github-webhook.
+      SDLC_API_GITHUB_WEBHOOKS: ${SDLC_API_GITHUB_WEBHOOKS:-off}
       # E02 (ADR-M48): Evidence Packs in SeaweedFS with the api's identity from OpenBao
       # (kv/api/evidence, `openbao:bootstrap api-evidence-credentials`): reads proposals and diffs
       # to re-check their hashes, reads and writes packs/ only.
@@ -1200,6 +1202,10 @@ services:
       SDLC_ACCESS_SIGNIN_RATE_PER_MINUTE: ${SDLC_ACCESS_SIGNIN_RATE_PER_MINUTE:-30}
       SDLC_ACCESS_SIGNIN_BURST: ${SDLC_ACCESS_SIGNIN_BURST:-10}
       SDLC_ACCESS_CONN_PER_ADDR: ${SDLC_ACCESS_CONN_PER_ADDR:-20}
+      # GitHub webhooks (O08, ADR-M112 §2.1): the edge's address; unset admits no peer.
+      SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: ${SDLC_ACCESS_WEBHOOK_ALLOW_CIDR:-127.0.0.1/32}
+      SDLC_ACCESS_WEBHOOK_RATE_PER_SECOND: ${SDLC_ACCESS_WEBHOOK_RATE_PER_SECOND:-20}
+      SDLC_ACCESS_WEBHOOK_RATE_BURST: ${SDLC_ACCESS_WEBHOOK_RATE_BURST:-100}
     volumes:
       - ./access/nginx.conf.template:/etc/nginx/templates/sdlc-access.conf.template:ro
       - access-tls:/etc/nginx/tls:ro
@@ -1213,6 +1219,8 @@ services:
     security_opt: [no-new-privileges:true]
     ports:
       - ${SDLC_ACCESS_BIND_ADDR:-127.0.0.1}:${SDLC_ACCESS_HOST_PORT:-8443}:8443
+      # GitHub webhooks (O08, ADR-M112 §2.1): their own port, 127.0.0.1 unless set.
+      - ${SDLC_ACCESS_WEBHOOK_BIND_ADDR:-127.0.0.1}:${SDLC_ACCESS_WEBHOOK_HOST_PORT:-8444}:8444
     healthcheck:
       <<: *healthcheck-defaults
       # nginx's own status page on 127.0.0.1:8081 inside the container; never published.

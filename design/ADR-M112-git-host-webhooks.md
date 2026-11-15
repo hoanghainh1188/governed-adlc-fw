@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #746–#750); PR 1 is this ADR; PR 2 and PR 3 build it. Version 0.2 (PR 2): repeated delivery IDs and the last delivery time in the api's memory, not Valkey (QUESTIONS #751); §2.4b records what PR 2 built |
+| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #746–#750); PR 1 is this ADR; PR 2 and PR 3 build it. Version 0.2 (PR 2): repeated delivery IDs and the last delivery time in the api's memory, not Valkey (QUESTIONS #751); §2.4b records what PR 2 built. Version 0.3 (PR 3): one allow-list value, the doctor check reads the api's log events, §2.4c records what PR 3 built |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); O08 builds it |
 | Related | D-08 O08 (AC1–AC5); D-02 FR-21 and the "Receiving GitHub events" note, NFR-01, NFR-05; D-03 §9, §12 (ADR-M11); ADR-M23 §2.5 (the adapter's webhook check, B05 AC2); ADR-M26 §2.7 (the api's limits, `trustProxy`); ADR-M27 (the poller); ADR-M67 (the access proxy); ADR-M80 (the threat model); ADR-M101 (operational alerts); ADR-M106 (several projects on one repository); ADR-M110 (row-level security); CLAUDE.md R031, R034, R035, R037, R082, R083; QUESTIONS #732, #746–#751 |
@@ -34,11 +34,18 @@ What exists today:
   - its own bind address `SDLC_ACCESS_WEBHOOK_BIND_ADDR` and port `SDLC_ACCESS_WEBHOOK_HOST_PORT` (default 8444). The bind address has no default; without it there is no listener, and the profile works as before;
   - one route: `POST = /v1/webhooks/github`. Any other path answers `404`; any other method on that path answers `405`;
   - TLS with the access profile's certificate, the same TLS rules as ADR-M67 §2.2; plain HTTP is refused, never redirected;
-  - an allow-list of peer addresses `SDLC_ACCESS_WEBHOOK_ALLOW_CIDRS`, required when the listener is on (normally the address of the company's edge proxy or tunnel). `0.0.0.0/0` is accepted, and `pnpm doctor` warns about it;
+  - an allow-list of peer addresses `SDLC_ACCESS_WEBHOOK_ALLOW_CIDR` (version 0.3: one IPv4 address or network, the edge's), required when the listener is on. `0.0.0.0/0` is accepted, and `pnpm doctor` warns about it;
   - its own body limit (1 MiB), equal to the api route's limit (§2.4), and its own rate limit (§2.4). The LAN listener keeps its 64 KiB limit (R082).
 - **Reaching the listener from the internet is the operator's infrastructure.** GitHub needs a public HTTPS URL with a publicly trusted certificate. The company provides it with its own edge: a reverse proxy in a DMZ (a network zone between the internet and the internal network), or a tunnel the company already runs (an outbound connection from inside the company to a public endpoint). The edge forwards to the listener over TLS. The deploy README describes the shape and the checks; it names no product.
 - **The platform builds no relay and depends on no hosted relay.** A relay of our own would be a new internet-facing service to build, harden and operate outside the Compose stack. A hosted relay (for example smee.io or Hookdeck) breaks NFR-01. A company that wants a relay uses its own tunnel; to the platform it is the edge.
-- **Never on the LAN port.** The edge must never reach the API or the dashboard. A static test checks that the webhook listener serves only its one route and that the LAN listener has no webhook route.
+- **Never on the LAN port.** The edge must never reach the API or the dashboard. A static test checks that the webhook listener serves only its one route and that the LAN listener answers `404` for `/v1/webhooks/`.
+
+### 2.4c. As built (PR 3)
+
+- The listener is a second `server` block of `access/nginx.conf.template` on container port 8444, published as `${SDLC_ACCESS_WEBHOOK_BIND_ADDR:-127.0.0.1}:${SDLC_ACCESS_WEBHOOK_HOST_PORT:-8444}:8444`. Unset, it is published on `127.0.0.1` only and its allow-list is `127.0.0.1/32`, so no peer through Docker's port mapping passes: the same fallback as the LAN port. It accepts any `Host` (the edge may keep GitHub's), allows `POST` only (`405`), `403` for a peer outside the allow-list, `404` for any other path; read and send timeouts 15 s to the api; the global header and body timeouts (10 s) limit slow deliveries.
+- `access/check-settings.sh` (run by `up.sh`): with `SDLC_ACCESS_WEBHOOK_BIND_ADDR` set, an IPv4 address, a port other than the LAN port, and an allow-list value that is one address or network (it goes into the nginx configuration, so nothing else passes); warnings for `0.0.0.0/0`, for a listener with `SDLC_API_GITHUB_WEBHOOKS=off`, and for `on` without a listener.
+- The secret command is `pnpm openbao:bootstrap github-webhook-secret` (runbook T11 §5p): it refuses to run without a terminal, asks for an admin token, creates 32 random bytes as hex, stores them through stdin, shows them once, and clears the screen and its scroll-back after Enter. The api's AppRole policy (`kv/data/api/*`) already allows the path; no policy changes.
+- The doctor check `github.webhook` (§2.9) and `access.ports` (the webhook port on its own address).
 - **The internal server today:** webhooks stay off, and polling stays every 30 seconds. Nothing changes until an operator turns webhooks on (§2.2).
 
 ### 2.2. When webhooks may be turned on
@@ -124,7 +131,7 @@ The order matters: a project switches to the longer reconciliation interval only
 | `SDLC_API_GITHUB_WEBHOOK_SECRET_PATH` | api environment | `api/github-webhook` | Deployment |
 | `SDLC_API_WEBHOOK_DEDUPE_SECONDS` | api environment | `259200` (72 hours) | Technical |
 | `SDLC_API_WEBHOOK_RATE_PER_MINUTE` | api environment | `1200` | Technical |
-| `SDLC_ACCESS_WEBHOOK_BIND_ADDR`, `…_HOST_PORT`, `…_ALLOW_CIDRS`, `…_RATE_PER_SECOND`, `…_RATE_BURST` | `access` profile | none, `8444`, none, `20`, `100` | Deployment |
+| `SDLC_ACCESS_WEBHOOK_BIND_ADDR`, `…_HOST_PORT`, `…_ALLOW_CIDR`, `…_RATE_PER_SECOND`, `…_RATE_BURST` | `access` profile | none (`127.0.0.1`), `8444`, none (`127.0.0.1/32`), `20`, `100` | Deployment |
 | `github.webhooks.enabled` | project configuration (ADR-M18) | `false` | Project |
 | `github.webhooks.reconcile_interval_seconds` | project configuration | `300` | Project |
 
@@ -143,8 +150,9 @@ The order matters: a project switches to the longer reconciliation interval only
 
 - `pnpm doctor` gets a check `github.webhook`, active only when `SDLC_API_GITHUB_WEBHOOKS=on`:
   - it warns when the access profile's webhook settings are missing or when the allow-list is `0.0.0.0/0`;
-  - it warns when no verified delivery (a `ping` included) arrived for `SDLC_DOCTOR_WEBHOOK_SILENCE_HOURS` (default 24). The api keeps the time of the last verified delivery in its memory (version 0.2, QUESTIONS #751; a time only, lost at a restart). A quiet repository can cause this warning; the message says so.
-- PR 3 chooses how doctor reads that time. `pnpm alerts` (ADR-M101) sends the result like any other doctor check.
+  - it warns when no verified delivery (a `ping` included) is in the api's logs of the last 24 hours (version 0.3: doctor reads the event codes `webhook.accepted`, `webhook.duplicate` and `webhook.ignored` from the logs it already reads, `logs.ts`; no endpoint and no setting; the api's in-memory time of version 0.2 is not read). A quiet repository, or an api started again since, can cause this warning; the message says so.
+  - `webhook.secret_refresh_failed` in the logs gives the usual credentials warning, with the command `github-webhook-secret`.
+- `pnpm alerts` (ADR-M101) sends the result like any other doctor check.
 
 ### 2.10. What is never stored, logged or passed on
 
@@ -187,7 +195,7 @@ The order matters: a project switches to the longer reconciliation interval only
 |---|---|
 | PR 1 | This ADR; D-02 FR-21 note (1.11); D-03 §5.1 api row, §9 GitHub events row, §12 ADR-M11 row (1.59); ADR-M27 §2.1 (0.5); QUESTIONS #746–#750; number blocks (docs only) |
 | PR 2 | The hint (`@sdlc/core` `git-events/hints.ts`, `PlatformDatabase.notifyGitHint` and `listenGitHints`), configuration keys and their check, the api route (raw body, limits, signature, repeated IDs in memory, `NOTIFY`), the worker's listener, the immediate poll, the flag and the reconciliation interval, the log line; messages; tests of §2.12 (`pnpm test` and `pnpm test:db`, no new script); `design/RULES.md` rows R158, R159 and the rule lines in `platform/apps/api/CLAUDE.md` and `platform/packages/core/CLAUDE.md` |
-| PR 3 | The webhook listener in the `access` profile and its static test, the OpenBao policy and `github-webhook-secret` command, the hook rule (R132), the doctor check, deploy README "Webhooks", runbook T11 and the key rotation step, the threat model entry, handbook usage sections (configuration and troubleshooting), CHANGELOG with upgrade notes, the `platform/deploy/CLAUDE.md` rule line |
+| PR 3 | The webhook listener in the `access` profile and its static test, the settings check, the `github-webhook-secret` command (no policy change), the hook rule (R132), the doctor check, deploy README "GitHub webhooks (operator)", "Ports" and "Troubleshooting", runbook T11 §5p with its rotation, the threat model entry (ADR-M80 I8), handbook Ch.19 §19.8b, CHANGELOG with upgrade notes, the `platform/deploy/CLAUDE.md` rule line (R160) |
 
 ### 4.2. Changes to other documents (PR 1)
 
@@ -201,3 +209,4 @@ The order matters: a project switches to the longer reconciliation interval only
 |---|---|---|---|
 | 0.1 | 2026-11-15 | Claude (task O08, PR 1) | First version, from the plan Harry approved on 2026-11-15 (QUESTIONS #746–#750) |
 | 0.2 | 2026-11-15 | Claude Code (task O08, PR 2), approved by Harry (QUESTIONS #751) | §2.5, §2.9, §2.10: repeated delivery IDs and the last delivery time in the api's memory, not Valkey; §2.4b as built; §2.4, §2.7: the api's rate limit per minute, the secret path setting; §2.6: every group polled after a reconnect, a log line instead of a metric; §2.7: defaults in the default configuration, no new schema version |
+| 0.3 | 2026-11-15 | Claude Code (task O08, PR 3) | §2.1, §2.7: one allow-list value (`SDLC_ACCESS_WEBHOOK_ALLOW_CIDR`); §2.4c as built; §2.9: doctor reads the api's log events of the last 24 hours, no setting; §4.1 PR 3 as built |

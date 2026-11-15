@@ -69,14 +69,26 @@ describe('V09: the profile access in docker-compose.yml', () => {
     expect(readDeployFile('scripts/images.sh')).not.toContain('nginx');
   });
 
-  it('publishes one port, on SDLC_ACCESS_BIND_ADDR only (127.0.0.1 when unset)', () => {
+  it('publishes the LAN port and the webhook port, each on its own address (127.0.0.1 when unset)', () => {
     expect(proxy.ports).toEqual([
       '${SDLC_ACCESS_BIND_ADDR:-127.0.0.1}:${SDLC_ACCESS_HOST_PORT:-8443}:8443',
+      // O08 (ADR-M112 §2.1): GitHub webhooks only on their own listener.
+      '${SDLC_ACCESS_WEBHOOK_BIND_ADDR:-127.0.0.1}:${SDLC_ACCESS_WEBHOOK_HOST_PORT:-8444}:8444',
     ]);
     for (const [name, s] of Object.entries(services)) {
       if (name === 'sdlc-access') continue;
-      for (const port of s.ports ?? []) expect(port, name).not.toContain('SDLC_ACCESS_BIND_ADDR');
+      for (const port of s.ports ?? []) {
+        expect(port, name).not.toContain('SDLC_ACCESS_BIND_ADDR');
+        expect(port, name).not.toContain('SDLC_ACCESS_WEBHOOK_BIND_ADDR');
+      }
     }
+    // Unset, the allow-list admits no peer through Docker's port mapping.
+    expect(proxy.environment?.SDLC_ACCESS_WEBHOOK_ALLOW_CIDR).toBe(
+      '${SDLC_ACCESS_WEBHOOK_ALLOW_CIDR:-127.0.0.1/32}',
+    );
+    expect(services['sdlc-api']?.environment?.SDLC_API_GITHUB_WEBHOOKS).toBe(
+      '${SDLC_API_GITHUB_WEBHOOKS:-off}',
+    );
   });
 
   it('the network access: its own subnet, the proxy and the api only, `sdlc` unchanged (§2.5)', () => {
@@ -184,15 +196,15 @@ describe('V09: the profile access in docker-compose.yml', () => {
 });
 
 describe('V09: the nginx template (ADR-M67 §2.2-§2.5)', () => {
-  /** The blocks `location … { … }` of the template (no nesting in it). */
-  const locations = [...code.matchAll(/location ([^{]+)\{([\s\S]*?)\n\s*\}/g)].map((m) => ({
+  /** The blocks `location … { … }` of the template: each closes at the server's indent (2). */
+  const locations = [...code.matchAll(/location ([^{]+)\{([\s\S]*?)\n {2}\}/g)].map((m) => ({
     match: m[1]!.trim(),
     body: m[2]!,
   }));
 
   it('one TLS listener and the health listener on 127.0.0.1; no plain listener', () => {
     const listens = [...code.matchAll(/^\s*listen ([^;]+);/gm)].map((m) => m[1]!.trim());
-    expect(listens).toEqual(['8443 ssl default_server', '8443 ssl', '127.0.0.1:8081']);
+    expect(listens).toEqual(['8443 ssl default_server', '8443 ssl', '8444 ssl', '127.0.0.1:8081']);
     expect(code).not.toMatch(/listen\s+80\b/);
     expect(code).toContain('ssl_protocols TLSv1.2 TLSv1.3;');
     expect(code).toContain('ssl_session_tickets off;');
@@ -200,7 +212,7 @@ describe('V09: the nginx template (ADR-M67 §2.2-§2.5)', () => {
   });
 
   it('plain HTTP on the TLS port is refused with 400; an unknown Host gets 421', () => {
-    expect(code.match(/error_page 497 = @plain_http;/g)).toHaveLength(2);
+    expect(code.match(/error_page 497 = @plain_http;/g)).toHaveLength(3);
     expect(code).toMatch(/location @plain_http \{[^}]*return 400 /);
     expect(code).toMatch(/server_name _;[\s\S]*?return 421;/);
     expect(code).not.toMatch(/return 30[12] https/);
@@ -213,9 +225,12 @@ describe('V09: the nginx template (ADR-M67 §2.2-§2.5)', () => {
       '= /',
       '/dashboard/',
       '/v1/auth/',
+      '/v1/webhooks/',
       '/v1/',
       '= /health/live',
       '= /health/ready',
+      '/',
+      '= /v1/webhooks/github',
       '/',
       '= /healthz',
       '/',
@@ -227,10 +242,34 @@ describe('V09: the nginx template (ADR-M67 §2.2-§2.5)', () => {
       '/v1/',
       '= /health/live',
       '= /health/ready',
+      '= /v1/webhooks/github',
     ]);
     for (const l of locations.filter((x) => x.body.includes('proxy_pass')))
-      expect(l.body).toMatch(/limit_req zone=sdlc_(api|auth) burst=/);
+      expect(l.body).toMatch(/limit_req zone=sdlc_(api|auth|webhook) burst=/);
+    // O08: the LAN listener never passes a webhook on.
+    expect(locations.find((l) => l.match === '/v1/webhooks/')?.body.trim()).toBe('return 404;');
     expect(code).toMatch(/location \/ \{\s*return 404;\s*\}/);
+  });
+
+  it('O08: the webhook listener: one POST route, an allow-list, its own limits (ADR-M112 §2.1)', () => {
+    const server = /server \{\s*listen 8444 ssl;([\s\S]*?)\n\}/.exec(code)?.[1] ?? '';
+    expect(server).toContain('server_name _;');
+    expect(server).toMatch(/allow \$\{SDLC_ACCESS_WEBHOOK_ALLOW_CIDR\};\s*deny all;/);
+    expect(server).toMatch(/if \(\$request_method != POST\) \{\s*return 405;/);
+    expect(server).toMatch(/location \/ \{\s*return 404;\s*\}/);
+    expect(server).toContain('proxy_set_header X-Forwarded-For $remote_addr;');
+    expect(server).not.toMatch(/Content-Security-Policy/i);
+    // The body limit equals the api's webhook limit.
+    const route = fs.readFileSync(
+      path.join(root, 'platform/apps/api/src/webhooks/github-webhooks.ts'),
+      'utf8',
+    );
+    const mib = /WEBHOOK_BODY_LIMIT_BYTES = 1024 \* 1024;/.test(route) ? 1 : 0;
+    expect(mib).toBe(1);
+    expect(server).toContain('client_max_body_size 1m;');
+    expect(code).toMatch(
+      /limit_req_zone \$binary_remote_addr zone=sdlc_webhook:10m rate=\$\{SDLC_ACCESS_WEBHOOK_RATE_PER_SECOND\}r\/s;/,
+    );
   });
 
   it('headers: HSTS and the rest at server level only; no CSP set or removed', () => {
@@ -430,6 +469,47 @@ describe(
       const noPlatform = checkWith(withCert, ['core', 'access']);
       expect(noPlatform.status).toBe(1);
       expect(noPlatform.stderr).toMatch(/profile platform/);
+    });
+
+    it('O08: check-settings: the webhook listener needs an address, an allow-list and its own port', () => {
+      const webhook = {
+        ...withCert,
+        SDLC_ACCESS_WEBHOOK_BIND_ADDR: '192.168.10.5',
+        SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: '10.20.0.8/32',
+        SDLC_API_GITHUB_WEBHOOKS: 'on',
+      };
+      const ok = checkWith(webhook);
+      expect(ok.stderr).toBe('');
+      expect(ok.status).toBe(0);
+      const cases: [Record<string, string>, RegExp][] = [
+        [{ SDLC_ACCESS_WEBHOOK_BIND_ADDR: 'dmz' }, /SDLC_ACCESS_WEBHOOK_BIND_ADDR is not an IPv4/],
+        [{ SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: '' }, /set SDLC_ACCESS_WEBHOOK_ALLOW_CIDR/],
+        [
+          { SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: '10.0.0.1; allow all' },
+          /not one IPv4 address or network/,
+        ],
+        [{ SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: '10.0.0.0/33' }, /not one IPv4 address or network/],
+        [{ SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: '10.0.0.300' }, /not one IPv4 address or network/],
+        [{ SDLC_ACCESS_WEBHOOK_HOST_PORT: '8443' }, /must differ from SDLC_ACCESS_HOST_PORT/],
+      ];
+      for (const [change, message] of cases) {
+        const r = checkWith({ ...webhook, ...change });
+        expect(r.status, JSON.stringify(change)).toBe(1);
+        expect(r.stderr, JSON.stringify(change)).toMatch(message);
+      }
+      const everyone = checkWith({ ...webhook, SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: '0.0.0.0/0' });
+      expect(everyone.status).toBe(0);
+      expect(everyone.stderr).toMatch(/warning: SDLC_ACCESS_WEBHOOK_ALLOW_CIDR=0\.0\.0\.0\/0/);
+      const off = checkWith({ ...webhook, SDLC_API_GITHUB_WEBHOOKS: 'off' });
+      expect(off.status).toBe(0);
+      expect(off.stderr).toMatch(
+        /warning: the webhook listener is set, but SDLC_API_GITHUB_WEBHOOKS is off/,
+      );
+      const noListener = checkWith({ ...withCert, SDLC_API_GITHUB_WEBHOOKS: 'on' });
+      expect(noListener.status).toBe(0);
+      expect(noListener.stderr).toMatch(
+        /warning: SDLC_API_GITHUB_WEBHOOKS=on, but SDLC_ACCESS_WEBHOOK_BIND_ADDR is empty/,
+      );
     });
 
     it('check-settings: 0.0.0.0 and port 443 are allowed; 0.0.0.0 warns', () => {

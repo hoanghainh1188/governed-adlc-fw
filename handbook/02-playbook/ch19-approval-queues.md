@@ -105,7 +105,7 @@ If anything differs → **cancel and ask again**. Three rules always hold:
 
 > **Platform usage section, owned by Claude Code** (CLAUDE.md "Documentation rules"). Written with task B06, 2026-09-27, updated with task B07 (the gate workflow and status comments; session 2: HOTL gates, block windows, gate deadlines) and task B12 (the project AI record before G1), and kept in line with the platform code (`design/ADR-M27-github-poller.md`, `design/ADR-M30-intent-workflow.md`, `design/ADR-M32-project-ai-record.md`). The rest of this chapter is Draft 0.1 and is written outside Claude Code.
 
-You can decide a gate by writing a comment on the GitHub issue or pull request of the intent. The platform reads new comments about every 30 seconds (project setting `github.poll_interval_seconds`). The CLI does the same through the API: `adlc gate approve|reject|request-changes <gate> <intent>` (§19.8c).
+You can decide a gate by writing a comment on the GitHub issue or pull request of the intent. The platform reads new comments about every 30 seconds (project setting `github.poll_interval_seconds`). When the operator has turned GitHub webhooks on for the project (`github.webhooks.enabled`, deploy README "GitHub webhooks"), a comment is read about one second after you post it; the commands and their checks are the same. The CLI does the same through the API: `adlc gate approve|reject|request-changes <gate> <intent>` (§19.8c).
 
 **Commands.** Write the command on the **first line of a new comment**:
 
@@ -718,6 +718,7 @@ Never publish the API's port 8090 to other machines. People on other machines us
 | 0.50 | 2026-10-30 | Claude (v0.10.0, ADR-M100) | §19.8c: the old command `sdlc` is removed in v0.10.0; `adlc` still reads its login |
 | 0.52 | 2026-11-12 | Claude (task O06, PR 2a) | §19.8d: a project can be one folder of a monorepo (`--folder`, `folder:` in the project file, `repo_path_overlap`; ADR-M106 §2.4) |
 | 0.53 | 2026-11-12 | Claude (task U09) | §19.8d, §19.8e: the dashboard's **Admin** screen: projects, roles, configuration with its line difference, people and GitHub accounts, passkeys, tenant admins, the agent register, the AI record and evidence holds, each change with a passkey (ADR-M73 1.9) |
+| 0.57 | 2026-11-15 | Claude Code (task O08, PR 3) | §19.8b: with GitHub webhooks on, a comment is read in about a second (ADR-M112) |
 | 0.56 | 2026-11-14 | Claude Code (task X08b, PR 3) | §19.8e: the dashboard's read-only **Lessons** screen (ADR-M109 0.5) |
 | 0.55 | 2026-11-14 | Claude Code (task X08b, PR 1 and PR 2) | §19.8b: `/lesson`; §19.8c: `adlc lesson add\|apply\|drop\|issue`, `adlc lessons list`, `adlc metrics lessons`, `--from-lesson`, `--has-lessons` (ADR-M109 0.4) |
 | 0.54 | 2026-11-12 | Claude Code (task V14) | §19.8c: `adlc intent estimate` and the column "Lead / estimate" of the agent report (ADR-M79 §2.6) |

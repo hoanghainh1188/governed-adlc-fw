@@ -61,7 +61,19 @@ export const LOG_EVENT_FIXES: Readonly<Record<string, Text>> = {
     params: { command: 'runner-credentials', section: 'T11 §8' },
   },
   'openbao.sealed': { key: 'doctor.fix.unseal' },
+  // O08 (ADR-M112 §2.8): the api could not read its webhook secret again.
+  'webhook.secret_refresh_failed': {
+    key: 'doctor.fix.credentials',
+    params: { command: 'github-webhook-secret', section: 'T11 §5p' },
+  },
 };
+
+/** O08 (ADR-M112 §2.9): the api's events of a delivery whose signature was correct. */
+const WEBHOOK_DELIVERY_EVENTS = new Set([
+  'webhook.accepted',
+  'webhook.duplicate',
+  'webhook.ignored',
+]);
 
 /** The start-failure events of the three processes (`*.failed`, `*.start_failed`). */
 const FAILED_EVENTS: Readonly<Record<string, string>> = {
@@ -101,6 +113,7 @@ function matches(message: string, parts: readonly string[]): boolean {
 export function findLogEvents(text: string): LogFindings {
   const events = new Set<string>();
   const started = new Set<string>();
+  let webhookDelivered = false;
   for (const line of text.split('\n')) {
     if (!line.startsWith('{')) continue;
     let parsed: unknown;
@@ -113,6 +126,7 @@ export function findLogEvents(text: string): LogFindings {
     const event = (parsed as { event?: unknown }).event;
     if (typeof event !== 'string') continue;
     if (Object.hasOwn(STARTED_EVENTS, event)) started.add(STARTED_EVENTS[event] ?? '');
+    if (WEBHOOK_DELIVERY_EVENTS.has(event)) webhookDelivered = true;
     if (Object.hasOwn(LOG_EVENT_FIXES, event)) events.add(event);
     const process = FAILED_EVENTS[event];
     if (process !== undefined) {
@@ -122,5 +136,5 @@ export function findLogEvents(text: string): LogFindings {
       else if (matches(message, SEALED)) events.add('openbao.sealed');
     }
   }
-  return { events: [...events].sort(), started: [...started].sort() };
+  return { events: [...events].sort(), started: [...started].sort(), webhookDelivered };
 }

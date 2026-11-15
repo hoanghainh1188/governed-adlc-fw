@@ -360,10 +360,17 @@ async function forgedRun() {
           .split('\n')
           .map((l) => JSON.parse(l) as Record<string, unknown>);
     for (const row of rows) {
-      for (const p of (row.Publishers as { URL: string; PublishedPort: number }[] | null) ?? []) {
+      const publishers =
+        (row.Publishers as { URL: string; PublishedPort: number; TargetPort: number }[] | null) ??
+        [];
+      for (const p of publishers) {
         if (!p.PublishedPort) continue;
-        if (row.Service === 'sdlc-access') expect(p.URL).toBe(bindAddr);
-        else expect(p.URL, String(row.Service)).toMatch(/^(127\.0\.0\.1|::1)$/);
+        // O08 (ADR-M112 §2.4c): the webhook listener (8444) is unset here, so on this machine only.
+        if (row.Service === 'sdlc-access' && p.TargetPort !== 8444) expect(p.URL).toBe(bindAddr);
+        else
+          expect(p.URL, `${String(row.Service)}:${String(p.TargetPort)}`).toMatch(
+            /^(127\.0\.0\.1|::1)$/,
+          );
       }
     }
   });

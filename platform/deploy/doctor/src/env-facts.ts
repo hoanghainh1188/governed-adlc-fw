@@ -25,6 +25,11 @@ export const ENV_ALLOWLIST = [
   'SDLC_API_TRUSTED_PROXY',
   'SDLC_API_PUBLIC_ORIGIN',
   'SDLC_API_WEB_SIGNIN',
+  // GitHub webhooks (O08, design/ADR-M112 §2.9): a switch, an address, a port and a network.
+  'SDLC_API_GITHUB_WEBHOOKS',
+  'SDLC_ACCESS_WEBHOOK_BIND_ADDR',
+  'SDLC_ACCESS_WEBHOOK_HOST_PORT',
+  'SDLC_ACCESS_WEBHOOK_ALLOW_CIDR',
   // The runner on its own Engine (O01, design/ADR-M91): an address, not a secret.
   'SDLC_RUNNER_LINK_ADDR',
 ] as const;
