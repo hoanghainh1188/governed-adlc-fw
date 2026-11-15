@@ -840,6 +840,30 @@ t("O07","Later","Load test: many intents and tenants at once","M",["O03"],"NFR-0
  ["A repeatable load test with stub models: many intents and tenants at once through the poller, the workflow, the runner queue and the database; GitHub API rate limits measured",
   "The numbers and the limits written in the deploy README (how many intents, runs and tenants one server takes)"],
  "QUESTIONS #440")
+t("H08","Later","Break-glass: audited emergency access for a production P0 incident (design first)","M",["A07","C11","O03"],"FR-41, FR-44, NFR-03",
+ "design/ADR (next free), platform/packages/core (workflow, audit), platform/apps/cli, platform/packages/messages, platform/tests/*, handbook Ch.18–20 usage",
+ ["An ADR first, for Harry's approval: what break-glass may change in the platform for one intent in a production P0 incident (handbook Ch.6 §6.9: short-lived with automatic expiry, named scope, only the named operator, a second approver, an incident created, immutable audit, revocable at once, post-incident review within 48 hours); what it never changes (codes table §2.1 and §4: a person merges at G7, independent verification and permission before dangerous actions are never skipped; agents never invoke it; the platform never merges or deploys, R028)",
+  "`adlc ops break-glass request|approve|revoke|list <INT>` (names fixed by the ADR): the requester and the approver are two different people (rule M21), the approver is leadership or Person B (Ch.6 §6.9), never the intent's producer, never a bot",
+  "Audit events `break_glass.requested|approved|revoked|expired` in the tenant's hash chain with codes, IDs, the incident code, the scope codes and the expiry only; the reason stays in words where it can be edited or deleted (a GitHub comment link), never in the audit log (R030, R031)",
+  "An operational alert (O03) on every approval; the intent cannot close at G8 until the post-incident review is recorded (link)",
+  "Tests: two people required, the producer refused, expiry and revoke, scope limits, the never-skipped gates still hold, no free text in any table or event"],
+ "GitHub issue #519 (Harry, 2026-11-13); was in \"Also later\". The issue's draft ACs (a `--reason` text in the audit log, a Tech Director role) conflict with R030 and the 2+N roles: QUESTIONS #731")
+t("O08","Later","Git host webhooks with polling kept as reconciliation","M",["B06","A04"],"FR-21, NFR-01, NFR-05",
+ "platform/apps/api (webhook route), platform/packages/core (git-events), platform/packages/adapters/git-github, platform/packages/config, platform/deploy (README, access proxy), platform/tests/*, design/ADR (next free)",
+ ["An ADR (changes ADR-M11 and D-02 FR-21, which choose polling while the server takes no connection from the internet): how deliveries reach the internal server (an inbound route, a relay, or none) and when webhooks may be turned on (QUESTIONS #732)",
+  "`POST /v1/webhooks/github` checks `X-Hub-Signature-256` (HMAC SHA-256) against a webhook secret read from OpenBao (R034), with a time-safe compare, a body size limit and a rate limit; a refused delivery is logged by code only",
+  "Deliveries feed the same event handler as the poller (R037), idempotent: a repeated `X-GitHub-Delivery` ID or an event the poller already read changes nothing; users matched by numeric account ID only; bots never decide",
+  "The poller stays as reconciliation with a longer, configurable interval when webhooks are on; turning webhooks off returns to the normal interval",
+  "The time from a comment to the workflow signal measured with a stub (target under 3 seconds); tests for bad signatures, replays, duplicates, events out of order and a webhook outage covered by the poller"],
+ "GitHub issue #520 (Harry, 2026-11-13); was \"webhooks instead of polling\" in \"Also later\" (D-02 §4.2). The GitHub adapter already checks the signature and maps webhook events to the same `GitEvent` as polling (B05 AC2); O08 adds the route, the secret, the deduplication and the poller change")
+t("H09","Later","PostgreSQL row-level security as a second tenant barrier","M",["A06","A07"],"NFR-02, NFR-03",
+ "platform/packages/core/db, migrations, platform/tests/db/*, design/ADR-M09, design/D-05 §8, design/D-03 §9",
+ ["Row-level security enabled and forced on every table with `tenant_id`, with a policy `tenant_id = current_setting('app.tenant_id', true)::uuid` for `platform_app`; a test lists the tables so a new table cannot miss it (like the append-only list)",
+  "`PlatformDatabase.forTenant()` / `TenantScope` sets the tenant with `set_config(..., true)` inside each transaction, never per session, so a pooled connection never keeps another tenant (R026)",
+  "A query by `platform_app` with no tenant set returns no rows; a query for tenant A never sees tenant B, even when the application forgets its `tenant_id` filter (test with raw SQL)",
+  "Processes that work across tenants (the poller, retention and purge, alerts, `adlc ops audit verify`, the load test) keep working by the path the ADR chooses (QUESTIONS #733); the migration owner `platform` is unchanged",
+  "Append-only triggers and grants, migrations and all database tests pass; the query cost measured before and after"],
+ "GitHub issue #521 (Harry, 2026-11-13); was in \"Also later\" (D-03 §9 [Proposal], D-05 §8)")
 # ---------- rendering ----------
 IDX={x['id']:x for x in T}; W={'S':1,'M':2,'L':3}
 @functools.lru_cache(None)
@@ -1055,6 +1079,7 @@ If a doc is missing or contradictory: add the question to design/QUESTIONS.md an
 | 1.70 | 2026-11-11 | Claude, approved by Harry | New tasks V18 (the runner host set-up), V19 (`server:setup` steps 8–13) and V20 (team access and the runner link in the settings), milestone Server; order V20, V19, V18 (QUESTIONS #671–#673) |
 | 1.71 | 2026-11-12 | Claude Code (task U09), approved by Harry | U09 done: the dashboard's administration in three PRs (QUESTIONS #681–#686) |
 | 1.72 | 2026-11-12 | Claude Code (task V14), approved by Harry | V14 done: the human-effort baseline of the agent report in one PR (QUESTIONS #691–#693) |
+| 1.73 | 2026-11-15 | Claude, for Harry's approval | New tasks H08 (break-glass, design first), O08 (webhooks with polling as reconciliation) and H09 (row-level security) in Later, from GitHub issues #519–#521; taken out of "Also later" (QUESTIONS #731–#733) |
 | 1.48 | 2026-10-13 | Claude (task L02, PR 4), approved by Harry | L02 note: the first result table is in D-07 §9; the evaluation was stopped at 53 of 80 runs (QUESTIONS #447) |
 | 1.28 | 2026-10-09 | Claude (task A10), approved by Harry | A10 note: ClickHouse access management done (`sdlc_admin`, ADR-M63 §6, QUESTIONS #330) |
 | 1.27 | 2026-10-09 | Claude (task A10, PR 1), approved by Harry | A10 note: three PRs (TLS everywhere, backups and the drill, the server with the operator; ADR-M63, QUESTIONS #325–#327); code area `openbao/tls.sh` |
@@ -1103,7 +1128,7 @@ for m,d in MS:
     a(f"\n## {m}: {d}\n")
     for x in ts: a(f"- **{x['id']}** {x['title']}" + (f" (done, {DONE[x['id']]})" if x['id'] in DONE else ""))
 a("""
-Also later, not yet planned as tasks: webhooks instead of polling, a full policy engine (OPA or Cedar), an incident module, break-glass access, automatic rollback, the recertification workflow, client reports, SSO and Kubernetes, several agents in one intent, the deferred approval queue, PQC metrics (D-02 §4.2); PostgreSQL row-level security (D-03 §9, D-05 §8); a support policy for older CLI versions against a newer server (QUESTIONS #440).
+Also later, not yet planned as tasks: a full policy engine (OPA or Cedar), an incident module, automatic rollback, the recertification workflow, client reports, SSO and Kubernetes, several agents in one intent, the deferred approval queue, PQC metrics (D-02 §4.2); a support policy for older CLI versions against a newer server (QUESTIONS #440).
 """)
 open('ROADMAP.md','w').write("\n".join(r))
 print(CP)
