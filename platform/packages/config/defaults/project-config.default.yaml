@@ -388,6 +388,21 @@ learning:
   # it closed (the observation window of template T14 §7). 1 to 90.
   lesson_window_days: 14
 
+break_glass:
+  # Task H08, ADR-M111 (QUESTIONS #741–#744): a break-glass grant for one intent in a production
+  # P0 incident, approved by governance or Person B (never the requester or a producer). It only
+  # removes waiting: the scopes listed here. It never changes G1, G4, G6, G7 or G8.
+  enabled: true
+  allowed_scopes: [runner_priority, budget, hotl_window_skip]
+  # Handbook Ch.6 §6.9: "a few hours", expires automatically. 1 to 8.
+  max_hours: 4
+  # An unapproved request lapses after this many minutes. 5 to 240.
+  request_ttl_minutes: 30
+  # The largest budget increase of the `budget` scope, in USD.
+  max_budget_increase_usd: 50
+  # Handbook Ch.6 §6.9: the post-incident review within 48 hours after the grant ends. 1 to 48.
+  review_due_hours: 48
+
 tools:
   # Task X04, ADR-M69 §2.2: register tools (`tool:<key>`) are recertified like agents. Mandatory
   # rule M18: never more than 3 months. An overdue tool gives a warning; it does not block a run.

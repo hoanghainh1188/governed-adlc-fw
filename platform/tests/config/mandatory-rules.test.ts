@@ -537,6 +537,21 @@ const CASES: Case[] = [
     key: 'config.rule.memory_propose_needs_l2',
     path: 'memory.mode',
   },
+  // M37: break-glass on names at least one scope, each once (H08, ADR-M111 §2.11).
+  {
+    name: 'break-glass on without any scope',
+    rule: 'M37',
+    yaml: 'break_glass:\n  allowed_scopes: []\n',
+    key: 'config.rule.break_glass_no_scope',
+    path: 'break_glass.allowed_scopes',
+  },
+  {
+    name: 'a break-glass scope listed twice',
+    rule: 'M37',
+    yaml: 'break_glass:\n  allowed_scopes: [budget, budget]\n',
+    key: 'config.rule.break_glass_scope_twice',
+    path: 'break_glass.allowed_scopes',
+  },
   // M30: the viewer never builds or reads an Evidence Pack (E02, ADR-M48, QUESTIONS #218).
   {
     name: 'viewer may build evidence packs',

@@ -80,6 +80,7 @@ const PG_ERROR_CODES: Record<string, DbErrorCode> = {
   SDA29: 'immutable', // an intent's effort estimate changed when finished, or back to null (0050)
   SDA30: 'immutable', // a memory proposal in a final state, or back to `pushed` (0055)
   SDA31: 'immutable', // an intent's title or description changed to anything but the tombstone (0056)
+  SDA32: 'immutable', // a break-glass grant's fixed columns, a move not allowed, or a value written twice (0061)
 };
 
 /** Maps a PostgreSQL error to a DbError; anything else is rethrown unchanged. */

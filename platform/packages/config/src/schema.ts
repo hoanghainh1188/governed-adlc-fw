@@ -4,6 +4,7 @@
 import {
   AGENT_KEY_PATTERN,
   AUTONOMY_LEVELS,
+  BREAK_GLASS_SCOPES,
   CHANGE_FLAGS,
   CONTEXT_CONDENSING_MODES,
   MEMORY_MODES,
@@ -351,6 +352,16 @@ export const projectConfigSchema = z.strictObject({
   // after the intent closed.
   learning: z.strictObject({
     lesson_window_days: positiveInt.max(90),
+  }),
+  // H08 (ADR-M111 §2.2, §2.5, §2.11): break-glass grants. The bounds keep handbook Ch.6 §6.9:
+  // "a few hours" (at most 8) and a review within 48 hours.
+  break_glass: z.strictObject({
+    enabled: z.boolean(),
+    allowed_scopes: z.array(z.enum(BREAK_GLASS_SCOPES)).max(BREAK_GLASS_SCOPES.length),
+    max_hours: positiveInt.max(8),
+    request_ttl_minutes: positiveInt.min(5).max(240),
+    max_budget_increase_usd: usd,
+    review_due_hours: positiveInt.max(48),
   }),
   // X04 (ADR-M69 §2.2–§2.7, ADR-M87): register tools. Rule M18 keeps the recertification age at 3
   // months or less, as for agents. `gateway.image`: the run's MCP gateway, by digest; null until a

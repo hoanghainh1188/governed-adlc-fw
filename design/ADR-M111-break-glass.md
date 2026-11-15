@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2–PR 4 build it |
+| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2 builds §2.1, §2.4–§2.7, §2.11 and the core of §2.8 (migration 0061, D-05 1.76); PR 3–PR 4 build the rest |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); H08 builds it |
 | Related | D-08 H08 (AC1–AC5); D-02 FR-41, FR-44, NFR-03; handbook Ch.6 §6.7, §6.9, §6.11; codes table §2.1, §4, §5, §6.3; ADR-M28 (escalations); ADR-M34 (budgets); ADR-M41 (G7 producers); ADR-M42 (kill switch); ADR-M49 (G8); ADR-M54 (waiting reasons); ADR-M101 (operational alerts); ADR-M110 (row-level security); CLAUDE.md R028–R031, R044–R047; QUESTIONS #731, #741–#744 |
@@ -25,7 +25,7 @@ So break-glass on this platform does not open doors that the platform itself nev
 
 ### 2.1. The grant
 
-A break-glass **grant** belongs to one open intent. It is a row in a new table `break_glass_grants` (PR 2, migration after ADR-M110's migration 0060, so expect 0061):
+A break-glass **grant** belongs to one open intent. It is a row in a new table `break_glass_grants` (PR 2, migration `0061-break-glass`; D-05 §6.13):
 
 | Column | Content |
 |---|---|
@@ -34,14 +34,14 @@ A break-glass **grant** belongs to one open intent. It is a row in a new table `
 | `approver_id` | Null until approved |
 | `scopes` | Scope codes (§2.2), at least one |
 | `status` | `requested`, `active`, `refused`, `revoked`, `expired`, `lapsed` |
-| `requested_at`, `decided_at`, `expires_at`, `ended_at` | Times |
+| `created_at`, `lapses_at`, `decided_at`, `expires_at`, `ended_at` | Times (`created_at` is the request) |
 | `reason_url` | `https://` link to a GitHub comment on the intent's issue or pull request that explains the incident in words |
 | `review_url` | `https://` link to the post-incident review comment; null until recorded |
 | `escalation_id` | The stand-in incident (§2.6) |
 
 - The row holds codes, IDs, times and links only, as lessons do (R156). The words stay on GitHub, where they can be edited or deleted (R030).
 - A link is checked as for lessons (QUESTIONS #729): it names a comment of the intent's issue or pull request in the project's repository, and the comment exists.
-- The row is mutable only along the status moves of §2.5 (a trigger refuses other moves). The history is the audit log (§2.7).
+- The row is mutable only along the status moves of §2.5 (trigger `SDA32` refuses other moves, and writes the decision, the end and the review once each). The history is the audit log (§2.7).
 - The table gets row-level security and both policies of ADR-M110 §2.1 in its migration.
 - At most one grant per intent is `requested` or `active` at a time.
 
@@ -74,7 +74,7 @@ These hold whatever the scope, and PR 2–PR 3 test each one (AC5):
 | Action | Who | Refused |
 |---|---|---|
 | Request | Person A or Person B of the intent's project | Viewer; agents and bots |
-| Approve or refuse | `governance` (leadership) or `person_b` of the project | The requester (rule M21: two different people); any producer of the intent (creator, every run's `triggered_by`, plan submitters, commit authors; ADR-M41); agents and bots |
+| Approve or refuse | `governance` (leadership) or `person_b` of the project | The requester (rule M21: two different people); any producer of the intent the platform knows before G7 (creator, every run's `triggered_by`, plan submitters; `g7Producers` without the commit authors, which G7 reads from the pull request; ADR-M41); agents and bots |
 | Revoke | The operator, the approver, any `person_b` or `governance` of the project, or an operator on the server as `system` | Viewer; agents and bots |
 | Record the review | Person A or Person B of the project | Agents and bots |
 
@@ -161,11 +161,11 @@ break_glass:
   allowed_scopes: [runner_priority, budget, hotl_window_skip]
   max_hours: 4                    # mandatory rule: 1–8
   request_ttl_minutes: 30
-  max_budget_increase_usd: "50.00"
+  max_budget_increase_usd: 50
   review_due_hours: 48            # mandatory rule: at most 48 (Ch.6 §6.9)
 ```
 
-Mandatory rules (`mandatory-rules.ts`): `max_hours` 1–8; `review_due_hours` 1–48; the request, approve and review roles are fixed by §2.4 and are not configurable (they follow Ch.6 §6.9 and rule M21).
+The schema keeps `max_hours` at 1–8, `request_ttl_minutes` at 5–240 and `review_due_hours` at 1–48. Mandatory rule M37: break-glass that is on allows at least one scope, each once. The request, approve and review roles are fixed by §2.4 and are not configurable (they follow Ch.6 §6.9 and rule M21). People are platform users with an active account; agents and bots have no user, so they can never act (§2.3).
 
 ## 3. Alternatives not chosen
 
@@ -199,3 +199,4 @@ Mandatory rules (`mandatory-rules.ts`): `max_hours` 1–8; `review_due_hours` 1�
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-15 | Claude (task H08, PR 1) | First version, from the plan Harry approved on 2026-11-15 (QUESTIONS #741–#744) |
+| 0.2 | 2026-11-15 | Claude (task H08, PR 2) | As built in the core: migration 0061 (`created_at` is the request time, trigger `SDA32`); the producers are those known before G7; the schema bounds and rule M37 instead of separate rules for the hours; refusal codes `break_glass.error.*` |

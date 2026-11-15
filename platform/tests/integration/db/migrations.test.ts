@@ -252,6 +252,20 @@ const UPDATABLE: Record<string, readonly string[]> = {
   // X08b (migration 0057): append-only.
   intent_lessons: [],
   intent_lesson_outcomes: [],
+  // H08 (migration 0061): the decision, the end and the review, each written once (trigger SDA32).
+  break_glass_grants: [
+    'status',
+    'approver_id',
+    'decided_at',
+    'expires_at',
+    'escalation_id',
+    'ended_at',
+    'revoked_by',
+    'review_url',
+    'reviewed_by',
+    'reviewed_at',
+    'review_overdue_at',
+  ],
   // U05 (migration 0027): seen time only grows; the end is set once (trigger SDA18). No DELETE.
   web_sessions: ['last_seen_at', 'revoked_at', 'end_reason'],
   // U06 (migration 0028): the counter and the last use only grow; revoked once (SDA20). No DELETE.
@@ -410,7 +424,9 @@ describeDb('AC2: migrations on PostgreSQL', () => {
     // X13 PR 3b: memory_proposals → projects, intents, runs (0055).
     // X08b: intent_lessons → projects, intents, users; intent_lesson_outcomes → intent_lessons,
     // users, intents (the follow-up) (0057).
-    expect(fks).toHaveLength(109);
+    // H08: break_glass_grants → projects, intents, escalations, users (operator, approver,
+    // revoker, reviewer) (0061).
+    expect(fks).toHaveLength(116);
     for (const fk of fks) {
       expect(fk.on_delete, fk.name).toBe('r'); // RESTRICT: no hard deletes (D-05 D7)
       if (fk.name === 'gate_decisions_voids_fkey') {

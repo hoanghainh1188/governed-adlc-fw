@@ -9,9 +9,9 @@ import { loadValid } from './helpers';
 
 /**
  * Pinned hash of the shipped default configuration. It changes only when a default value changes.
- * Update it in the same PR as the default change, after review (C06: `run.agent_key`; session 2: `run.contract_attempts_max`, `run.failed_run_escalation`; C07: `run.g5_breach_escalation`; B08: `access.spec_link_roles`; C08: `verification`; B09: `access.plan_submit_roles`; C11: `access.kill_roles`, `run.kill_escalation`; E04: `access.cost_read_roles`; E06: `access.metrics_read_roles`; E02: `access.evidence_build_roles`, `access.evidence_read_roles`; E05: `access.evidence_hold_roles`; L05: `access.eval_roles`; L06: `evaluation.recommendations`; L07: `evaluation.tasks`; X04: `tools`; X04 PR 2: `tools.gateway.image`; X04 PR 3a: `knowledge`; X04 PR 3b: `tools.model_budget_usd`; X11: `run.context_condensing`; H05: `run.review_limits`; H02: `dependencies`; PR #502: `tools.gateway.image` 1.7.0; X13: `memory`; X08b: `learning`; O08: `github.webhooks`).
+ * Update it in the same PR as the default change, after review (C06: `run.agent_key`; session 2: `run.contract_attempts_max`, `run.failed_run_escalation`; C07: `run.g5_breach_escalation`; B08: `access.spec_link_roles`; C08: `verification`; B09: `access.plan_submit_roles`; C11: `access.kill_roles`, `run.kill_escalation`; E04: `access.cost_read_roles`; E06: `access.metrics_read_roles`; E02: `access.evidence_build_roles`, `access.evidence_read_roles`; E05: `access.evidence_hold_roles`; L05: `access.eval_roles`; L06: `evaluation.recommendations`; L07: `evaluation.tasks`; X04: `tools`; X04 PR 2: `tools.gateway.image`; X04 PR 3a: `knowledge`; X04 PR 3b: `tools.model_budget_usd`; X11: `run.context_condensing`; H05: `run.review_limits`; H02: `dependencies`; PR #502: `tools.gateway.image` 1.7.0; X13: `memory`; X08b: `learning`; O08: `github.webhooks`; H08: `break_glass`).
  */
-const DEFAULT_CONFIG_HASH = '752b77312ee56aba1fab63783a0a0ec4df9bb76bea139180e55e372b8c11471b';
+const DEFAULT_CONFIG_HASH = 'fde8fd27893024fad1345a2626ca42a2ee56ed7f4ab460328bae2287a8320996';
 
 describe('config_hash (AC3)', () => {
   it('is the pinned value for the default configuration', () => {

@@ -53,6 +53,8 @@
 //                                                                      QUESTIONS.md #395, #553
 //   M36 memory: a file's cap ≤ the total cap; proposals need L2 ...... ADR-M74 §2.2, D-08 X13,
 //                                                                      QUESTIONS.md #574
+//   M37 break-glass: on with at least one scope, each named once ..... ADR-M111 §2.11, D-08 H08,
+//                                                                      QUESTIONS.md #741
 import type {
   AutonomyLevel,
   EscalationRoute,
@@ -651,6 +653,22 @@ const m36: Rule = (c) => [
     : []),
 ];
 
+/**
+ * Rule M37 (H08, ADR-M111 §2.11): break-glass that is on names at least one scope, and each scope
+ * once. Off, the list may be empty (every request is refused).
+ */
+const m37: Rule = (c) => {
+  const scopes = c.break_glass.allowed_scopes;
+  return [
+    ...(c.break_glass.enabled && scopes.length === 0
+      ? [issue('config.rule.break_glass_no_scope', 'break_glass.allowed_scopes')]
+      : []),
+    ...(new Set(scopes).size !== scopes.length
+      ? [issue('config.rule.break_glass_scope_twice', 'break_glass.allowed_scopes')]
+      : []),
+  ];
+};
+
 const m28: Rule = (c) =>
   c.access.cost_read_roles.includes('viewer')
     ? [issue('config.rule.viewer_never_reads_cost', 'access.cost_read_roles')]
@@ -743,6 +761,7 @@ export const MANDATORY_RULES: Readonly<Record<string, Rule>> = {
   M34: m34,
   M35: m35,
   M36: m36,
+  M37: m37,
 };
 
 /** All mandatory-rule violations; each issue carries its rule id as the `rule` parameter. */

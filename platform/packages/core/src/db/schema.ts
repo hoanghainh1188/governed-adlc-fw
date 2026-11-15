@@ -7,6 +7,8 @@ import type {
   AgentAdapterCode,
   AgentStatus,
   AutonomyLevel,
+  BreakGlassScope,
+  BreakGlassStatus,
   ChangeFlag,
   DataClass,
   EscalationRoute,
@@ -1139,6 +1141,41 @@ export interface IntentLessonsTable {
   created_at: CreatedAt;
 }
 
+/**
+ * A break-glass grant for one intent (H08, migration 0061, ADR-M111 §2.1, §2.5). Codes, IDs, times
+ * and two `https://` links only; trigger SDA32 allows only the moves of §2.5 and writes the
+ * decision, the end and the review once each. Never deleted.
+ */
+export interface BreakGlassGrantsTable {
+  id: GeneratedId;
+  tenant_id: Immutable<string>;
+  project_id: Immutable<string>;
+  intent_id: Immutable<string>;
+  /** The requester: the only person whose actions use the grant. */
+  operator_id: Immutable<string>;
+  scopes: Immutable<BreakGlassScope[]>;
+  duration_seconds: Immutable<number>;
+  /** USD decimal string; set with the `budget` scope only. */
+  budget_increase_usd: ColumnType<string | null, string | null | undefined, never>;
+  reason_url: Immutable<string>;
+  status: ColumnType<BreakGlassStatus, never, BreakGlassStatus>;
+  lapses_at: Immutable<Date>;
+  approver_id: ColumnType<string | null, never, string | null>;
+  decided_at: ColumnType<Date | null, never, Date | null>;
+  expires_at: ColumnType<Date | null, never, Date | null>;
+  /** The stand-in incident (ADR-M111 §2.6). */
+  escalation_id: ColumnType<string | null, never, string | null>;
+  ended_at: ColumnType<Date | null, never, Date | null>;
+  /** Null for an operator on the server (`system`), or when it did not end by a revocation. */
+  revoked_by: ColumnType<string | null, never, string | null>;
+  review_url: ColumnType<string | null, never, string | null>;
+  reviewed_by: ColumnType<string | null, never, string | null>;
+  reviewed_at: ColumnType<Date | null, never, Date | null>;
+  review_overdue_at: ColumnType<Date | null, never, Date | null>;
+  /** When the request was recorded. */
+  created_at: CreatedAt;
+}
+
 /** The outcome of a lesson (X08b, migration 0057, ADR-M109 §2.5). Append-only. */
 export interface IntentLessonOutcomesTable {
   id: GeneratedId;
@@ -1254,6 +1291,7 @@ export interface Database {
   memory_proposals: MemoryProposalsTable;
   intent_lessons: IntentLessonsTable;
   intent_lesson_outcomes: IntentLessonOutcomesTable;
+  break_glass_grants: BreakGlassGrantsTable;
   project_memory_revocations: ProjectMemoryRevocationsTable;
   web_sessions: WebSessionsTable;
   webauthn_credentials: WebauthnCredentialsTable;
@@ -1972,6 +2010,30 @@ export const TABLE_COLUMNS = {
     'decided_by',
     'created_at',
   ]),
+  break_glass_grants: columns<BreakGlassGrantsTable>()([
+    'id',
+    'tenant_id',
+    'project_id',
+    'intent_id',
+    'operator_id',
+    'scopes',
+    'duration_seconds',
+    'budget_increase_usd',
+    'reason_url',
+    'status',
+    'created_at',
+    'lapses_at',
+    'approver_id',
+    'decided_at',
+    'expires_at',
+    'escalation_id',
+    'ended_at',
+    'revoked_by',
+    'review_url',
+    'reviewed_by',
+    'reviewed_at',
+    'review_overdue_at',
+  ]),
   memory_proposals: columns<MemoryProposalsTable>()([
     'id',
     'tenant_id',
@@ -2120,6 +2182,7 @@ export const TENANT_COLUMN = {
   memory_proposals: 'tenant_id',
   intent_lessons: 'tenant_id',
   intent_lesson_outcomes: 'tenant_id',
+  break_glass_grants: 'tenant_id',
   project_memory_revocations: 'tenant_id',
   web_sessions: 'tenant_id',
   webauthn_credentials: 'tenant_id',
@@ -2176,6 +2239,7 @@ export type ProjectMemoryVersion = Selectable<ProjectMemoryVersionsTable>;
 export type MemoryProposal = Selectable<MemoryProposalsTable>;
 export type IntentLesson = Selectable<IntentLessonsTable>;
 export type IntentLessonOutcomeRow = Selectable<IntentLessonOutcomesTable>;
+export type BreakGlassGrant = Selectable<BreakGlassGrantsTable>;
 export type ProjectMemoryRevocation = Selectable<ProjectMemoryRevocationsTable>;
 
 /** Insert input for a tenant table: the scope sets `tenant_id`, so callers never pass it. */

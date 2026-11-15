@@ -12,6 +12,7 @@ import type {
   RiskTier,
   Severity,
 } from './codes.js';
+import type { BreakGlassScope } from './break-glass.js';
 import type { EscalationRoute, ResponseLevel, SafeAction } from './escalation.js';
 import type { MemoryMode } from './memory.js';
 
@@ -364,6 +365,21 @@ export interface ProjectConfig {
   readonly learning: {
     /** 1–90, default 14. */
     readonly lesson_window_days: number;
+  };
+  /** H08 (ADR-M111 §2.2, §2.5, §2.11): break-glass grants for a production P0 incident. */
+  readonly break_glass: {
+    /** False: every request is refused. */
+    readonly enabled: boolean;
+    /** The scopes a request may name (at least one when enabled). */
+    readonly allowed_scopes: readonly BreakGlassScope[];
+    /** The longest grant, in hours: 1–8 (handbook Ch.6 §6.9 "a few hours"); default 4. */
+    readonly max_hours: number;
+    /** An unapproved request lapses after this many minutes: 5–240; default 30. */
+    readonly request_ttl_minutes: number;
+    /** The largest budget increase of the `budget` scope, in USD. */
+    readonly max_budget_increase_usd: number;
+    /** The review is due this many hours after the grant ends: 1–48 (Ch.6 §6.9); default 48. */
+    readonly review_due_hours: number;
   };
   /** Register tools (task X04, ADR-M69 §2.2–§2.7, ADR-M87). */
   readonly tools: {
