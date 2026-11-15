@@ -22,6 +22,8 @@ describe('api settings', () => {
       dashboardDir: null,
       webSignIn: null,
       trustedProxy: null,
+      // O08 (ADR-M112 §2.7): webhooks off by default.
+      githubWebhooks: null,
       evidence: {
         url: 'http://seaweedfs:8333',
         bucket: 'evidence',

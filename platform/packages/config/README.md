@@ -47,6 +47,7 @@ escalation:
 | `model_routing.allowed_provider_types` | `api` / `self_hosted` per data class |
 | `retention.evidence_retention_days` | Default 180; between 180 and 3650 (rule M31, E05). The worker purges evidence files this long after the intent ends (ADR-M51) |
 | `github.poll_interval_seconds` | Default 30 |
+| `github.webhooks.enabled`, `github.webhooks.reconcile_interval_seconds` | O08 (ADR-M112 §2.6): default `false` and 300. With webhooks on, a delivery starts a poll at once and the poller only reconciles, every `reconcile_interval_seconds` (at most 86400, never below `poll_interval_seconds`) |
 | `learning.lesson_window_days` | X08b (ADR-M109 §2.3): lessons may be recorded with `/lesson` from G8 until this many days after the intent closed. Default 14; 1 to 90 |
 | `verification.required_checks` | C08: the CI checks G6 waits for, by name; default `[]` (every check). The pilot: `[ci-ok]` |
 | `verification.ci_timeout_minutes` | C08: CI still pending after this → paused at G6, technical escalation; default 60, at most 1440 |

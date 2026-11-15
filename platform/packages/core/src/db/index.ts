@@ -7,6 +7,7 @@ export {
   type TenantGuardErrorCode,
 } from './errors.js';
 export { PlatformDatabase } from './platform-database.js';
+export type { GitHintSubscription } from './git-hints.js';
 export { TenantScope } from './tenant-scope.js';
 export {
   SystemScope,

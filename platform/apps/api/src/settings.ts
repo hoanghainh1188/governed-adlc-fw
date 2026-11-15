@@ -31,6 +31,10 @@ export const API_ENV = {
   sessionMaxHours: 'SDLC_API_SESSION_MAX_HOURS',
   trustedProxy: 'SDLC_API_TRUSTED_PROXY',
   dashboardActions: 'SDLC_API_DASHBOARD_ACTIONS',
+  githubWebhooks: 'SDLC_API_GITHUB_WEBHOOKS',
+  githubWebhookSecretPath: 'SDLC_API_GITHUB_WEBHOOK_SECRET_PATH',
+  webhookDedupeSeconds: 'SDLC_API_WEBHOOK_DEDUPE_SECONDS',
+  webhookRatePerMinute: 'SDLC_API_WEBHOOK_RATE_PER_MINUTE',
 } as const;
 
 /** Fields of the KV entry written by `openbao:bootstrap api-evidence-credentials` (E02). */
@@ -114,6 +118,15 @@ const schema = z.object({
   [API_ENV.sessionMaxHours]: z.coerce.number().int().min(1).max(24).default(8),
   // Writes from the dashboard (U06, ADR-M73 §2.3): off by default; on needs the GitHub sign-in.
   [API_ENV.dashboardActions]: z.enum(['off', 'on']).default('off'),
+  // GitHub webhooks (O08, ADR-M112 §2.7): off by default; on needs OpenBao for the secret.
+  [API_ENV.githubWebhooks]: z.enum(['off', 'on']).default('off'),
+  [API_ENV.githubWebhookSecretPath]: z
+    .string()
+    .regex(/^api\/[A-Za-z0-9_.-]+$/)
+    .default('api/github-webhook'),
+  // GitHub lets a person redeliver the deliveries of the past 3 days.
+  [API_ENV.webhookDedupeSeconds]: z.coerce.number().int().min(60).max(604_800).default(259_200),
+  [API_ENV.webhookRatePerMinute]: perMinute.default(1200),
   // Team access (V09, ADR-M67 §2.5): the one address whose X-Forwarded-For the api trusts, the
   // proxy's fixed address on the network `access`. Empty: trust no forwarded header.
   [API_ENV.trustedProxy]: z
@@ -183,6 +196,17 @@ export interface ApiSettings {
    * address comes from `X-Forwarded-For` only on requests from this peer; null: never.
    */
   readonly trustedProxy: string | null;
+  /** GitHub webhooks (O08, ADR-M112 §2.4, §2.7); null: `SDLC_API_GITHUB_WEBHOOKS=off`. */
+  readonly githubWebhooks: GitHubWebhookSettings | null;
+}
+
+export interface GitHubWebhookSettings {
+  /** KV path of the webhook secret (field `secret`), readable by the `api` AppRole only. */
+  readonly secretPath: string;
+  /** How long a delivery ID counts as already seen. */
+  readonly dedupeMs: number;
+  /** Deliveries per client address and minute. */
+  readonly ratePerMinute: number;
 }
 
 export interface WebSignInSettings {
@@ -228,7 +252,9 @@ export class SettingsError extends Error {
       | 'api.settings.temporal_off_in_production'
       | 'api.settings.public_origin_missing'
       | 'api.settings.public_origin_insecure'
-      | 'api.settings.actions_need_signin',
+      | 'api.settings.actions_need_signin'
+      | 'api.settings.webhooks_need_openbao'
+      | 'api.settings.webhook_secret_missing',
     readonly setting: string,
   ) {
     super(`${key}: ${setting}`);
@@ -269,6 +295,11 @@ export function loadSettings(env: Readonly<Record<string, string | undefined>>):
   if (actions && v[API_ENV.webSignIn] !== 'github') {
     throw new SettingsError('api.settings.actions_need_signin', API_ENV.dashboardActions);
   }
+  // O08 (ADR-M112 §2.8): the webhook secret lives in OpenBao only, so dev mode has no webhooks.
+  const webhooksOn = v[API_ENV.githubWebhooks] === 'on';
+  if (webhooksOn && dev) {
+    throw new SettingsError('api.settings.webhooks_need_openbao', API_ENV.githubWebhooks);
+  }
   let webSignIn: WebSignInSettings | null = null;
   if (v[API_ENV.webSignIn] === 'github') {
     const origin = v[API_ENV.publicOrigin];
@@ -294,6 +325,13 @@ export function loadSettings(env: Readonly<Record<string, string | undefined>>):
     host: v[API_ENV.host],
     webSignIn,
     trustedProxy: v[API_ENV.trustedProxy] === '' ? null : v[API_ENV.trustedProxy],
+    githubWebhooks: webhooksOn
+      ? {
+          secretPath: v[API_ENV.githubWebhookSecretPath],
+          dedupeMs: v[API_ENV.webhookDedupeSeconds] * 1000,
+          ratePerMinute: v[API_ENV.webhookRatePerMinute],
+        }
+      : null,
     port: v[API_ENV.port],
     database,
     rateLimitPerMinute: v[API_ENV.rateLimitPerMinute],

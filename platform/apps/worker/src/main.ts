@@ -51,7 +51,8 @@ import { TaskCheckLoop } from './evaluation-task-check-loop.js';
 import { EvaluationPlanLoop } from './evaluation-plan-loop.js';
 import { taskSetReader } from './task-sets.js';
 import { jsonLogger } from './logger.js';
-import { PollerLoop } from './poller-loop.js';
+import { HintListener } from './hint-listener.js';
+import { pollIntervalSeconds, PollerLoop } from './poller-loop.js';
 import { ReconcileLoop } from './reconcile-loop.js';
 import { openAnchorStore } from './anchor-store.js';
 import { openLangfusePurge } from './langfuse-store.js';
@@ -162,15 +163,19 @@ async function main(): Promise<void> {
     logger.log('warn', 'worker.temporal_off', { message: t('worker.start.temporal_off') });
   }
 
+  // O08 (ADR-M112 §2.6): the projects with webhooks on, as their configuration last said.
+  const webhookProjects = new Set<string>();
   const loop = new PollerLoop({
     listProjects: () => db.system.listPollableProjects(),
     intervalSeconds: async (project) => {
       const scope = db.forTenant(project.tenantId);
       const { config } = await loadEffectiveConfig(scope.projectConfigs, project.projectId);
-      return config.github.poll_interval_seconds;
+      if (config.github.webhooks.enabled) webhookProjects.add(project.projectId);
+      else webhookProjects.delete(project.projectId);
+      return pollIntervalSeconds(config.github);
     },
-    poll: (group) =>
-      pollRepository(
+    poll: async (group, reason) => {
+      const result = await pollRepository(
         {
           db,
           gitHost,
@@ -181,13 +186,40 @@ async function main(): Promise<void> {
           intentSignals: signals,
         },
         group,
-      ),
+      );
+      // ADR-M112 §2.6: events that a reconciliation poll found are deliveries that did not
+      // arrive (or hints that were lost). Counts only.
+      if (reason === 'scheduled') {
+        for (const { projectId, result: one } of result.projects) {
+          if (one.events > 0 && webhookProjects.has(projectId)) {
+            logger.log('info', 'worker.reconcile_found_events', {
+              tenant_id: group.tenantId,
+              project_id: projectId,
+              events: one.events,
+            });
+          }
+        }
+      }
+      return result;
+    },
     now: () => Date.now(),
     logger,
     maxConcurrentPolls: settings.maxConcurrentPolls,
     heartbeat: () => fs.writeFileSync(settings.heartbeatFile, ''),
   });
   loop.start(settings.tickMs);
+  // O08 (ADR-M112 §2.6): webhook hints from the api make a repository's poll start at once.
+  const hints = new HintListener({
+    listen: (onHint) => db.listenGitHints(onHint),
+    onHint: (hint) => {
+      loop.hint(hint.repository);
+    },
+    onReconnect: () => {
+      loop.hintAll();
+    },
+    logger,
+  });
+  hints.start();
   // The escalation clocks (B11, ADR-M28): state in PostgreSQL, no Temporal timers.
   const escalations = new EscalationLoop({
     listDue: (now, limit) => db.system.listDueEscalations(now, limit),
@@ -426,6 +458,7 @@ async function main(): Promise<void> {
 
   const shutdown = (): void => {
     void Promise.all([
+      hints.stop(),
       loop.stop(),
       escalations.stop(),
       memory.stop(),
