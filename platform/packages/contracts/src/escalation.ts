@@ -10,6 +10,8 @@ export const ESCALATION_TRIGGERS = [
   'unusual_behaviour',
   'accumulated_risk',
   'time',
+  // H08 (ADR-M111 §2.6): the stand-in for the incident of an approved break-glass grant.
+  'break_glass',
 ] as const;
 export type EscalationTrigger = (typeof ESCALATION_TRIGGERS)[number];
 

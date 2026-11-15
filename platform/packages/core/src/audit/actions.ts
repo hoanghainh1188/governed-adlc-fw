@@ -763,6 +763,44 @@ export const AUDIT_ACTIONS = {
   },
   /** X08b PR 2: a person dropped a lesson; `reason` is a drop reason code. */
   'lesson.dropped': { entityType: 'intent', fields: { lesson_id: 'uuid', reason: 'code' } },
+  /**
+   * H08 (ADR-M111 §2.7): break-glass grants, the grant ID as the entity. Codes, IDs, the scope
+   * codes, the incident code and durations in seconds only; never the reason, a link or a name.
+   */
+  'break_glass.requested': {
+    entityType: 'break_glass_grant',
+    fields: { intent_id: 'uuid', operator_id: 'uuid', scopes: 'codes', duration: 'count' },
+  },
+  'break_glass.approved': {
+    entityType: 'break_glass_grant',
+    fields: {
+      intent_id: 'uuid',
+      approver_id: 'uuid',
+      incident: 'code',
+      scopes: 'codes',
+      expires_in: 'count',
+      budget_increase_usd: 'decimal?',
+    },
+  },
+  'break_glass.refused': {
+    entityType: 'break_glass_grant',
+    fields: { intent_id: 'uuid', approver_id: 'uuid' },
+  },
+  /** `revoked_by` is absent when an operator on the server revoked it (`system`). */
+  'break_glass.revoked': {
+    entityType: 'break_glass_grant',
+    fields: { intent_id: 'uuid', revoked_by: 'uuid?' },
+  },
+  'break_glass.expired': { entityType: 'break_glass_grant', fields: { intent_id: 'uuid' } },
+  'break_glass.lapsed': { entityType: 'break_glass_grant', fields: { intent_id: 'uuid' } },
+  'break_glass.reviewed': {
+    entityType: 'break_glass_grant',
+    fields: { intent_id: 'uuid', incident: 'code' },
+  },
+  'break_glass.review_overdue': {
+    entityType: 'break_glass_grant',
+    fields: { intent_id: 'uuid', incident: 'code' },
+  },
   /** A person put an intent's evidence on hold (E05, QUESTIONS #235): never purged until released. */
   'evidence.hold_set': { entityType: 'intent', fields: { hold_id: 'uuid' } },
   /** A person released the hold on an intent's evidence (E05, QUESTIONS #235). */
