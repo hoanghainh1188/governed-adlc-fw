@@ -1,5 +1,13 @@
 // PostgreSQL connections for the platform database (task A06, design/ADR-M09).
-import { Kysely, PostgresDialect } from 'kysely';
+import {
+  Kysely,
+  PostgresAdapter,
+  PostgresDialect,
+  PostgresDriver,
+  PostgresIntrospector,
+  PostgresQueryCompiler,
+  type Driver,
+} from 'kysely';
 import pg from 'pg';
 
 import type { PlatformLogger } from '../observability/logger.js';
@@ -79,4 +87,24 @@ export function logIdleDbErrors(logger: PlatformLogger): (code: string) => void 
 /** Internal: a Kysely instance without the tenant guard. Never exported from `@sdlc/core`. */
 export function createKysely(config: DatabaseConfig): Kysely<Database> {
   return new Kysely<Database>({ dialect: new PostgresDialect({ pool: createPool(config) }) });
+}
+
+/**
+ * Internal: a Kysely instance over a given driver (task H09). The platform database shares one
+ * `PostgresDriver` (one pool) between its own instance and one tenant-bound instance per tenant.
+ */
+export function kyselyOver(driver: Driver): Kysely<Database> {
+  return new Kysely<Database>({
+    dialect: {
+      createAdapter: () => new PostgresAdapter(),
+      createDriver: () => driver,
+      createIntrospector: (db) => new PostgresIntrospector(db),
+      createQueryCompiler: () => new PostgresQueryCompiler(),
+    },
+  });
+}
+
+/** Internal: the shared driver of the platform database, over a new pool. */
+export function createPlatformDriver(config: DatabaseConfig): PostgresDriver {
+  return new PostgresDriver({ pool: createPool(config) });
 }
