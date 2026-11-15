@@ -436,14 +436,16 @@ describeDb('C06 session 2: the run after G4 on PostgreSQL', () => {
     await expect(
       sql`INSERT INTO evidence_items (tenant_id, intent_id, kind, storage_uri, sha256, size_bytes)
           VALUES (${t.f.scope.tenantId}, ${intent.id}, 'proposal', 's3://evidence/a/./b', ${'b'.repeat(64)}, 1)`.execute(
-        db.appRaw,
+        db.appAs(t.f.scope.tenantId),
       ),
     ).rejects.toMatchObject({ code: '23514' });
     for (const statement of [
       sql`UPDATE evidence_items SET sha256 = ${'c'.repeat(64)} WHERE id = ${row.id}`,
       sql`DELETE FROM evidence_items WHERE id = ${row.id}`,
     ]) {
-      await expect(statement.execute(db.appRaw)).rejects.toMatchObject({ code: '42501' });
+      await expect(statement.execute(db.appAs(t.f.scope.tenantId))).rejects.toMatchObject({
+        code: '42501',
+      });
     }
   });
 });

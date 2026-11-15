@@ -217,7 +217,9 @@ describeDb('C03: Cost Controller on PostgreSQL', () => {
 
     it('refuses a run that has already started', async () => {
       const s = await seed();
-      await sql`UPDATE runs SET status = 'running' WHERE id = ${s.runId}`.execute(t.appRaw);
+      await sql`UPDATE runs SET status = 'running' WHERE id = ${s.runId}`.execute(
+        t.appAs(s.scope.tenantId),
+      );
       const { c, gateway } = controller();
       expect(
         await errorCode(

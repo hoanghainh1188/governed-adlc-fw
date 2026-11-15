@@ -580,7 +580,7 @@ describeDb('C07 PR 2: gate G5 on PostgreSQL', () => {
         sql`run_budget_usd = NULL`,
       ]) {
         const attempt = sql`UPDATE intents SET ${change} WHERE id = ${intent.id}`.execute(
-          db.appRaw,
+          db.appAs(t.f.scope.tenantId),
         );
         await expect(attempt).rejects.toThrow(/only goes up/);
       }

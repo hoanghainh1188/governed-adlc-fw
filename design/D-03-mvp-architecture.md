@@ -558,7 +558,7 @@ Licence note [External]:
 | Secrets | Not in the repo, not in images. Fetched from OpenBao at runtime with short-lived tokens |
 | GitHub events | v0.1: polling through the GitHub App (no inbound port). When webhooks are enabled: verify signatures, expose only `/webhooks/github` |
 | Approvers | Map GitHub accounts ↔ platform users. Check roles + block self-approval |
-| Tenant isolation | Every query filters by `tenant_id`. [Proposal] Add PostgreSQL Row-Level Security in Later |
+| Tenant isolation | Every query filters by `tenant_id` (the tenant guard). Second barrier: PostgreSQL row-level security on every table with `tenant_id`, the tenant set per transaction (H09, ADR-M110) |
 | Object storage (version 1.30, ADR-M52) | Only the S3 API (8333) of SeaweedFS is reachable on the Compose network, each process with its own identity. The master, volume server and filer (HTTP and gRPC) listen on 127.0.0.1 inside the container only, and need JWT keys that `start.sh` makes at each start and keeps nowhere else; the S3 gateway's gRPC port (18333, which SeaweedFS cannot bind apart) refuses calls without the filer key. Iceberg and Lance are off. Admin work only with `docker compose exec seaweedfs weed shell -master=127.0.0.1:9333` |
 | Audit | Append-only, hash chain, `verify` command; kept at least 2 years |
 | Kill switch | Stop any run and revoke its credentials within 5 minutes (6.5; version 1.22: the path, who, the escalation, ADR-M42) |
@@ -817,3 +817,4 @@ ADR-M09 (database/migration tool) and ADR-M10 (OpenHands PoC result) are written
 | 1.56 | 2026-11-14 | Claude Code (task X13 PR 3b), approved by Harry in the X13 PR 3 plan (QUESTIONS #716) | §7.1: `deleteBranch` (twenty-six methods), memory branches only (ADR-M74 0.5) |
 | 1.57 | 2026-11-14 | Claude Code (task X08a PR 1), approved by Harry in the X08a plan (QUESTIONS #723) | §7.1: `webUrl` (twenty-seven methods), the web addresses of an intent's links (ADR-M109 0.2) |
 | 1.58 | 2026-11-14 | Claude Code (task X08b PR 2), approved by Harry in the X08b plan (QUESTIONS #729) | §7.1: `commentIdOf` (twenty-eight methods), the comment ID of an address on the project's repository, and `IssueCommentText.issueNumber`, the issue or pull request of a comment: `adlc lesson add` checks both (ADR-M109 0.4) |
+| 1.59 | 2026-11-15 | Claude Code (task H09 PR 2), approved by Harry in the H09 plan (QUESTIONS #733) | §9 Tenant isolation: row-level security built as the second barrier; cross-tenant work loops over the tenants (ADR-M110) |

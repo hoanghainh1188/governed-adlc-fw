@@ -80,7 +80,7 @@ Tenant guard rules:
 - `resolveApiToken(hash)`: task B03 finds the tenant from the token, so this lookup crosses tenants
 - `listPollableProjects()`: task B06, the GitHub poller runs for every tenant (ADR-M27). It returns only `tenant_id`, `project_id` and the repository name of the active GitHub projects of active tenants; everything after it runs in `forTenant(tenant_id)`
 
-PostgreSQL Row-Level Security stays in MVP+1 (D-05 section 8). Task H09 builds it (ADR-M110): `forTenant()` sets the tenant per transaction, and the system scope reads tenant data one tenant at a time; `resolveApiToken` and the web-session lookups find the tenant through two definer functions (migration 0059).
+PostgreSQL Row-Level Security stays in MVP+1 (D-05 section 8). Task H09 builds it (ADR-M110): `forTenant()` sets the tenant per transaction, and the system scope reads tenant data one tenant at a time; `resolveApiToken` and the web-session lookups find the tenant through two definer functions (migration 0059). Migration 0060 turns on row-level security (ADR-M110 §2.1).
 
 ### 2.5. Enums
 
@@ -211,3 +211,4 @@ Fields marked `?` are optional (ADR-M20 section 2.4): left out when there is no 
 | 0.6 | 2026-09-27 | Claude (task B06) | §2.4: `listPollableProjects()` added to the system scope (IDs only, ADR-M27); `TenantScope.savepoint` issues savepoint statements outside the guard (no table); `SDA06` |
 | 0.7 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
 | 0.8 | 2026-11-15 | Claude (task H09, PR 1) | §2.4: pointer to ADR-M110 (tenant per transaction, system scope per tenant, authentication lookups) |
+| 0.9 | 2026-11-15 | Claude (task H09, PR 2) | §2.4: row-level security on (migration 0060) |

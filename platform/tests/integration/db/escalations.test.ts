@@ -362,7 +362,9 @@ describeDb('B11: escalations on PostgreSQL', () => {
       await assertActionAllowed(s.scope, s.intent.id, 'sandbox_test');
       await assertActionAllowed(s.scope, s.intent.id, 'kill_run');
       await sql`UPDATE escalations SET status = 'closed', closed_at = now(), next_check_at = NULL
-                WHERE tenant_id = ${s.scope.tenantId} AND id = ${e.id}`.execute(t.appRaw);
+                WHERE tenant_id = ${s.scope.tenantId} AND id = ${e.id}`.execute(
+        t.appAs(s.scope.tenantId),
+      );
       await assertActionAllowed(s.scope, s.intent.id, 'run_start');
     });
 
@@ -395,7 +397,7 @@ describeDb('B11: escalations on PostgreSQL', () => {
       sql`INSERT INTO escalations (tenant_id, code, intent_id, trigger, route, severity,
             response_level, packet, current_step, ack_due_at, step_due_at)
           VALUES (${s.scope.tenantId}, 'ESC-2026-9999', ${s.intent.id}, 'time', 'intent', 'low',
-            'notify', ${packet}::jsonb, 'owner', now(), now())`.execute(t.appRaw);
+            'notify', ${packet}::jsonb, 'owner', now(), now())`.execute(t.appAs(s.scope.tenantId));
 
     it('the database refuses free text and nested values in the packet', async () => {
       const s = await seed();
@@ -414,7 +416,7 @@ describeDb('B11: escalations on PostgreSQL', () => {
       const e = await raise(s);
       const update = (set: ReturnType<typeof sql>) =>
         sql`UPDATE escalations SET ${set} WHERE tenant_id = ${s.scope.tenantId} AND id = ${e.id}`.execute(
-          t.appRaw,
+          t.appAs(s.scope.tenantId),
         );
       await update(sql`status = 'acknowledged', acknowledged_by = ${s.personB},
                        acknowledged_at = now()`);
@@ -431,7 +433,7 @@ describeDb('B11: escalations on PostgreSQL', () => {
         await failure(
           sql`UPDATE escalations SET status = 'acknowledged', acknowledged_by = ${s.personA},
               acknowledged_at = now() WHERE tenant_id = ${s.scope.tenantId} AND id = ${e.id}`.execute(
-            t.appRaw,
+            t.appAs(s.scope.tenantId),
           ),
         ),
       ).toBe('pg:23514');
@@ -456,12 +458,12 @@ describeDb('B11: escalations on PostgreSQL', () => {
       const e = await raise(s);
       const [notice] = await s.scope.escalationNotices.listForEscalation(e.id);
       await sql`UPDATE escalation_notices SET posted_at = now() WHERE id = ${notice!.id}`.execute(
-        t.appRaw,
+        t.appAs(s.scope.tenantId),
       );
       expect(
         await failure(
           sql`UPDATE escalation_notices SET attempts = 3 WHERE id = ${notice!.id}`.execute(
-            t.appRaw,
+            t.appAs(s.scope.tenantId),
           ),
         ),
       ).toBe('pg:SDA08');

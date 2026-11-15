@@ -94,13 +94,15 @@ describeDb('H03a: client data deletion on PostgreSQL', () => {
     const s = await seed();
     for (const status of ['pending_deletion', 'purged'] as const) {
       await sql`UPDATE tenants SET status = ${status} WHERE id = ${s.scope.tenantId}`.execute(
-        t.appRaw,
+        t.appAs(s.scope.tenantId),
       );
       const row = await t.app.system.getTenant(s.scope.tenantId);
       expect(row?.status).toBe(status);
     }
     await expect(
-      sql`UPDATE tenants SET status = ${'gone'} WHERE id = ${s.scope.tenantId}`.execute(t.appRaw),
+      sql`UPDATE tenants SET status = ${'gone'} WHERE id = ${s.scope.tenantId}`.execute(
+        t.appAs(s.scope.tenantId),
+      ),
     ).rejects.toMatchObject({ code: '23514' });
   });
 
@@ -123,7 +125,7 @@ describeDb('H03a: client data deletion on PostgreSQL', () => {
       ) VALUES (
         ${s.scope.tenantId}, ${intent.id}, 'G1', 'approve', 'HITL', 'human', ${s.userId},
         'person_b', ${new Date('2026-12-01T00:00:00.000Z')}, ${HASH('a')}, ${HASH('b')}, 'cli'
-      )`.execute(t.appRaw);
+      )`.execute(t.appAs(s.scope.tenantId));
 
     const purgedAt = new Date('2026-11-10T12:00:00.000Z');
     await s.scope.transaction(async (tx) => {
@@ -156,7 +158,9 @@ describeDb('H03a: client data deletion on PostgreSQL', () => {
     });
 
     const decision = await sql<GateDecisionRow>`
-      SELECT * FROM gate_decisions WHERE tenant_id = ${s.scope.tenantId}`.execute(t.appRaw);
+      SELECT * FROM gate_decisions WHERE tenant_id = ${s.scope.tenantId}`.execute(
+      t.appAs(s.scope.tenantId),
+    );
     expect(decision.rows).toHaveLength(1);
     expect(decision.rows[0]?.decided_by).toBe(s.userId);
   });
@@ -187,13 +191,15 @@ describeDb('H03a: client data deletion on PostgreSQL', () => {
       ) VALUES (
         ${s.scope.tenantId}, ${intent.id}, 'G1', 'approve', 'HITL', 'human', ${s.userId},
         'person_b', ${new Date('2026-12-01T00:00:00.000Z')}, ${HASH('e')}, ${HASH('f')}, 'cli'
-      )`.execute(t.appRaw);
+      )`.execute(t.appAs(s.scope.tenantId));
 
     const beforeAudit = await sql<AuditLogRow>`
-      SELECT * FROM audit_log WHERE tenant_id = ${s.scope.tenantId} ORDER BY seq`.execute(t.appRaw);
+      SELECT * FROM audit_log WHERE tenant_id = ${s.scope.tenantId} ORDER BY seq`.execute(
+      t.appAs(s.scope.tenantId),
+    );
     const beforeGates = await sql<GateDecisionRow>`
       SELECT * FROM gate_decisions WHERE tenant_id = ${s.scope.tenantId} ORDER BY id`.execute(
-      t.appRaw,
+      t.appAs(s.scope.tenantId),
     );
     expect(beforeAudit.rows[0]?.prev_hash).toBe(GENESIS_HASH);
     expect(await s.scope.audit.verify()).toEqual({
@@ -208,10 +214,12 @@ describeDb('H03a: client data deletion on PostgreSQL', () => {
     });
 
     const afterAudit = await sql<AuditLogRow>`
-      SELECT * FROM audit_log WHERE tenant_id = ${s.scope.tenantId} ORDER BY seq`.execute(t.appRaw);
+      SELECT * FROM audit_log WHERE tenant_id = ${s.scope.tenantId} ORDER BY seq`.execute(
+      t.appAs(s.scope.tenantId),
+    );
     const afterGates = await sql<GateDecisionRow>`
       SELECT * FROM gate_decisions WHERE tenant_id = ${s.scope.tenantId} ORDER BY id`.execute(
-      t.appRaw,
+      t.appAs(s.scope.tenantId),
     );
     expect(afterAudit.rows).toEqual(beforeAudit.rows);
     expect(afterGates.rows).toEqual(beforeGates.rows);
@@ -227,7 +235,9 @@ describeDb('H03a: client data deletion on PostgreSQL', () => {
       sql`UPDATE gate_decisions SET decision = 'reject' WHERE tenant_id = ${s.scope.tenantId}`,
       sql`DELETE FROM gate_decisions WHERE tenant_id = ${s.scope.tenantId}`,
     ]) {
-      await expect(statement.execute(t.appRaw)).rejects.toMatchObject({ code: '42501' });
+      await expect(statement.execute(t.appAs(s.scope.tenantId))).rejects.toMatchObject({
+        code: '42501',
+      });
       await expect(statement.execute(t.owner)).rejects.toMatchObject({ code: 'SDA01' });
     }
   });

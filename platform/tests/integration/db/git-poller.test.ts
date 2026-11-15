@@ -657,11 +657,13 @@ describeDb('B06: GitHub poller and comment commands on PostgreSQL', () => {
           WHERE reply_posted_at IS NOT NULL LIMIT 1`.execute(db.owner)
       ).rows;
       await expect(
-        sql`DELETE FROM git_event_receipts WHERE id = ${row!.id}`.execute(db.appRaw),
+        sql`DELETE FROM git_event_receipts WHERE id = ${row!.id}`.execute(
+          db.appAs(seeded.tenantId),
+        ),
       ).rejects.toThrow(/permission denied/);
       await expect(
         sql`UPDATE git_event_receipts SET event_id = 'github:comment:1' WHERE id = ${row!.id}`.execute(
-          db.appRaw,
+          db.appAs(seeded.tenantId),
         ),
       ).rejects.toThrow(/permission denied/);
       // The result of a receipt is fixed once it is no longer `failing`.
@@ -671,12 +673,14 @@ describeDb('B06: GitHub poller and comment commands on PostgreSQL', () => {
         sql`event_attempts = event_attempts + 1`,
       ]) {
         await expect(
-          sql`UPDATE git_event_receipts SET ${change} WHERE id = ${row!.id}`.execute(db.appRaw),
+          sql`UPDATE git_event_receipts SET ${change} WHERE id = ${row!.id}`.execute(
+            db.appAs(seeded.tenantId),
+          ),
         ).rejects.toThrow(/final/);
       }
       await expect(
         sql`UPDATE git_event_receipts SET reply_attempts = 50 WHERE id = ${row!.id}`.execute(
-          db.appRaw,
+          db.appAs(seeded.tenantId),
         ),
       ).rejects.toThrow(/final/);
     });
@@ -689,7 +693,7 @@ describeDb('B06: GitHub poller and comment commands on PostgreSQL', () => {
         sql`INSERT INTO git_event_receipts
               (tenant_id, project_id, event_id, outcome, issue_number, gate_decision_id, reply_code, reply_params)
             VALUES (${seeded.tenantId}, ${seeded.target.projectId}, ${`github:comment:${extra}`},
-                    ${outcome}, 3, ${row!.id}, NULL, NULL)`.execute(db.appRaw);
+                    ${outcome}, 3, ${row!.id}, NULL, NULL)`.execute(db.appAs(seeded.tenantId));
       await expect(insert('failed_internal', '901')).rejects.toThrow(/check/);
       await expect(insert('failing', '902')).rejects.toThrow(/check/);
     });
@@ -699,7 +703,7 @@ describeDb('B06: GitHub poller and comment commands on PostgreSQL', () => {
         sql`INSERT INTO git_event_receipts
               (tenant_id, project_id, event_id, outcome, issue_number, reply_code, reply_params)
             VALUES (${seeded.tenantId}, ${seeded.target.projectId}, ${eventId}, 'refused', 3,
-                    'failed', ${params}::jsonb)`.execute(db.appRaw);
+                    'failed', ${params}::jsonb)`.execute(db.appAs(seeded.tenantId));
       await expect(insert('github:comment:777', '{"gate":"G1 please"}')).rejects.toThrow(/check/);
       await expect(insert('github:comment:778', '{"gate":"alice@example.com"}')).rejects.toThrow(
         /check/,

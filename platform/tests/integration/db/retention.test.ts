@@ -294,7 +294,7 @@ describeDb('E05 PR 1: evidence retention on PostgreSQL', () => {
 
   const purgedAt = async (table: 'evidence_items' | 'evidence_packs', id: string) =>
     (
-      await t.appRaw
+      await t.owner
         .selectFrom(table)
         .select('purged_at')
         .where('id', '=', id)
@@ -640,32 +640,36 @@ describeDb('E05 PR 1: evidence retention on PostgreSQL', () => {
       const w = await world();
       const done = await intent(w, 'done', T0);
       const diff = await item(w, done, T0);
-      await t.appRaw
+      await t
+        .appAs(w.tenantId)
         .updateTable('evidence_items')
         .set({ lock_extended_until: at(400) })
         .where('id', '=', diff.id)
         .execute();
       await expect(
-        t.appRaw
+        t
+          .appAs(w.tenantId)
           .updateTable('evidence_items')
           .set({ lock_extended_until: at(300) })
           .where('id', '=', diff.id)
           .execute(),
       ).rejects.toThrow();
-      await t.appRaw
+      await t
+        .appAs(w.tenantId)
         .updateTable('evidence_items')
         .set({ purged_at: at(500) })
         .where('id', '=', diff.id)
         .execute();
       await expect(
-        t.appRaw
+        t
+          .appAs(w.tenantId)
           .updateTable('evidence_items')
           .set({ purged_at: at(600) })
           .where('id', '=', diff.id)
           .execute(),
       ).rejects.toThrow();
       await expect(
-        t.appRaw.deleteFrom('evidence_items').where('id', '=', diff.id).execute(),
+        t.appAs(w.tenantId).deleteFrom('evidence_items').where('id', '=', diff.id).execute(),
       ).rejects.toThrow();
     });
 
@@ -675,14 +679,15 @@ describeDb('E05 PR 1: evidence retention on PostgreSQL', () => {
       const hold = await holdEvidence(w.scope, { userId: w.governance }, done.code, null);
       await releaseEvidenceHold(w.scope, { userId: w.governance }, done.code);
       await expect(
-        t.appRaw
+        t
+          .appAs(w.tenantId)
           .updateTable('evidence_holds')
           .set({ released_at: at(9), released_by: w.admin })
           .where('id', '=', hold.id)
           .execute(),
       ).rejects.toThrow();
       await expect(
-        t.appRaw.deleteFrom('evidence_holds').where('id', '=', hold.id).execute(),
+        t.appAs(w.tenantId).deleteFrom('evidence_holds').where('id', '=', hold.id).execute(),
       ).rejects.toThrow();
     });
   });
