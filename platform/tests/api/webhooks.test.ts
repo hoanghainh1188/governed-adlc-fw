@@ -12,7 +12,6 @@ import { DeliveryIds, MAX_DELIVERY_IDS } from '../../apps/api/src/webhooks/deliv
 import {
   GITHUB_WEBHOOK_PATH,
   WEBHOOK_BODY_LIMIT_BYTES,
-  WebhookState,
 } from '../../apps/api/src/webhooks/github-webhooks.js';
 import {
   OpenBaoWebhookVerifier,
@@ -70,7 +69,6 @@ describe('O08: the GitHub webhook route', () => {
   let hints: Hint[];
   let logs: Log[];
   let clock: number;
-  let state: WebhookState;
   let notifyImpl: (hint: Hint) => Promise<void>;
   let secrets: FakeSecrets;
 
@@ -99,7 +97,6 @@ describe('O08: the GitHub webhook route', () => {
         settings: { secretPath: 'api/github-webhook', dedupeMs: 60_000, ratePerMinute },
         verifier,
         notify: (hint) => notifyImpl(hint),
-        state,
         now: () => clock,
       },
     });
@@ -109,7 +106,6 @@ describe('O08: the GitHub webhook route', () => {
     hints = [];
     logs = [];
     clock = Date.parse('2026-11-15T08:00:00Z');
-    state = new WebhookState();
     notifyImpl = (hint) => {
       hints.push(hint);
       return Promise.resolve();
@@ -143,7 +139,6 @@ describe('O08: the GitHub webhook route', () => {
     const reply = await post(headers, payload);
     expect(reply.statusCode).toBe(202);
     expect(hints).toEqual([{ host: 'github', repository: 'acme/shop' }]);
-    expect(state.lastVerifiedAt).toBe(clock);
     expect(logs).toContainEqual({
       level: 'info',
       event: 'webhook.accepted',
@@ -177,7 +172,8 @@ describe('O08: the GitHub webhook route', () => {
     const changed = Buffer.from(good.payload.toString('utf8').replace('G3', 'G7'));
     expect((await post(good.headers, changed)).statusCode).toBe(401);
     expect(hints).toEqual([]);
-    expect(state.lastVerifiedAt).toBe(0);
+    // No line that the doctor check counts as a verified delivery.
+    expect(logs.some((l) => /^webhook\.(accepted|duplicate|ignored)$/.test(l.event))).toBe(false);
     expect(logs.filter((l) => l.event === 'webhook.refused').map((l) => l.fields)).toEqual([
       { reason: 'bad_signature' },
       { reason: 'bad_signature' },
@@ -231,7 +227,6 @@ describe('O08: the GitHub webhook route', () => {
     const edited = signed('issue_comment', { ...(commentPayload() as object), action: 'edited' });
     expect((await post(edited.headers, edited.payload)).statusCode).toBe(202);
     expect(hints).toEqual([]);
-    expect(state.lastVerifiedAt).toBe(clock);
     expect(logs.filter((l) => l.event === 'webhook.ignored')).toHaveLength(2);
   });
 
