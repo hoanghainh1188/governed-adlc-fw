@@ -36,19 +36,12 @@ export type WebhookRefusal =
   | 'hint_failed'
   | 'failed';
 
-/** What the api knows about deliveries, for the doctor check of PR 3 (ADR-M112 §2.9). */
-export class WebhookState {
-  /** When the last delivery with a correct signature arrived (ms since the epoch); 0: never. */
-  lastVerifiedAt = 0;
-}
-
 export interface GitHubWebhookDeps {
   readonly settings: GitHubWebhookSettings;
   readonly verifier: WebhookVerifier;
   /** Sends the hint (`PlatformDatabase.notifyGitHint`). */
   readonly notify: (hint: GitHint) => Promise<void>;
   readonly log: PlatformLogger;
-  readonly state?: WebhookState;
   /** Milliseconds since the epoch. */
   readonly now?: () => number;
 }
@@ -74,7 +67,6 @@ function repositoryOf(event: GitEvent): string {
 
 export function registerGitHubWebhooks(app: NestFastifyApplication, deps: GitHubWebhookDeps): void {
   const now = deps.now ?? Date.now;
-  const state = deps.state ?? new WebhookState();
   const ids = new DeliveryIds(deps.settings.dedupeMs, now);
   const perAddress = new RateLimiter(deps.settings.ratePerMinute, 60_000, now);
 
@@ -158,7 +150,7 @@ export function registerGitHubWebhooks(app: NestFastifyApplication, deps: GitHub
           // not read, or a payload without a repository). Nothing to wake.
           event = null;
         }
-        state.lastVerifiedAt = now();
+        // `webhook.accepted|duplicate|ignored`: the doctor check reads these (ADR-M112 §2.9).
         if (event === null) return accept(reply, 'webhook.ignored', fields);
         if (ids.has(fields.delivery_id)) return accept(reply, 'webhook.duplicate', fields);
 
