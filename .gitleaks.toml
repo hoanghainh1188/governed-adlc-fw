@@ -42,7 +42,7 @@ paths = ['''^package\.json$''']
 regexTarget = "line"
 regexes = ['''^\s*"test:api": "SDLC_API_TEST=1 vitest run --config vitest\.integration\.config\.ts platform/tests/integration/api",$''']
 
-# Approval pending: Harry (Person B), PR #541 (task H09 PR 1), 2026-11-15.
+# Approved by: Harry (Person B), 2026-11-15, PR #541 (task H09 PR 1).
 # False positive: generic-api-key reads a line of the migration lock file as a key and its value
 # when the migration's file name contains a word such as "auth", "key" or "token" (here
 # `0059-auth-tenant-lookups.ts`). The value is the SHA-256 of the migration file (R075), not a
