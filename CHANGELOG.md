@@ -3,15 +3,11 @@
 ## [Unreleased]
 
 ### Changed
-- **Row-level security, part 2: the second tenant barrier is on** (task H09 PR 2, ADR-M110 0.2, D-05 1.75, D-03 1.59). Migration `0060-row-level-security` enables and forces PostgreSQL row-level security on the 51 tables with `tenant_id`. The application role `platform_app` now sees and writes only the rows of the tenant set in its transaction (part 1), even when a query forgets its tenant filter; without a tenant it sees no row. The owner `platform` keeps full access; no role gets `BYPASSRLS`; `tenants` stays without RLS. Measured cost: no difference within the noise of a developer machine (ADR-M110 §2.6). `PlatformDatabase.close()` now also closes the shared pool when only tenant scopes were used. No behaviour change for users.
-
-### Upgrade notes
-- **H09 PR 2:** `pnpm db:migrate` runs migration `0060-row-level-security` (policies only, no data change; it takes a short lock on each table). After it, a query by hand as `platform_app` returns no tenant rows unless the transaction sets `app.tenant_id` (deploy README, "Platform database roles"). Nothing else to do.
-
-### Changed
+- **Row-level security, part 2: the second tenant barrier is on** (task H09 PR 2, ADR-M110 0.2, D-05 1.75, D-03 1.60). Migration `0060-row-level-security` enables and forces PostgreSQL row-level security on the 51 tables with `tenant_id`. The application role `platform_app` now sees and writes only the rows of the tenant set in its transaction (part 1), even when a query forgets its tenant filter; without a tenant it sees no row. The owner `platform` keeps full access; no role gets `BYPASSRLS`; `tenants` stays without RLS. Measured cost: no difference within the noise of a developer machine (ADR-M110 §2.6). `PlatformDatabase.close()` now also closes the shared pool when only tenant scopes were used. No behaviour change for users.
 - **Row-level security, part 1: the tenant of each transaction** (task H09 PR 1, ADR-M110 0.1, QUESTIONS #733). Every database statement of a tenant now runs in a transaction that first sets `app.tenant_id` with `set_config(…, true)`; the setting ends with the transaction, so a pooled connection never keeps a tenant. The worker loops that read across tenants (poller, escalation clock, memory, reconcile, kill signals, evaluation loops, spend sync, orphan sweep) now read one tenant at a time. API tokens and dashboard sessions find their tenant through two narrow database functions (migration 0059). No behaviour change for users; part 2 turns on row-level security.
 
 ### Upgrade notes
+- **H09 PR 2:** `pnpm db:migrate` runs migration `0060-row-level-security` (policies only, no data change; it takes a short lock on each table). After it, a query by hand as `platform_app` returns no tenant rows unless the transaction sets `app.tenant_id` (deploy README, "Platform database roles"). Nothing else to do.
 - **H09 PR 1:** `pnpm db:migrate` runs migration `0059-auth-tenant-lookups` (two functions, no table change). Nothing else to do.
 
 ## [0.16.0] - 2026-11-14
