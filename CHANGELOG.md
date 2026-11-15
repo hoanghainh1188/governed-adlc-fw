@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+- **Row-level security, part 1: the tenant of each transaction** (task H09 PR 1, ADR-M110 0.1, QUESTIONS #733). Every database statement of a tenant now runs in a transaction that first sets `app.tenant_id` with `set_config(…, true)`; the setting ends with the transaction, so a pooled connection never keeps a tenant. The worker loops that read across tenants (poller, escalation clock, memory, reconcile, kill signals, evaluation loops, spend sync, orphan sweep) now read one tenant at a time. API tokens and dashboard sessions find their tenant through two narrow database functions (migration 0059). No behaviour change for users; part 2 turns on row-level security.
+
+### Upgrade notes
+- **H09 PR 1:** `pnpm db:migrate` runs migration `0059-auth-tenant-lookups` (two functions, no table change). Nothing else to do.
+
 ## [0.16.0] - 2026-11-14
 
 ### Added

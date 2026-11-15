@@ -8,6 +8,7 @@ import type { WebSessionEndReason } from './schema.js';
 import type { Database, Tenant } from './schema.js';
 import type { TenantStatus } from './vocabulary.js';
 import { isUuid, parseTenantId, type TenantId } from './tenant-id.js';
+import { setTenantQuery } from './tenant-driver.js';
 import { TenantScope } from './tenant-scope.js';
 
 export interface NewTenant {
@@ -81,9 +82,46 @@ const RETENTION_LOCK_KEY = 1;
 const SPEND_SYNC_LOCK_CLASS = 0x43_4f_53_01;
 const SPEND_SYNC_LOCK_KEY = 1;
 
+/** The query builder bound to one tenant's transactions (task H09, ADR-M110 §2.2). */
+export type TenantDbFactory = (tenantId: TenantId) => Kysely<Database>;
+
+/**
+ * Cross-tenant work (QUESTIONS #733, ADR-M110 §2.3): every read of tenant data loops over the
+ * tenants and runs in the tenant's own transaction (`tenantDb`), as `forTenant()` does. Only the
+ * `tenants` table and the two authentication lookups (migration 0059) are read without a tenant.
+ */
 export class SystemScope {
   /** @internal Use `PlatformDatabase.system`. */
-  constructor(private readonly db: Kysely<Database>) {}
+  constructor(
+    private readonly db: Kysely<Database>,
+    private readonly tenantDb: TenantDbFactory,
+  ) {}
+
+  /** Tenant IDs ordered by ID: the active tenants, or every tenant. */
+  private async tenantIds(which: 'active' | 'all'): Promise<TenantId[]> {
+    const rows = await run(
+      this.db
+        .selectFrom('tenants')
+        .select('id')
+        .$if(which === 'active', (qb) => qb.where('status', '=', 'active'))
+        .orderBy('id')
+        .execute(),
+    );
+    return rows.map((row) => parseTenantId(row.id));
+  }
+
+  /** At most `limit` active tenants, ordered by ID, for which `probe` finds a row. */
+  private async tenantsWhere(
+    limit: number,
+    probe: (tenantId: TenantId) => Promise<unknown>,
+  ): Promise<TenantId[]> {
+    const found: TenantId[] = [];
+    for (const tenantId of await this.tenantIds('active')) {
+      if (found.length >= limit) break;
+      if ((await run(probe(tenantId))) !== undefined) found.push(tenantId);
+    }
+    return found;
+  }
 
   /** Platform admin: creates a tenant. Tenants are the root of isolation, so no tenant scope applies. */
   createTenant(input: NewTenant): Promise<Tenant> {
@@ -120,7 +158,10 @@ export class SystemScope {
           })
           .returningAll()
           .executeTakeFirstOrThrow();
-        return work(new TenantScope(trx, parseTenantId(tenant.id)), tenant);
+        const tenantId = parseTenantId(tenant.id);
+        // The rest of the transaction belongs to the new tenant (H09, ADR-M110 §2.2).
+        await trx.executeQuery(setTenantQuery(tenantId));
+        return work(new TenantScope(trx, tenantId), tenant);
       }),
     );
   }
@@ -172,23 +213,23 @@ export class SystemScope {
    * projects of active tenants, nothing else. All further work runs in `forTenant(tenantId)`.
    */
   async listPollableProjects(): Promise<PollableProject[]> {
-    const rows = await run(
-      this.db
-        .selectFrom('projects as p')
-        .innerJoin('tenants as tn', 'tn.id', 'p.tenant_id')
-        .select(['p.tenant_id', 'p.id', 'p.repo_full_name'])
-        .where('p.git_provider', '=', 'github')
-        .where('p.status', '=', 'active')
-        .where('tn.status', '=', 'active')
-        .orderBy('p.tenant_id')
-        .orderBy('p.id')
-        .execute(),
-    );
-    return rows.map((row) => ({
-      tenantId: parseTenantId(row.tenant_id),
-      projectId: row.id,
-      repoFullName: row.repo_full_name,
-    }));
+    const found: PollableProject[] = [];
+    for (const tenantId of await this.tenantIds('active')) {
+      const rows = await run(
+        this.tenantDb(tenantId)
+          .selectFrom('projects as p')
+          .select(['p.id', 'p.repo_full_name'])
+          .where('p.tenant_id', '=', tenantId)
+          .where('p.git_provider', '=', 'github')
+          .where('p.status', '=', 'active')
+          .orderBy('p.id')
+          .execute(),
+      );
+      for (const row of rows) {
+        found.push({ tenantId, projectId: row.id, repoFullName: row.repo_full_name });
+      }
+    }
+    return found;
   }
 
   /**
@@ -198,20 +239,31 @@ export class SystemScope {
    * `forTenant(tenantId)`, which locks the row.
    */
   async listDueEscalations(now: Date, limit: number): Promise<DueEscalation[]> {
-    const rows = await run(
-      this.db
-        .selectFrom('escalations as e')
-        .innerJoin('tenants as tn', 'tn.id', 'e.tenant_id')
-        .select(['e.tenant_id', 'e.id'])
-        .where('e.next_check_at', 'is not', null)
-        .where('e.next_check_at', '<=', now)
-        .where('tn.status', '=', 'active')
-        .orderBy('e.next_check_at')
-        .orderBy('e.id')
-        .limit(limit)
-        .execute(),
-    );
-    return rows.map((row) => ({ tenantId: parseTenantId(row.tenant_id), escalationId: row.id }));
+    const due: { readonly item: DueEscalation; readonly at: number }[] = [];
+    for (const tenantId of await this.tenantIds('active')) {
+      const rows = await run(
+        this.tenantDb(tenantId)
+          .selectFrom('escalations as e')
+          .select(['e.id', 'e.next_check_at'])
+          .where('e.tenant_id', '=', tenantId)
+          .where('e.next_check_at', 'is not', null)
+          .where('e.next_check_at', '<=', now)
+          .orderBy('e.next_check_at')
+          .orderBy('e.id')
+          .limit(limit)
+          .execute(),
+      );
+      for (const row of rows) {
+        due.push({
+          item: { tenantId, escalationId: row.id },
+          at: new Date(row.next_check_at!).getTime(),
+        });
+      }
+    }
+    return due
+      .sort((a, b) => a.at - b.at || compareText(a.item.escalationId, b.item.escalationId))
+      .slice(0, limit)
+      .map((entry) => entry.item);
   }
 
   /**
@@ -220,51 +272,65 @@ export class SystemScope {
    * `pushed` or `opened`, least recently looked at first. Crosses tenants, so IDs only.
    */
   async listMemoryWork(limit: number): Promise<MemoryWork[]> {
-    const runs = await run(
-      this.db
-        .selectFrom('run_events as re')
-        .innerJoin('tenants as tn', 'tn.id', 're.tenant_id')
-        .select(['re.tenant_id', 're.run_id'])
-        .where('re.event_type', '=', 'memory_branch_pushed')
-        .where('tn.status', '=', 'active')
-        .where((eb) =>
-          eb.not(
-            eb.exists(
-              eb
-                .selectFrom('memory_proposals as mp')
-                .select('mp.id')
-                .whereRef('mp.tenant_id', '=', 're.tenant_id')
-                .whereRef('mp.run_id', '=', 're.run_id'),
+    const runs: { readonly item: MemoryWork; readonly at: number }[] = [];
+    const proposals: { readonly item: MemoryWork; readonly at: number; readonly id: string }[] = [];
+    for (const tenantId of await this.tenantIds('active')) {
+      const db = this.tenantDb(tenantId);
+      const runRows = await run(
+        db
+          .selectFrom('run_events as re')
+          .select(['re.run_id', 're.created_at'])
+          .where('re.tenant_id', '=', tenantId)
+          .where('re.event_type', '=', 'memory_branch_pushed')
+          .where((eb) =>
+            eb.not(
+              eb.exists(
+                eb
+                  .selectFrom('memory_proposals as mp')
+                  .select('mp.id')
+                  .where('mp.tenant_id', '=', tenantId)
+                  .whereRef('mp.run_id', '=', 're.run_id'),
+              ),
             ),
-          ),
-        )
-        .orderBy('re.created_at')
-        .limit(limit)
-        .execute(),
-    );
-    const proposals = await run(
-      this.db
-        .selectFrom('memory_proposals as mp')
-        .innerJoin('tenants as tn', 'tn.id', 'mp.tenant_id')
-        .select(['mp.tenant_id', 'mp.id'])
-        .where('mp.state', 'in', ['pushed', 'opened'])
-        .where('tn.status', '=', 'active')
-        .orderBy('mp.updated_at')
-        .orderBy('mp.id')
-        .limit(limit)
-        .execute(),
-    );
+          )
+          .orderBy('re.created_at')
+          .limit(limit)
+          .execute(),
+      );
+      for (const row of runRows) {
+        runs.push({
+          item: { tenantId, kind: 'run', runId: row.run_id },
+          at: new Date(row.created_at).getTime(),
+        });
+      }
+      const proposalRows = await run(
+        db
+          .selectFrom('memory_proposals as mp')
+          .select(['mp.id', 'mp.updated_at'])
+          .where('mp.tenant_id', '=', tenantId)
+          .where('mp.state', 'in', ['pushed', 'opened'])
+          .orderBy('mp.updated_at')
+          .orderBy('mp.id')
+          .limit(limit)
+          .execute(),
+      );
+      for (const row of proposalRows) {
+        proposals.push({
+          item: { tenantId, kind: 'proposal', proposalId: row.id },
+          at: new Date(row.updated_at).getTime(),
+          id: row.id,
+        });
+      }
+    }
     return [
-      ...runs.map((row) => ({
-        tenantId: parseTenantId(row.tenant_id),
-        kind: 'run' as const,
-        runId: row.run_id,
-      })),
-      ...proposals.map((row) => ({
-        tenantId: parseTenantId(row.tenant_id),
-        kind: 'proposal' as const,
-        proposalId: row.id,
-      })),
+      ...runs
+        .sort((a, b) => a.at - b.at)
+        .slice(0, limit)
+        .map((entry) => entry.item),
+      ...proposals
+        .sort((a, b) => a.at - b.at || compareText(a.id, b.id))
+        .slice(0, limit)
+        .map((entry) => entry.item),
     ];
   }
 
@@ -278,27 +344,25 @@ export class SystemScope {
     limit: number,
     after?: { readonly tenantId: string; readonly intentId: string },
   ): Promise<OpenIntent[]> {
-    const rows = await run(
-      this.db
-        .selectFrom('intents as i')
-        .innerJoin('tenants as tn', 'tn.id', 'i.tenant_id')
-        .select(['i.tenant_id', 'i.id'])
-        .where('i.status', 'not in', ['done', 'rejected', 'cancelled', 'blocked'])
-        .where('tn.status', '=', 'active')
-        .$if(after !== undefined, (qb) =>
-          qb.where((eb) =>
-            eb.or([
-              eb('i.tenant_id', '>', after!.tenantId),
-              eb.and([eb('i.tenant_id', '=', after!.tenantId), eb('i.id', '>', after!.intentId)]),
-            ]),
-          ),
-        )
-        .orderBy('i.tenant_id')
-        .orderBy('i.id')
-        .limit(limit)
-        .execute(),
-    );
-    return rows.map((row) => ({ tenantId: parseTenantId(row.tenant_id), intentId: row.id }));
+    const found: OpenIntent[] = [];
+    for (const tenantId of await this.tenantIds('active')) {
+      if (found.length >= limit) break;
+      if (after !== undefined && compareText(tenantId, after.tenantId) < 0) continue;
+      const afterId = after !== undefined && tenantId === after.tenantId ? after.intentId : null;
+      const rows = await run(
+        this.tenantDb(tenantId)
+          .selectFrom('intents as i')
+          .select('i.id')
+          .where('i.tenant_id', '=', tenantId)
+          .where('i.status', 'not in', ['done', 'rejected', 'cancelled', 'blocked'])
+          .$if(afterId !== null, (qb) => qb.where('i.id', '>', afterId!))
+          .orderBy('i.id')
+          .limit(limit - found.length)
+          .execute(),
+      );
+      for (const row of rows) found.push({ tenantId, intentId: row.id });
+    }
+    return found;
   }
 
   /**
@@ -306,12 +370,11 @@ export class SystemScope {
    * worker's evaluation loop visits. IDs only, ordered, active tenants only.
    */
   async listTenantsWithOpenEvaluations(limit: number): Promise<TenantId[]> {
-    const rows = await run(
-      this.db
+    return this.tenantsWhere(limit, (tenantId) =>
+      this.tenantDb(tenantId)
         .selectFrom('evaluations as e')
-        .innerJoin('tenants as tn', 'tn.id', 'e.tenant_id')
-        .select('e.tenant_id')
-        .distinct()
+        .select('e.id')
+        .where('e.tenant_id', '=', tenantId)
         .where((eb) =>
           eb.or([
             eb('e.status', 'in', ['queued', 'running']),
@@ -320,18 +383,15 @@ export class SystemScope {
               eb
                 .selectFrom('evaluation_runs as er')
                 .select('er.id')
-                .whereRef('er.tenant_id', '=', 'e.tenant_id')
+                .where('er.tenant_id', '=', tenantId)
                 .whereRef('er.evaluation_id', '=', 'e.id')
                 .where('er.status', '=', 'running'),
             ),
           ]),
         )
-        .where('tn.status', '=', 'active')
-        .orderBy('e.tenant_id')
-        .limit(limit)
-        .execute(),
+        .limit(1)
+        .executeTakeFirst(),
     );
-    return rows.map((row) => parseTenantId(row.tenant_id));
   }
 
   /**
@@ -340,19 +400,15 @@ export class SystemScope {
    * without an answer. IDs only.
    */
   async listTenantsWithTasksToCheck(limit: number): Promise<TenantId[]> {
-    const rows = await run(
-      this.db
+    return this.tenantsWhere(limit, (tenantId) =>
+      this.tenantDb(tenantId)
         .selectFrom('evaluation_tasks as et')
-        .innerJoin('tenants as tn', 'tn.id', 'et.tenant_id')
-        .select('et.tenant_id')
-        .distinct()
+        .select('et.id')
+        .where('et.tenant_id', '=', tenantId)
         .where('et.status', 'in', ['registered', 'checking'])
-        .where('tn.status', '=', 'active')
-        .orderBy('et.tenant_id')
-        .limit(limit)
-        .execute(),
+        .limit(1)
+        .executeTakeFirst(),
     );
-    return rows.map((row) => parseTenantId(row.tenant_id));
   }
 
   /**
@@ -361,19 +417,17 @@ export class SystemScope {
    * IDs only, active tenants, ordered.
    */
   async listTenantsWithPlanWork(now: Date, limit: number): Promise<TenantId[]> {
-    const rows = await run(
-      this.db
+    return this.tenantsWhere(limit, (tenantId) =>
+      this.tenantDb(tenantId)
         .selectFrom('evaluation_plans as p')
-        .innerJoin('tenants as tn', 'tn.id', 'p.tenant_id')
         .innerJoin('evaluation_plan_versions as v', (join) =>
           join
-            .onRef('v.tenant_id', '=', 'p.tenant_id')
+            .on('v.tenant_id', '=', tenantId)
             .onRef('v.plan_id', '=', 'p.id')
             .onRef('v.version', '=', 'p.current_version'),
         )
-        .select('p.tenant_id')
-        .distinct()
-        .where('tn.status', '=', 'active')
+        .select('p.id')
+        .where('p.tenant_id', '=', tenantId)
         .where((eb) =>
           eb.or([
             eb.and([eb('p.status', '=', 'active'), eb('p.run_requested_at', 'is not', null)]),
@@ -382,11 +436,9 @@ export class SystemScope {
             eb.and([eb('p.status', '=', 'paused'), eb('p.paused_until', '<=', now)]),
           ]),
         )
-        .orderBy('p.tenant_id')
-        .limit(limit)
-        .execute(),
+        .limit(1)
+        .executeTakeFirst(),
     );
-    return rows.map((row) => parseTenantId(row.tenant_id));
   }
 
   /**
@@ -396,36 +448,39 @@ export class SystemScope {
    * cancels a run activity that waits in Temporal. IDs only; at most `limit`.
    */
   async listKillingIntents(limit: number): Promise<OpenIntent[]> {
-    const rows = await run(
-      this.db
-        .selectFrom('intents as i')
-        .innerJoin('tenants as tn', 'tn.id', 'i.tenant_id')
-        .innerJoin('runs as r', (join) =>
-          join.onRef('r.tenant_id', '=', 'i.tenant_id').onRef('r.intent_id', '=', 'i.id'),
-        )
-        .select(['i.tenant_id', 'i.id'])
-        .where('i.status', '=', 'running')
-        .where('tn.status', '=', 'active')
-        .where('r.status', 'in', ['stopping', 'stopped_killed'])
-        .whereRef('r.created_at', '>=', 'i.updated_at')
-        .where((eb) =>
-          eb.not(
-            eb.exists(
-              eb
-                .selectFrom('runs as later')
-                .select('later.id')
-                .whereRef('later.tenant_id', '=', 'r.tenant_id')
-                .whereRef('later.intent_id', '=', 'r.intent_id')
-                .whereRef('later.attempt', '>', 'r.attempt'),
+    const found: OpenIntent[] = [];
+    for (const tenantId of await this.tenantIds('active')) {
+      if (found.length >= limit) break;
+      const rows = await run(
+        this.tenantDb(tenantId)
+          .selectFrom('intents as i')
+          .innerJoin('runs as r', (join) =>
+            join.on('r.tenant_id', '=', tenantId).onRef('r.intent_id', '=', 'i.id'),
+          )
+          .select('i.id')
+          .where('i.tenant_id', '=', tenantId)
+          .where('i.status', '=', 'running')
+          .where('r.status', 'in', ['stopping', 'stopped_killed'])
+          .whereRef('r.created_at', '>=', 'i.updated_at')
+          .where((eb) =>
+            eb.not(
+              eb.exists(
+                eb
+                  .selectFrom('runs as later')
+                  .select('later.id')
+                  .where('later.tenant_id', '=', tenantId)
+                  .whereRef('later.intent_id', '=', 'r.intent_id')
+                  .whereRef('later.attempt', '>', 'r.attempt'),
+              ),
             ),
-          ),
-        )
-        .orderBy('i.tenant_id')
-        .orderBy('i.id')
-        .limit(limit)
-        .execute(),
-    );
-    return rows.map((row) => ({ tenantId: parseTenantId(row.tenant_id), intentId: row.id }));
+          )
+          .orderBy('i.id')
+          .limit(limit - found.length)
+          .execute(),
+      );
+      for (const row of rows) found.push({ tenantId, intentId: row.id });
+    }
+    return found;
   }
 
   /**
@@ -462,15 +517,22 @@ export class SystemScope {
    * the look-back window. A time only; null when no run ended since then.
    */
   async earliestStartOfRunsEndedSince(since: Date): Promise<Date | null> {
-    const row = await run(
-      this.db
-        .selectFrom('runs')
-        .select((eb) => eb.fn.min('created_at').as('earliest'))
-        .where('finished_at', '>=', since)
-        .executeTakeFirst(),
-    );
-    const earliest = row?.earliest as Date | string | null | undefined;
-    return earliest == null ? null : new Date(earliest);
+    let earliest: Date | null = null;
+    for (const tenantId of await this.tenantIds('all')) {
+      const row = await run(
+        this.tenantDb(tenantId)
+          .selectFrom('runs')
+          .select((eb) => eb.fn.min('created_at').as('earliest'))
+          .where('tenant_id', '=', tenantId)
+          .where('finished_at', '>=', since)
+          .executeTakeFirst(),
+      );
+      const value = row?.earliest as Date | string | null | undefined;
+      if (value == null) continue;
+      const start = new Date(value);
+      if (earliest === null || start < earliest) earliest = start;
+    }
+    return earliest;
   }
 
   /**
@@ -505,11 +567,20 @@ export class SystemScope {
    */
   async existingPackIds(ids: readonly string[]): Promise<Set<string>> {
     const valid = ids.filter((id) => isUuid(id));
-    if (valid.length === 0) return new Set();
-    const rows = await run(
-      this.db.selectFrom('evidence_packs').select('id').where('id', 'in', valid).execute(),
-    );
-    return new Set(rows.map((row) => row.id));
+    const found = new Set<string>();
+    if (valid.length === 0) return found;
+    for (const tenantId of await this.tenantIds('all')) {
+      const rows = await run(
+        this.tenantDb(tenantId)
+          .selectFrom('evidence_packs')
+          .select('id')
+          .where('tenant_id', '=', tenantId)
+          .where('id', 'in', valid)
+          .execute(),
+      );
+      for (const row of rows) found.add(row.id);
+    }
+    return found;
   }
 
   /** Health check (task B03): true when the database answers. Reads no table. */
@@ -530,14 +601,17 @@ export class SystemScope {
     now: Date = new Date(),
   ): Promise<ResolvedApiToken | undefined> {
     assertTokenHash(tokenHash);
+    const tenantId = await this.lookupTenant('auth_api_token_tenant', tokenHash);
+    if (tenantId === undefined) return undefined;
     const row = await run(
-      this.db
+      this.tenantDb(tenantId)
         .selectFrom('api_tokens as t')
         .innerJoin('users as u', (join) =>
-          join.onRef('u.tenant_id', '=', 't.tenant_id').onRef('u.id', '=', 't.user_id'),
+          join.on('u.tenant_id', '=', tenantId).onRef('u.id', '=', 't.user_id'),
         )
         .innerJoin('tenants as tn', 'tn.id', 't.tenant_id')
         .select(['t.id as token_id', 't.tenant_id', 't.user_id', 'tn.status as tenant_status'])
+        .where('t.tenant_id', '=', tenantId)
         .where('t.token_hash', '=', tokenHash)
         .where('t.revoked_at', 'is', null)
         .where('t.expires_at', '>', now)
@@ -568,15 +642,17 @@ export class SystemScope {
     idleSince: Date,
   ): Promise<ResolvedWebSession | undefined> {
     assertTokenHash(secretHash);
+    const tenantId = await this.lookupTenant('auth_web_session_tenant', secretHash);
+    if (tenantId === undefined) return undefined;
     const row = await run(
-      this.db
+      this.tenantDb(tenantId)
         .selectFrom('web_sessions as s')
         .innerJoin('users as u', (join) =>
-          join.onRef('u.tenant_id', '=', 's.tenant_id').onRef('u.id', '=', 's.user_id'),
+          join.on('u.tenant_id', '=', tenantId).onRef('u.id', '=', 's.user_id'),
         )
         .innerJoin('user_identities as i', (join) =>
           join
-            .onRef('i.tenant_id', '=', 's.tenant_id')
+            .on('i.tenant_id', '=', tenantId)
             .onRef('i.id', '=', 's.identity_id')
             .onRef('i.user_id', '=', 's.user_id'),
         )
@@ -590,6 +666,7 @@ export class SystemScope {
           's.csrf_sha256',
           'tn.status as tenant_status',
         ])
+        .where('s.tenant_id', '=', tenantId)
         .where('s.secret_sha256', '=', secretHash)
         .where('s.revoked_at', 'is', null)
         .where('s.expires_at', '>', now)
@@ -623,10 +700,13 @@ export class SystemScope {
     at: Date,
   ): Promise<{ tenantId: TenantId; userId: string } | undefined> {
     assertTokenHash(secretHash);
+    const tenantId = await this.lookupTenant('auth_web_session_tenant', secretHash);
+    if (tenantId === undefined) return undefined;
     const row = await run(
-      this.db
+      this.tenantDb(tenantId)
         .updateTable('web_sessions')
         .set({ revoked_at: at, end_reason: reason })
+        .where('tenant_id', '=', tenantId)
         .where('secret_sha256', '=', secretHash)
         .where('revoked_at', 'is', null)
         .returning(['tenant_id', 'user_id'])
@@ -634,6 +714,27 @@ export class SystemScope {
     );
     return row ? { tenantId: parseTenantId(row.tenant_id), userId: row.user_id } : undefined;
   }
+  /**
+   * The tenant of an API token or a web session, by its SHA-256 hash only (migration 0059,
+   * ADR-M110 §2.4): the one read of tenant data that cannot name its tenant first.
+   */
+  private async lookupTenant(
+    fn: 'auth_api_token_tenant' | 'auth_web_session_tenant',
+    sha256: string,
+  ): Promise<TenantId | undefined> {
+    const result = await run(
+      sql<{ tenant_id: string | null }>`SELECT ${sql.id(fn)}(${sha256}) AS tenant_id`.execute(
+        this.db,
+      ),
+    );
+    const tenantId = result.rows[0]?.tenant_id;
+    return tenantId == null ? undefined : parseTenantId(tenantId);
+  }
+}
+
+/** Byte order of lowercase IDs, as PostgreSQL orders `uuid` and `text` in the C collation. */
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 async function run<T>(statement: Promise<T>): Promise<T> {

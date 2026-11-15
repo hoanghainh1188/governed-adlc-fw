@@ -58,6 +58,7 @@ import { migration0055MemoryProposals } from './0055-memory-proposals.js';
 import { migration0056IntentSearch } from './0056-intent-search.js';
 import { migration0057IntentLessons } from './0057-intent-lessons.js';
 import { migration0058LessonFollowUp } from './0058-lesson-follow-up.js';
+import { migration0059AuthTenantLookups } from './0059-auth-tenant-lookups.js';
 import type { SqlMigration } from './define.js';
 
 export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
@@ -119,4 +120,5 @@ export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
   '0056-intent-search': migration0056IntentSearch,
   '0057-intent-lessons': migration0057IntentLessons,
   '0058-lesson-follow-up': migration0058LessonFollowUp,
+  '0059-auth-tenant-lookups': migration0059AuthTenantLookups,
 };
