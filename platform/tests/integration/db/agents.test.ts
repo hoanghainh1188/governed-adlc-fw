@@ -330,7 +330,8 @@ describeDb('C10: the agent register on PostgreSQL', () => {
       const s = await seed();
       const agent = await active(s);
       const where = sql`WHERE tenant_id = ${s.scope.tenantId} AND id = ${agent.id}`;
-      const run = (statement: ReturnType<typeof sql>) => codeOf(statement.execute(t0.appRaw));
+      const run = (statement: ReturnType<typeof sql>) =>
+        codeOf(statement.execute(t0.appAs(s.scope.tenantId)));
       expect(await run(sql`UPDATE agents SET status = 'proposed' ${where}`)).toBe('SDA09');
       expect(
         await run(sql`UPDATE agents SET model_ref = 'gpt-oss-20b', version = '9' ${where}`),
@@ -340,7 +341,9 @@ describeDb('C10: the agent register on PostgreSQL', () => {
       );
       expect(await run(sql`UPDATE agents SET agent_key = 'other' ${where}`)).toBe('42501');
       expect(await run(sql`DELETE FROM agents ${where}`)).toBe('42501');
-      await sql`UPDATE agents SET status = 'suspended' ${where}`.execute(t0.appRaw);
+      await sql`UPDATE agents SET status = 'suspended' ${where}`.execute(
+        t0.appAs(s.scope.tenantId),
+      );
       expect(await run(sql`UPDATE agents SET model_ref = 'gpt-oss-20b' ${where}`)).toBe('SDA09');
       // X03: the adapter is configuration too (migration 0037), and only a known code.
       expect(await run(sql`UPDATE agents SET adapter = 'opencode' ${where}`)).toBe('SDA09');
@@ -350,7 +353,7 @@ describeDb('C10: the agent register on PostgreSQL', () => {
       expect(await run(sql`UPDATE agents SET status = 'active', version = '2' ${where}`)).toBe(
         'SDA09',
       );
-      await sql`UPDATE agents SET status = 'retired' ${where}`.execute(t0.appRaw);
+      await sql`UPDATE agents SET status = 'retired' ${where}`.execute(t0.appAs(s.scope.tenantId));
       expect(await run(sql`UPDATE agents SET owner_id = ${s.other} ${where}`)).toBe('SDA09');
       // An active agent without a pinned model cannot exist.
       expect(

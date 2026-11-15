@@ -536,7 +536,8 @@ describeDb('E08: the Langfuse purge on PostgreSQL', () => {
       tracesOf(w);
       await pass(at(181));
       await expect(
-        t.appRaw
+        t
+          .appAs(w.scope.tenantId)
           .updateTable('langfuse_purges')
           .set({ attempts: 0 })
           .where('intent_id', '=', w.intentId)
@@ -546,7 +547,8 @@ describeDb('E08: the Langfuse purge on PostgreSQL', () => {
       await pass(at(181.1));
       for (const change of [{ traces: 9 }, { confirmed_at: at(300) }, { attempts: 5 }]) {
         await expect(
-          t.appRaw
+          t
+            .appAs(w.scope.tenantId)
             .updateTable('langfuse_purges')
             .set(change)
             .where('intent_id', '=', w.intentId)
@@ -554,7 +556,11 @@ describeDb('E08: the Langfuse purge on PostgreSQL', () => {
         ).rejects.toThrow();
       }
       await expect(
-        t.appRaw.deleteFrom('langfuse_purges').where('intent_id', '=', w.intentId).execute(),
+        t
+          .appAs(w.scope.tenantId)
+          .deleteFrom('langfuse_purges')
+          .where('intent_id', '=', w.intentId)
+          .execute(),
       ).rejects.toThrow();
       await expect(
         w.scope.langfusePurges.recordRequest({

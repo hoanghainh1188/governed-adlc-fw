@@ -361,10 +361,14 @@ describeDb('B07: the intent workflow step on PostgreSQL', () => {
         WHERE posted_at IS NOT NULL LIMIT 1`.execute(db.owner)
       ).rows;
       await expect(
-        sql`UPDATE intent_notices SET attempts = 0 WHERE id = ${notice!.id}`.execute(db.appRaw),
+        sql`UPDATE intent_notices SET attempts = 0 WHERE id = ${notice!.id}`.execute(
+          db.appAs(f.target.tenantId),
+        ),
       ).rejects.toThrow();
       await expect(
-        sql`DELETE FROM intent_notices WHERE id = ${notice!.id}`.execute(db.appRaw),
+        sql`DELETE FROM intent_notices WHERE id = ${notice!.id}`.execute(
+          db.appAs(f.target.tenantId),
+        ),
       ).rejects.toThrow();
     });
   });

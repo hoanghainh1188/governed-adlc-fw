@@ -367,7 +367,7 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
 
       const started = (await issue(s)).envelope;
       await sql`UPDATE runs SET status = 'provisioning' WHERE tenant_id = ${s.scope.tenantId}
-        AND id = ${started.contract.run_id}`.execute(t.appRaw);
+        AND id = ${started.contract.run_id}`.execute(t.appAs(s.scope.tenantId));
       expect(await verifyAt(started, NOW)).toMatchObject({
         ok: false,
         reason: 'run_not_startable',
@@ -479,7 +479,7 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
       await expect(
         sql`INSERT INTO run_events (tenant_id, run_id, event_type, payload)
           VALUES (${s.scope.tenantId}, ${runId}, 'contract_rejected', ${JSON.stringify(payload)})`.execute(
-          t.appRaw,
+          t.appAs(s.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: '23514' });
     });
@@ -490,7 +490,7 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
       const payload = { reason: 'stopped_budget', sha: SHA('e'), percent: 80, warned: true };
       await sql`INSERT INTO run_events (tenant_id, run_id, event_type, payload)
         VALUES (${s.scope.tenantId}, ${runId}, 'budget_warning', ${JSON.stringify(payload)})`.execute(
-        t.appRaw,
+        t.appAs(s.scope.tenantId),
       );
     });
 
@@ -511,13 +511,15 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
       const { run } = await issue(s);
       const where = sql`WHERE tenant_id = ${s.scope.tenantId} AND id = ${run.id}`;
       await expect(
-        sql`UPDATE runs SET agent_id = ${crypto.randomUUID()} ${where}`.execute(t.appRaw),
+        sql`UPDATE runs SET agent_id = ${crypto.randomUUID()} ${where}`.execute(
+          t.appAs(s.scope.tenantId),
+        ),
       ).rejects.toMatchObject({ code: '42501' });
       await sql`UPDATE runs SET status = 'failed', stop_reason = 'ci_failed' ${where}`.execute(
-        t.appRaw,
+        t.appAs(s.scope.tenantId),
       );
       await expect(
-        sql`UPDATE runs SET status = 'running' ${where}`.execute(t.appRaw),
+        sql`UPDATE runs SET status = 'running' ${where}`.execute(t.appAs(s.scope.tenantId)),
       ).rejects.toMatchObject({ code: 'SDA05' });
       await expect(
         sql`UPDATE runs SET iterations = 1 ${where}`.execute(t.owner),
@@ -531,7 +533,7 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
       const { run } = await issue(s);
       await expect(
         sql`UPDATE runs SET stop_reason = 'the agent looped' WHERE tenant_id = ${s.scope.tenantId}
-          AND id = ${run.id}`.execute(t.appRaw),
+          AND id = ${run.id}`.execute(t.appAs(s.scope.tenantId)),
       ).rejects.toMatchObject({ code: '23514' });
     });
 
@@ -540,11 +542,11 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
       const { run } = await issue(s);
       await expect(
         sql`UPDATE run_contracts SET key_version = 9 WHERE tenant_id = ${s.scope.tenantId}
-          AND run_id = ${run.id}`.execute(t.appRaw),
+          AND run_id = ${run.id}`.execute(t.appAs(s.scope.tenantId)),
       ).rejects.toMatchObject({ code: '42501' });
       await expect(
         sql`UPDATE run_contracts SET revoked_at = now() WHERE tenant_id = ${s.scope.tenantId}
-          AND run_id = ${run.id}`.execute(t.appRaw),
+          AND run_id = ${run.id}`.execute(t.appAs(s.scope.tenantId)),
       ).rejects.toMatchObject({ code: '42501' });
     });
 
@@ -556,7 +558,7 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
             branch, base_sha)
           VALUES (${crypto.randomUUID()}, ${b.scope.tenantId}, ${a.intentId}, ${a.planId}, 1,
             ${crypto.randomUUID()}, '1.0', 'agent/INT-2026-0001', ${'a'.repeat(40)})`.execute(
-          t.appRaw,
+          t.appAs(b.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: '23503' });
     });
@@ -569,7 +571,9 @@ describeDb('C02: Run Contracts on PostgreSQL', () => {
           sql`INSERT INTO runs (id, tenant_id, intent_id, plan_id, attempt, agent_id, agent_version,
               branch, base_sha)
             VALUES (${crypto.randomUUID()}, ${a.scope.tenantId}, ${a.intentId}, ${a.planId}, 1,
-              ${agentId}, '1.0', 'agent/INT-2026-0001', ${'a'.repeat(40)})`.execute(t.appRaw),
+              ${agentId}, '1.0', 'agent/INT-2026-0001', ${'a'.repeat(40)})`.execute(
+            t.appAs(a.scope.tenantId),
+          ),
         ).rejects.toMatchObject({ code: '23503', constraint: 'runs_agent_fkey' });
       }
       await expect(issue(a, { agent: { ...input(a).agent, id: b.agentId } })).rejects.toMatchObject(

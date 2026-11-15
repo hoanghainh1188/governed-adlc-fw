@@ -274,25 +274,29 @@ describeDb('L05 PR 2: evaluation plans on PostgreSQL', () => {
       const plan = await create(w);
       // The app has no grant on the code; the owner is refused by the trigger.
       await expect(
-        sql`UPDATE evaluation_plans SET code = 'other' WHERE id = ${plan.id}`.execute(t.appRaw),
+        sql`UPDATE evaluation_plans SET code = 'other' WHERE id = ${plan.id}`.execute(
+          t.appAs(w.scope.tenantId),
+        ),
       ).rejects.toMatchObject({ code: '42501' });
       await expect(
         sql`UPDATE evaluation_plans SET code = 'other' WHERE id = ${plan.id}`.execute(t.owner),
       ).rejects.toMatchObject({ code: 'SDA23' });
       await expect(
         sql`UPDATE evaluation_plans SET current_version = 0 WHERE id = ${plan.id}`.execute(
-          t.appRaw,
+          t.appAs(w.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: 'SDA23' });
       // Versions are append-only.
       await expect(
         sql`UPDATE evaluation_plan_versions SET runs_per_task = 9 WHERE plan_id = ${plan.id}`.execute(
-          t.appRaw,
+          t.appAs(w.scope.tenantId),
         ),
       ).rejects.toThrow();
       await archiveEvaluationPlan(w.scope, { planId: plan.id, userId: w.users.a });
       await expect(
-        sql`UPDATE evaluation_plans SET status = 'active' WHERE id = ${plan.id}`.execute(t.appRaw),
+        sql`UPDATE evaluation_plans SET status = 'active' WHERE id = ${plan.id}`.execute(
+          t.appAs(w.scope.tenantId),
+        ),
       ).rejects.toMatchObject({ code: 'SDA23' });
       await expect(
         sql`DELETE FROM evaluation_plans WHERE id = ${plan.id}`.execute(t.owner),

@@ -229,7 +229,7 @@ describeDb('X08a: finding past intents on PostgreSQL', () => {
     // Anything but the tombstone is refused by the database (SDA31).
     await expect(
       sql`UPDATE intents SET title = 'Something else' WHERE id = ${made.cancel!.id}`.execute(
-        db.appRaw,
+        db.appAs(f.target.tenantId),
       ),
     ).rejects.toMatchObject({ code: 'SDA31' });
     const scrubbed = await f.scope.clientDataDeletion.scrubIntents();

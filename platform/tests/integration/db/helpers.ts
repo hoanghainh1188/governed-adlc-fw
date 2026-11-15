@@ -9,10 +9,16 @@ import type { Kysely } from 'kysely';
 import pg from 'pg';
 import { describe } from 'vitest';
 
-import { createKysely } from '../../../packages/core/src/db/connection.js';
+import {
+  createKysely,
+  createPlatformDriver,
+  kyselyOver,
+} from '../../../packages/core/src/db/connection.js';
 import { migrateToLatest } from '../../../packages/core/src/db/migrator.js';
 import { PlatformDatabase } from '../../../packages/core/src/db/platform-database.js';
 import type { Database } from '../../../packages/core/src/db/schema.js';
+import { TenantBoundDriver } from '../../../packages/core/src/db/tenant-driver.js';
+import type { TenantId } from '../../../packages/core/src/db/tenant-id.js';
 
 const baseUrl = process.env.SDLC_TEST_DATABASE_URL;
 if (!baseUrl && process.env.SDLC_REQUIRE_DB === '1') {
@@ -45,8 +51,17 @@ export interface TestDatabase {
   readonly name: string;
   /** Connected as the owner role `platform`, like the migration command. */
   readonly owner: Kysely<Database>;
-  /** Raw query builder connected as `platform_app`, for privilege checks. */
+  /**
+   * Raw query builder connected as `platform_app`, for privilege checks. No tenant is set, so
+   * row-level security (H09, migration 0060) shows no tenant row: use `appAs` for tenant data.
+   */
   readonly appRaw: Kysely<Database>;
+  /**
+   * Raw query builder connected as `platform_app` with the tenant set in every transaction, as
+   * `forTenant()` does, but without the tenant guard: for checks of database triggers,
+   * constraints and grants on tenant rows (H09).
+   */
+  appAs(tenantId: TenantId | string): Kysely<Database>;
   /** The data access layer, connected as `platform_app`. */
   readonly app: PlatformDatabase;
   drop(): Promise<void>;
@@ -69,6 +84,19 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     connectionString: urlFor(name, 'platform_app'),
     maxConnections: 2,
   });
+  const appAsDriver = createPlatformDriver({
+    connectionString: urlFor(name, 'platform_app'),
+    maxConnections: 2,
+  });
+  const appAsDbs = new Map<string, Kysely<Database>>();
+  const appAs = (tenantId: TenantId | string): Kysely<Database> => {
+    let db = appAsDbs.get(tenantId);
+    if (db === undefined) {
+      db = kyselyOver(new TenantBoundDriver(appAsDriver, tenantId as TenantId));
+      appAsDbs.set(tenantId, db);
+    }
+    return db;
+  };
   const app = PlatformDatabase.connect({
     connectionString: urlFor(name, 'platform_app'),
     maxConnections: 4,
@@ -77,9 +105,10 @@ export async function createTestDatabase(): Promise<TestDatabase> {
     name,
     owner,
     appRaw,
+    appAs,
     app,
     async drop() {
-      await Promise.all([owner.destroy(), appRaw.destroy(), app.close()]);
+      await Promise.all([owner.destroy(), appRaw.destroy(), appAsDriver.destroy(), app.close()]);
       if (!TEST_DB_NAME.test(name)) throw new Error(`refusing to drop ${name}`);
       await admin(async (client) => {
         await waitForDisconnect(client, name);

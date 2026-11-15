@@ -85,7 +85,9 @@ describeDb('X04: the tool register on PostgreSQL', () => {
       ).toBe('config_change_not_allowed');
       const update = sql`UPDATE tools SET image_digest = ${`sha256:${'e'.repeat(64)}`},
         version = '2.0.0' WHERE tool_key = 't-frozen' AND tenant_id = ${scope.tenantId}`;
-      await expect(update.execute(t0.appRaw)).rejects.toMatchObject({ code: 'SDA25' });
+      await expect(update.execute(t0.appAs(scope.tenantId))).rejects.toMatchObject({
+        code: 'SDA25',
+      });
     });
 
     it('refuses what the CHECKs refuse: prohibited data, stdio with an image, active without a digest', async () => {
@@ -128,7 +130,7 @@ describeDb('X04: the tool register on PostgreSQL', () => {
       const tool = await registerTool(scope, base('t-port'));
       const set = (service: string, version: string) =>
         sql`UPDATE tools SET backing_services = ARRAY[${service}]::text[], version = ${version}
-            WHERE id = ${tool.id}`.execute(t0.appRaw);
+            WHERE id = ${tool.id}`.execute(t0.appAs(scope.tenantId));
       await expect(set('db:70000', '1.0.1')).rejects.toThrow(/check constraint/);
       await expect(set('db:65535', '1.0.2')).resolves.toBeDefined();
     });
@@ -144,9 +146,11 @@ describeDb('X04: the tool register on PostgreSQL', () => {
         round_at: tool!.updated_at,
       });
       await expect(
-        sql`UPDATE tool_approvals SET capacity = 'person_b'`.execute(t0.appRaw),
+        sql`UPDATE tool_approvals SET capacity = 'person_b'`.execute(t0.appAs(scope.tenantId)),
       ).rejects.toThrow();
-      await expect(sql`DELETE FROM tool_approvals`.execute(t0.appRaw)).rejects.toThrow();
+      await expect(
+        sql`DELETE FROM tool_approvals`.execute(t0.appAs(scope.tenantId)),
+      ).rejects.toThrow();
     });
 
     it('recertification dates never go back', async () => {

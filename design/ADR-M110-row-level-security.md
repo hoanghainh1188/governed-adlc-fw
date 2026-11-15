@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15; PR 1 builds §2.2–§2.4; PR 2 builds §2.1 and §2.5 and adds the measured cost (§2.6) |
+| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15; PR 1 built §2.2–§2.4 (merged, #541); PR 2 builds §2.1 and §2.5 and adds the measured cost (§2.6) |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); H09 builds it |
 | Related | D-08 H09 (AC1–AC5); D-02 NFR-02, NFR-03; D-03 §9 (tenant isolation); D-05 §8; ADR-M09 §2.3 (roles), §2.4 (tenant guard, system scope); ADR-M103 (housekeeping definer functions, migration 0046); CLAUDE.md R026; QUESTIONS #733 |
@@ -30,7 +30,8 @@ On every table with a `tenant_id` column:
   - `(SELECT …)`: the value is computed once per query (an init plan), so the index on `tenant_id` is still used.
 - Policy `owner_all`, `TO platform`, `USING (true) WITH CHECK (true)`: the migration owner keeps the access it has today (migrations, the definer functions of §2.4 and of migration 0046, test seeds). The owner is never used by the application processes (ADR-M09 §2.3).
 - No role gets `BYPASSRLS`. The superuser (`postgres`) bypasses RLS as PostgreSQL always does: backups (`pg_dumpall -U postgres`) are not changed.
-- A test lists the live tables with a `tenant_id` column and fails when one has no RLS or no policies, as `platform/tests/db/append-only.test.ts` does for append-only tables.
+- A test lists the live tables with a `tenant_id` column and fails when one has no RLS or no policies, as `platform/tests/db/append-only.test.ts` does for append-only tables. Two tests: `platform/tests/db/row-level-security.test.ts` (the migration SQL against `TENANT_COLUMN`) and `platform/tests/integration/db/row-level-security.test.ts` (the live tables, `pg_class` and `pg_policies`, and the leak checks with raw SQL).
+- The table list is written out in migration 0060 (51 tables), not imported: a merged migration never changes. A later table with `tenant_id` gets the same four statements in its own migration; both tests fail otherwise.
 
 ### 2.2. The tenant of a transaction (PR 1)
 
@@ -82,7 +83,18 @@ Each process, and the path it uses:
 ### 2.6. Cost
 
 - A statement sent outside a transaction now takes three round trips to the database instead of one (`BEGIN` with `set_config`, the statement, `COMMIT`). A transaction takes no extra round trip.
-- PR 1, on a developer machine (PostgreSQL in Docker Desktop, 2026-11-15): the whole database suite (`pnpm test:db`, 1206 tests) passed in 66 s; on `main` the same run took 80 s, with 3 tests past their 5-second limit under load. The test files that time out under load do so on `main` too; alone, each runs in under 2 s on both. PR 2 measures the cost of repository reads and writes before and after migration 0060 and writes the numbers here.
+- PR 1, on a developer machine (PostgreSQL in Docker Desktop, 2026-11-15): the whole database suite (`pnpm test:db`, 1206 tests) passed in 66 s; on `main` the same run took 80 s, with 3 tests past their 5-second limit under load. The test files that time out under load do so on `main` too; alone, each runs in under 2 s on both.
+- PR 2, the policies (`platform/tests/integration/db/rls-cost.test.ts`, run with `SDLC_RLS_BENCH=1`; same machine, 2026-11-15). 10 tenants × 2,000 users; the same repository calls through `forTenant()` with row-level security turned off by the owner, then on; median of 300 calls (30 for `list`):
+
+| Call | RLS off (ms) | RLS on (ms) | On / off |
+|---|---|---|---|
+| `users.getById` (one statement) | 0.80 | 0.67 | 0.84 |
+| `users.list` (2,000 rows) | 5.79 | 6.63 | 1.15 |
+| a transaction with two reads | 1.24 | 1.40 | 1.13 |
+| `users.create` (one insert, `WITH CHECK`) | 0.99 | 0.88 | 0.89 |
+
+  - The differences are within the noise of a developer machine: the policies add no measurable cost. The tenant condition is an init plan (`One-Time Filter`), and the query still uses the index on `tenant_id` (`Bitmap Index Scan on users_tenant_id_id_key`).
+  - The test fails when the plan loses the index or a ratio passes 3, a wide bound for a noisy machine. It does not run in CI.
 
 ## 3. Alternatives not chosen
 
@@ -97,10 +109,13 @@ Each process, and the path it uses:
 
 - A later table with `tenant_id` gets RLS and both policies in its migration; the live test fails otherwise (PR 2).
 - New cross-tenant work loops over the tenants through `SystemScope`; it never reads tenant tables without a tenant.
-- A person who queries the database by hand as `platform_app` sees no tenant rows unless they set `app.tenant_id` in their transaction (PR 2; deploy README).
+- A person who queries the database by hand as `platform_app` sees no tenant rows unless they set `app.tenant_id` in their transaction (deploy README, "Platform database roles").
+- Database tests that check triggers, constraints or grants on tenant rows with raw SQL use `appAs(tenantId)` (the tenant set per transaction, no tenant guard) instead of `appRaw` (no tenant: sees no tenant row).
+- `PlatformDatabase.close()` closes the shared pool itself (PR 2): Kysely closes a driver only when its own instance ran a query, and a process may use only `forTenant()`.
 
 ## Version history
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-15 | Claude (task H09, PR 1) | First version: policies (built in PR 2), tenant-bound driver, loops per tenant, exceptions, migration 0059 |
+| 0.2 | 2026-11-15 | Claude (task H09, PR 2) | §2.1 built (migration 0060, 51 tables) and its tests; §2.6 the measured cost; §4 the test helper `appAs`, `close()` closes the shared pool |
