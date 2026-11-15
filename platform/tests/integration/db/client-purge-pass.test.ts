@@ -129,7 +129,7 @@ describeDb('H03b: client purge pass on PostgreSQL', () => {
 
   async function pending(w: World, approvedAt: Date): Promise<void> {
     await sql`UPDATE tenants SET status = ${'pending_deletion'} WHERE id = ${w.tenantId}`.execute(
-      t.appRaw,
+      t.appAs(w.tenantId),
     );
     await approve(w.scope, approvedAt, w.userId);
   }

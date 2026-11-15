@@ -615,6 +615,17 @@ The `platform` database has two roles ([ADR-M09](../../design/ADR-M09-database-t
 | `platform` (owner) | `PLATFORM_DB_PASSWORD` | Migrations only: `SDLC_DB_MIGRATION_URL=postgres://platform:…@127.0.0.1:5432/platform pnpm db:migrate` |
 | `platform_app` | `PLATFORM_APP_DB_PASSWORD` | The platform processes. `SELECT`, `INSERT`, `UPDATE` on chosen columns; never `DELETE` or DDL |
 
+**Row-level security (H09, [ADR-M110](../../design/ADR-M110-row-level-security.md)).** Every table with `tenant_id` shows `platform_app` only the rows of the tenant set in the current transaction. A query by hand as `platform_app` (for example with `psql`) therefore returns no tenant rows. To read one tenant's rows, set the tenant inside a transaction:
+
+```sql
+BEGIN;
+SELECT set_config('app.tenant_id', '<tenant UUID>', true);
+SELECT count(*) FROM intents;
+COMMIT;
+```
+
+The setting ends with the transaction. No role of the platform has `BYPASSRLS`; the owner `platform` keeps full access for migrations, and backups (`pg_dumpall` as `postgres`) are not affected.
+
 The init scripts create both roles only on an **empty** data volume. A volume created before task A06 has no `platform_app`. Add `PLATFORM_APP_DB_PASSWORD` to `.env` (for example `openssl rand -hex 24`), restart with `pnpm compose:core`, then run the idempotent script once:
 
 ```bash

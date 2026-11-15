@@ -817,7 +817,7 @@ describeDb('U06: CSRF, the actions switch, passkeys and the step-up', () => {
       const s = await open('alice');
       const { key, passkeyId } = await registerKey(s);
       const verified = await stepUp(s, key);
-      const raw = t0.appRaw;
+      const raw = t0.appAs(acme.tenantId);
       await expect(
         sql`UPDATE web_sessions SET csrf_sha256 = ${'0'.repeat(64)} WHERE id = ${s.id}`.execute(
           raw,

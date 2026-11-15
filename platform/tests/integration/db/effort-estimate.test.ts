@@ -191,7 +191,7 @@ describeDb('V14: human-effort estimate of an intent on PostgreSQL', () => {
     ).rejects.toBeInstanceOf(DbError);
     await expect(
       sql`UPDATE intents SET human_effort_hours = 20000 WHERE id = ${seeded.intentId}`.execute(
-        t0.appRaw,
+        t0.appAs(seeded.scope.tenantId),
       ),
     ).rejects.toThrow();
   });
@@ -199,7 +199,7 @@ describeDb('V14: human-effort estimate of an intent on PostgreSQL', () => {
   it('migration 0050: an estimate never goes back to null (SDA29)', async () => {
     await expect(
       sql`UPDATE intents SET human_effort_hours = NULL WHERE id = ${seeded.intentId}`.execute(
-        t0.appRaw,
+        t0.appAs(seeded.scope.tenantId),
       ),
     ).rejects.toMatchObject({ code: 'SDA29' });
     expect(await stored()).toBe('0.25');
@@ -215,7 +215,7 @@ describeDb('V14: human-effort estimate of an intent on PostgreSQL', () => {
     refused(await put(seeded.intentCode, tokens.a, { hours: 5 }), 409, 'intent_finished');
     await expect(
       sql`UPDATE intents SET human_effort_hours = 5 WHERE id = ${seeded.intentId}`.execute(
-        t0.appRaw,
+        t0.appAs(seeded.scope.tenantId),
       ),
     ).rejects.toMatchObject({ code: 'SDA29' });
     await expect(

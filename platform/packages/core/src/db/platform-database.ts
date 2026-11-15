@@ -51,8 +51,14 @@ export class PlatformDatabase {
     return listenGitHints(this.config, onHint);
   }
 
-  close(): Promise<void> {
-    return this.db.destroy();
+  /**
+   * Closes the shared pool. The tenant-bound instances never close it, and Kysely closes a driver
+   * only when its own instance ran a query, so the shared driver is closed here as well (H09 PR 2;
+   * PostgresDriver.destroy does nothing the second time).
+   */
+  async close(): Promise<void> {
+    await this.db.destroy();
+    await this.driver.destroy();
   }
 
   /** One tenant-bound instance per tenant, over the shared pool. */

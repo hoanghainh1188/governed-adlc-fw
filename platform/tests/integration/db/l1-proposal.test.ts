@@ -98,7 +98,7 @@ describeDb('C13: taking an L1 proposal forward on PostgreSQL', () => {
       await sql<{ actor_id: string | null; payload: Record<string, unknown> }>`
         SELECT actor_id, payload FROM audit_log
         WHERE tenant_id = ${t.f.scope.tenantId} AND action = ${action} ORDER BY seq`.execute(
-        db.appRaw,
+        db.appAs(t.f.scope.tenantId),
       )
     ).rows;
 
@@ -221,7 +221,7 @@ describeDb('C13: taking an L1 proposal forward on PostgreSQL', () => {
       (i) => i.kind === 'proposal',
     );
     await sql`UPDATE evidence_items SET purged_at = now() WHERE id = ${item!.id}`.execute(
-      db.appRaw,
+      db.appAs(t.f.scope.tenantId),
     );
     await expect(
       readProposal(t.f.scope, asPerson('a'), intent.code, runId, deps()),

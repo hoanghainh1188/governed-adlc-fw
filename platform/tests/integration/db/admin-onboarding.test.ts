@@ -241,7 +241,7 @@ describeDb('B13: admin onboarding on PostgreSQL', () => {
       const row = revoked.find((binding) => binding.revoked_at !== null)!;
       await expect(
         sql`UPDATE tenant_role_bindings SET revoked_at = now() WHERE id = ${row.id}`.execute(
-          t0.appRaw,
+          t0.appAs(a.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: 'SDA11' });
     });
@@ -361,7 +361,7 @@ describeDb('B13: admin onboarding on PostgreSQL', () => {
       // H03a / ADR-M97: an unlinked identity may still have its login scrubbed; other columns stay
       // final (SDA11). The owner role is used so the trigger, not the column grant, is what refuses.
       await sql`UPDATE user_identities SET external_login = 'redacted-login'
-                 WHERE id = ${linked.id}`.execute(t0.appRaw);
+                 WHERE id = ${linked.id}`.execute(t0.appAs(a.scope.tenantId));
       await expect(
         sql`UPDATE user_identities SET external_id = '9999' WHERE id = ${linked.id}`.execute(
           t0.owner,

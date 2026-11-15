@@ -358,11 +358,13 @@ describeDb('L04 PR 3: evaluations on PostgreSQL', () => {
       );
       await expect(
         sql`UPDATE evaluation_run_results SET resolved = false WHERE id = ${result!.id}`.execute(
-          db.appRaw,
+          db.appAs(q.tenantId),
         ),
       ).rejects.toThrow();
       await expect(
-        sql`DELETE FROM evaluation_run_results WHERE id = ${result!.id}`.execute(db.appRaw),
+        sql`DELETE FROM evaluation_run_results WHERE id = ${result!.id}`.execute(
+          db.appAs(q.tenantId),
+        ),
       ).rejects.toThrow();
       // Even the owner role cannot: the trigger refuses it.
       await expect(
@@ -379,13 +381,13 @@ describeDb('L04 PR 3: evaluations on PostgreSQL', () => {
       // queued → scored is not a move.
       await expect(
         sql`UPDATE evaluation_runs SET status = 'scored', finished_at = now() WHERE id = ${queued!.id}`.execute(
-          db.appRaw,
+          db.appAs(q.tenantId),
         ),
       ).rejects.toMatchObject({ code: 'SDA22' });
       // The identity of a run never changes: the app has no grant, and the trigger refuses the owner.
       await expect(
         sql`UPDATE evaluation_runs SET task_id = 'other' WHERE id = ${queued!.id}`.execute(
-          db.appRaw,
+          db.appAs(q.tenantId),
         ),
       ).rejects.toMatchObject({ code: '42501' });
       await expect(
@@ -396,12 +398,12 @@ describeDb('L04 PR 3: evaluations on PostgreSQL', () => {
       expect(await q.evaluationRuns.cancelWaiting(evaluation.id, 'cancelled_by_operator')).toBe(1);
       await expect(
         sql`UPDATE evaluation_runs SET status = 'queued', finished_at = NULL WHERE id = ${queued!.id}`.execute(
-          db.appRaw,
+          db.appAs(q.tenantId),
         ),
       ).rejects.toMatchObject({ code: 'SDA22' });
       expect(await q.evaluationRuns.requeue(queued!.id)).toBe(false);
       await expect(
-        sql`DELETE FROM evaluation_runs WHERE id = ${queued!.id}`.execute(db.appRaw),
+        sql`DELETE FROM evaluation_runs WHERE id = ${queued!.id}`.execute(db.appAs(q.tenantId)),
       ).rejects.toThrow();
     });
 
@@ -496,7 +498,7 @@ describeDb('L04 PR 3: evaluations on PostgreSQL', () => {
       // A final evaluation never changes again.
       await expect(
         sql`UPDATE evaluations SET status = 'running', finished_at = NULL WHERE id = ${evaluation.id}`.execute(
-          db.appRaw,
+          db.appAs(scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: 'SDA21' });
     });
@@ -504,18 +506,20 @@ describeDb('L04 PR 3: evaluations on PostgreSQL', () => {
     it('the budget only goes up, and the fixed columns never change', async () => {
       const evaluation = await start({ budgetUsd: '2' });
       await expect(
-        sql`UPDATE evaluations SET budget_usd = 1 WHERE id = ${evaluation.id}`.execute(db.appRaw),
+        sql`UPDATE evaluations SET budget_usd = 1 WHERE id = ${evaluation.id}`.execute(
+          db.appAs(scope.tenantId),
+        ),
       ).rejects.toMatchObject({ code: 'SDA21' });
       await sql`UPDATE evaluations SET budget_usd = 3 WHERE id = ${evaluation.id}`.execute(
-        db.appRaw,
+        db.appAs(scope.tenantId),
       );
       await expect(
         sql`UPDATE evaluations SET runs_per_task = 9 WHERE id = ${evaluation.id}`.execute(
-          db.appRaw,
+          db.appAs(scope.tenantId),
         ),
       ).rejects.toThrow();
       await expect(
-        sql`DELETE FROM evaluations WHERE id = ${evaluation.id}`.execute(db.appRaw),
+        sql`DELETE FROM evaluations WHERE id = ${evaluation.id}`.execute(db.appAs(scope.tenantId)),
       ).rejects.toThrow();
     });
 

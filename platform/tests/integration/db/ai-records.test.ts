@@ -176,7 +176,7 @@ describeDb('B12: the project AI record on PostgreSQL', () => {
         sql`DELETE FROM project_ai_record_versions`,
         sql`TRUNCATE project_ai_record_versions`,
       ]) {
-        await expect(statement.execute(db.appRaw)).rejects.toThrow();
+        await expect(statement.execute(db.appAs(f.target.tenantId))).rejects.toThrow();
         await expect(statement.execute(db.owner)).rejects.toMatchObject({ code: 'SDA01' });
       }
     });
@@ -185,7 +185,7 @@ describeDb('B12: the project AI record on PostgreSQL', () => {
       const current = (await f.scope.projectAiRecords.get(projectId))!;
       const update = (set: ReturnType<typeof sql>) =>
         sql`UPDATE project_ai_records SET ${set}, version = version + 1
-            WHERE project_id = ${projectId}`.execute(db.appRaw);
+            WHERE project_id = ${projectId}`.execute(db.appAs(f.target.tenantId));
       for (const set of [
         sql`allowed_data_classes = '{prohibited}'`,
         sql`ai_allowed = 'no', allowed_data_classes = '{client_restricted}'`,
@@ -198,7 +198,7 @@ describeDb('B12: the project AI record on PostgreSQL', () => {
       // A change must be the next version: the history cannot be skipped.
       await expect(
         sql`UPDATE project_ai_records SET version = version + 2 WHERE project_id = ${projectId}`.execute(
-          db.appRaw,
+          db.appAs(f.target.tenantId),
         ),
       ).rejects.toMatchObject({ code: '23514' });
       expect((await f.scope.projectAiRecords.get(projectId))!.version).toBe(current.version);

@@ -308,7 +308,7 @@ describeDb('L07 PR 3a: a project’s own evaluation tasks on PostgreSQL', () => 
       // Decisions are append-only, for the app and the owner alike.
       await expect(
         sql`UPDATE evaluation_task_decisions SET decision = 'rejected' WHERE task_id = ${task.id}`.execute(
-          t.appRaw,
+          t.appAs(w.scope.tenantId),
         ),
       ).rejects.toThrow();
       await expect(
@@ -316,7 +316,9 @@ describeDb('L07 PR 3a: a project’s own evaluation tasks on PostgreSQL', () => 
       ).rejects.toThrow();
       // The app has no grant on the identity; the owner is refused by the trigger.
       await expect(
-        sql`UPDATE evaluation_tasks SET task_id = 'other' WHERE id = ${task.id}`.execute(t.appRaw),
+        sql`UPDATE evaluation_tasks SET task_id = 'other' WHERE id = ${task.id}`.execute(
+          t.appAs(w.scope.tenantId),
+        ),
       ).rejects.toMatchObject({ code: '42501' });
       await expect(
         sql`UPDATE evaluation_tasks SET intent_id = ${w.projectId} WHERE id = ${task.id}`.execute(
@@ -328,11 +330,11 @@ describeDb('L07 PR 3a: a project’s own evaluation tasks on PostgreSQL', () => 
       ).rejects.toThrow();
       // A gone task is final (PR 4 sets it when the card is removed).
       await sql`UPDATE evaluation_tasks SET status = 'gone' WHERE id = ${task.id}`.execute(
-        t.appRaw,
+        t.appAs(w.scope.tenantId),
       );
       await expect(
         sql`UPDATE evaluation_tasks SET status = 'registered' WHERE id = ${task.id}`.execute(
-          t.appRaw,
+          t.appAs(w.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: 'SDA24' });
       expect(await code(register(w))).toBe('task_gone');

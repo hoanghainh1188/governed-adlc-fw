@@ -431,7 +431,8 @@ describeDb('X04 PR 3a: the document index on PostgreSQL', () => {
     const built = await index(w);
     for (const change of [{ documents: 9 }, { model: 'x' }, { last_used_at: at(-30) }]) {
       await expect(
-        t.appRaw
+        t
+          .appAs(w.scope.tenantId)
           .updateTable('knowledge_indexes')
           .set(change as never)
           .where('id', '=', built.indexId)
@@ -441,7 +442,8 @@ describeDb('X04 PR 3a: the document index on PostgreSQL', () => {
     expect(await w.scope.knowledgeIndexes.markPurged(built.indexId, new Date())).toBe(true);
     expect(await w.scope.knowledgeIndexes.markPurged(built.indexId, new Date())).toBe(false);
     await expect(
-      t.appRaw
+      t
+        .appAs(w.scope.tenantId)
         .updateTable('knowledge_indexes')
         .set({ purged_at: at(1) })
         .where('id', '=', built.indexId)
@@ -457,13 +459,18 @@ describeDb('X04 PR 3a: the document index on PostgreSQL', () => {
       }),
     ).toBe(false);
     await expect(
-      t.appRaw
+      t
+        .appAs(w.scope.tenantId)
         .updateTable('knowledge_index_uses')
         .set({ run_id: crypto.randomUUID() } as never)
         .execute(),
     ).rejects.toThrow();
-    await expect(t.appRaw.deleteFrom('knowledge_index_uses').execute()).rejects.toThrow();
-    await expect(t.appRaw.deleteFrom('knowledge_indexes').execute()).rejects.toThrow();
+    await expect(
+      t.appAs(w.scope.tenantId).deleteFrom('knowledge_index_uses').execute(),
+    ).rejects.toThrow();
+    await expect(
+      t.appAs(w.scope.tenantId).deleteFrom('knowledge_indexes').execute(),
+    ).rejects.toThrow();
     // Two ready indexes of one commit: refused.
     const ready = await index(w);
     await expect(

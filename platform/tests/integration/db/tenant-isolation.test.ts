@@ -245,7 +245,9 @@ describeDb('AC3 + AC4: tenant isolation on PostgreSQL', () => {
     it('the database rejects a cross-tenant row even when the guard is bypassed', async () => {
       await expect(
         sql`INSERT INTO role_bindings (tenant_id, user_id, project_id, role)
-            VALUES (${a.tenantId}, ${b.userId}, ${a.projectId}, 'person_b')`.execute(t.appRaw),
+            VALUES (${a.tenantId}, ${b.userId}, ${a.projectId}, 'person_b')`.execute(
+          t.appAs(a.tenantId),
+        ),
       ).rejects.toMatchObject({ code: '23503' });
     });
   });
@@ -433,11 +435,13 @@ describeDb('AC3 + AC4: tenant isolation on PostgreSQL', () => {
 
     it('the database allows only revoked_at to change, and never before creation', async () => {
       await expect(
-        sql`UPDATE role_bindings SET role = 'admin' WHERE id = ${a.bindingId}`.execute(t.appRaw),
+        sql`UPDATE role_bindings SET role = 'admin' WHERE id = ${a.bindingId}`.execute(
+          t.appAs(a.tenantId),
+        ),
       ).rejects.toMatchObject({ code: '42501' });
       await expect(
         sql`UPDATE role_bindings SET revoked_at = created_at - interval '1 day'
-            WHERE id = ${a.bindingId}`.execute(t.appRaw),
+            WHERE id = ${a.bindingId}`.execute(t.appAs(a.tenantId)),
       ).rejects.toMatchObject({ code: '23514' });
     });
   });

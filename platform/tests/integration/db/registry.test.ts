@@ -181,7 +181,7 @@ describeDb('B02: registry on PostgreSQL', () => {
       await expect(
         sql`INSERT INTO intents (tenant_id, code, project_id, title, created_by, risk_tier, data_class, max_autonomy, budget_usd)
             VALUES (${s.scope.tenantId}, ${intent.code}, ${s.projectId}, 'x', ${s.personA}, 'low', 'internal', 'L2', 1)`.execute(
-          t.appRaw,
+          t.appAs(s.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: '23505' });
     });
@@ -367,7 +367,7 @@ describeDb('B02: registry on PostgreSQL', () => {
       await expect(
         sql`INSERT INTO gate_decisions (tenant_id, intent_id, gate, decision, oversight_mode, actor_type, input_sha256, config_hash, source)
             VALUES (${s.scope.tenantId}, ${intent.id}, 'G3', 'pass', 'POLICY', 'system', ${HASH('3')}, ${HASH('3')}, 'workflow')`.execute(
-          t.appRaw,
+          t.appAs(s.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: '23514' });
     });
@@ -495,7 +495,7 @@ describeDb('B02: registry on PostgreSQL', () => {
       await expect(
         sql`INSERT INTO gate_decisions (tenant_id, intent_id, gate, decision, oversight_mode, approver_role, actor_type, decided_by, input_sha256, config_hash, source)
             VALUES (${s.scope.tenantId}, ${intent.id}, 'G1', 'reject', 'HITL', 'person_a', 'human', ${s.personA}, ${HASH('1')}, ${HASH('1')}, 'cli')`.execute(
-          t.appRaw,
+          t.appAs(s.scope.tenantId),
         ),
       ).rejects.toMatchObject({ code: '23514' });
       expect(Object.keys(row)).not.toContain('reason');
@@ -582,7 +582,7 @@ describeDb('B02: registry on PostgreSQL', () => {
         const insertVoid = (target: string) =>
           sql`INSERT INTO gate_decisions (tenant_id, intent_id, gate, decision, oversight_mode, actor_type, reason_code, input_sha256, config_hash, source, voids_decision_id)
               VALUES (${s.scope.tenantId}, ${intent.id}, 'G1', 'void', 'HITL', 'system', 'expired', ${HASH('1')}, ${HASH('1')}, 'workflow', ${target})`.execute(
-            t.appRaw,
+            t.appAs(s.scope.tenantId),
           );
         await expect(insertVoid(approval.id)).rejects.toMatchObject({ code: '23505' });
         await expect(insertVoid(voided!.id)).rejects.toMatchObject({ code: 'SDA04' });
@@ -705,7 +705,7 @@ describeDb('B02: registry on PostgreSQL', () => {
     await expect(
       sql`INSERT INTO plans (tenant_id, intent_id, version, planned_files, plan_sha256, proposed_by_type)
           VALUES (${b.scope.tenantId}, ${intent.id}, 1, '{x}', ${HASH('a')}, 'human')`.execute(
-        t.appRaw,
+        t.appAs(b.scope.tenantId),
       ),
     ).rejects.toMatchObject({ code: '23503' });
   });

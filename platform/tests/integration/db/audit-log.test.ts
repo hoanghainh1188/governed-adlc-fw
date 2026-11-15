@@ -163,7 +163,7 @@ describeDb('A07: audit log on PostgreSQL', () => {
         sql`INSERT INTO audit_log (tenant_id, seq, hash_version, actor_type, action, payload,
               prev_hash, hash, occurred_at)
             VALUES (${last!.tenant_id}, ${seq}, 1, 'system', 'config.changed', '{}',
-              ${prevHash}, ${HASH('c')}, now())`.execute(t.appRaw);
+              ${prevHash}, ${HASH('c')}, now())`.execute(t.appAs(last!.tenant_id));
       await expect(insert(3, last!.hash)).rejects.toMatchObject({ code: 'SDA02' });
       await expect(insert(2, HASH('d'))).rejects.toMatchObject({ code: 'SDA02' });
       await expect(insert(1, GENESIS_HASH)).rejects.toMatchObject({ code: 'SDA02' });
@@ -438,7 +438,7 @@ describeDb('A07: audit log on PostgreSQL', () => {
         role: 'person_b',
       });
       await s.scope.roleBindings.revoke(binding.id);
-      for (const db of [t.appRaw, t.owner]) {
+      for (const db of [t.appAs(s.scope.tenantId), t.owner]) {
         await expect(
           sql`UPDATE role_bindings SET revoked_at = NULL WHERE id = ${binding.id}`.execute(db),
         ).rejects.toMatchObject({ code: 'SDA03' });
