@@ -504,6 +504,12 @@ export function accessFact(values: Readonly<Record<string, string>>): AccessFact
     trustedProxy: values.SDLC_API_TRUSTED_PROXY ?? null,
     publicOrigin: values.SDLC_API_PUBLIC_ORIGIN ?? null,
     webSignIn: values.SDLC_API_WEB_SIGNIN ?? 'off',
+    githubWebhooks: values.SDLC_API_GITHUB_WEBHOOKS === 'on',
+    webhook: {
+      bindAddr: values.SDLC_ACCESS_WEBHOOK_BIND_ADDR ?? null,
+      hostPort: values.SDLC_ACCESS_WEBHOOK_HOST_PORT ?? '8444',
+      allowCidr: values.SDLC_ACCESS_WEBHOOK_ALLOW_CIDR ?? null,
+    },
     tls: {
       dir,
       missing: dir ? TLS_FILES.filter((f) => !fs.existsSync(path.join(dir, f))) : [...TLS_FILES],

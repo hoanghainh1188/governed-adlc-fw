@@ -7,8 +7,13 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { accessChecks, expectedOrigin } from '../../deploy/doctor/src/checks/access.js';
+import {
+  accessChecks,
+  expectedOrigin,
+  webhookChecks,
+} from '../../deploy/doctor/src/checks/access.js';
 import { accessFact } from '../../deploy/doctor/src/host.js';
+import { findLogEvents } from '../../deploy/doctor/src/logs.js';
 import type { AccessFact, CheckResult, OperatorFacts } from '../../deploy/doctor/src/types.js';
 import { deployDir } from '../deploy/compose';
 import { healthyFacts, inDays, RUNNING, service } from './fixtures.js';
@@ -169,5 +174,106 @@ describe('pnpm doctor: accessFact on a real certificate', () => {
     expect(fact.tls.certs.every((c) => c.notAfter !== null)).toBe(true);
     expect(fact.tls.unnamed).toEqual(['192.168.10.9']);
     expect(accessFact({}).configured).toBe(false);
+  });
+});
+
+describe('pnpm doctor: GitHub webhooks (O08, design/ADR-M112 §2.9)', () => {
+  const on = (
+    webhook: Partial<AccessFact['webhook']> = {},
+    logs: OperatorFacts['logs'] = { events: [], started: ['sdlc-api'], webhookDelivered: true },
+  ): OperatorFacts => {
+    const base = healthyFacts().access!;
+    return healthyFacts({
+      access: {
+        ...base,
+        githubWebhooks: true,
+        webhook: {
+          bindAddr: '192.168.20.5',
+          hostPort: '8444',
+          allowCidr: '10.20.0.8/32',
+          ...webhook,
+        },
+      },
+      logs,
+    });
+  };
+
+  it('off: one ok line', () => {
+    const results = webhookChecks(healthyFacts());
+    expect(results).toEqual([
+      { id: 'github.webhook', status: 'ok', text: { key: 'doctor.webhook.off' } },
+    ]);
+  });
+
+  it('on, with a listener, an allow-list and a recent delivery: ok', () => {
+    expect(webhookChecks(on()).map((r) => [r.status, r.text.key])).toEqual([
+      ['ok', 'doctor.webhook.ok'],
+    ]);
+  });
+
+  it('warns without a listener, with an allow-list for everyone, and without a delivery', () => {
+    const keys = (f: OperatorFacts) => webhookChecks(f).map((r) => `${r.status}:${r.text.key}`);
+    expect(keys(on({ bindAddr: null }))).toEqual(['warning:doctor.webhook.no_listener']);
+    expect(keys(on({ allowCidr: '0.0.0.0/0' }))).toEqual(['warning:doctor.webhook.allow_all']);
+    expect(keys(on({}, { events: [], started: ['sdlc-api'], webhookDelivered: false }))).toEqual([
+      'warning:doctor.webhook.silent',
+    ]);
+    expect(keys(on({}, null))).toEqual(['warning:doctor.logs.unreadable']);
+    for (const r of webhookChecks(on({ bindAddr: null }))) expect(r.fix).toBeDefined();
+  });
+
+  it('the webhook port must be on its own address, or on this machine when unset', () => {
+    const others = RUNNING.filter((s) => s.service !== 'sdlc-access');
+    const proxyWith = (address: string) => [
+      ...others,
+      service('sdlc-access', {
+        published: [
+          { address: '192.168.10.5', port: 8443 },
+          { address, port: 8444 },
+        ],
+      }),
+    ];
+    // Unset: 127.0.0.1 only.
+    expect(
+      status(accessChecks({ ...access(), services: proxyWith('127.0.0.1') }), 'access.ports'),
+    ).toEqual(['ok']);
+    expect(
+      status(accessChecks({ ...access(), services: proxyWith('192.168.10.5') }), 'access.ports'),
+    ).toEqual(['failed']);
+    // Set: that address only.
+    const set = { ...on(), services: proxyWith('192.168.20.5') };
+    expect(status(accessChecks(set), 'access.ports')).toEqual(['ok']);
+    expect(
+      status(accessChecks({ ...on(), services: proxyWith('192.168.10.5') }), 'access.ports'),
+    ).toEqual(['failed']);
+  });
+
+  it('reads the settings from the env file; the api logs of a verified delivery count', () => {
+    const fact = accessFact({
+      SDLC_API_GITHUB_WEBHOOKS: 'on',
+      SDLC_ACCESS_WEBHOOK_BIND_ADDR: '192.168.20.5',
+      SDLC_ACCESS_WEBHOOK_ALLOW_CIDR: '10.20.0.8/32',
+    });
+    expect(fact.githubWebhooks).toBe(true);
+    expect(fact.webhook).toEqual({
+      bindAddr: '192.168.20.5',
+      hostPort: '8444',
+      allowCidr: '10.20.0.8/32',
+    });
+    expect(accessFact({}).githubWebhooks).toBe(false);
+    for (const event of ['webhook.accepted', 'webhook.duplicate', 'webhook.ignored']) {
+      expect(
+        findLogEvents(JSON.stringify({ event, delivery_id: 'x' })).webhookDelivered,
+        event,
+      ).toBe(true);
+    }
+    expect(
+      findLogEvents(JSON.stringify({ event: 'webhook.refused', reason: 'bad_signature' }))
+        .webhookDelivered,
+    ).toBe(false);
+    expect(
+      findLogEvents(JSON.stringify({ event: 'webhook.secret_refresh_failed', code: 'missing' }))
+        .events,
+    ).toEqual(['webhook.secret_refresh_failed']);
   });
 });

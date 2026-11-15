@@ -47,6 +47,7 @@ export const CHECK_IDS = [
   'access.ports',
   'access.public_origin',
   'access.trusted_proxy',
+  'github.webhook',
   'runner.engine',
   'runner.authz',
 ] as const;
@@ -90,6 +91,14 @@ export interface AccessFact {
   readonly trustedProxy: string | null;
   readonly publicOrigin: string | null;
   readonly webSignIn: string;
+  /** O08 (ADR-M112 §2.9): `SDLC_API_GITHUB_WEBHOOKS` is `on`. */
+  readonly githubWebhooks: boolean;
+  /** O08: the webhook listener's settings; `bindAddr` and `allowCidr` null when unset. */
+  readonly webhook: {
+    readonly bindAddr: string | null;
+    readonly hostPort: string;
+    readonly allowCidr: string | null;
+  };
   readonly tls: {
     readonly dir: string | null;
     readonly missing: readonly string[];
@@ -126,6 +135,8 @@ export interface LogFindings {
   readonly events: readonly string[];
   /** Services whose start event (`*.started`) is in the window. */
   readonly started: readonly string[];
+  /** O08: the api logged a delivery with a correct signature in the window. */
+  readonly webhookDelivered?: boolean;
 }
 
 export interface GitHubAppFact {

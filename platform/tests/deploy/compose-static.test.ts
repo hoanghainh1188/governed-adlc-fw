@@ -274,11 +274,13 @@ describe('AC4: no secrets in the repo', () => {
       for (const port of s.ports ?? []) {
         // The sandbox image registry has no authentication: always 127.0.0.1 (runbook T11).
         if (name === 'registry') expect(port, name).toMatch(/^127\.0\.0\.1:/);
-        // Team access (V09, ADR-M67 §2.2): the only port beyond this machine, and only when set.
+        // Team access (V09, ADR-M67 §2.2) and its webhook listener (O08, ADR-M112 §2.1): the only
+        // ports beyond this machine, and only when set.
         else if (name === 'sdlc-access')
-          expect(port, name).toBe(
+          expect([
             '${SDLC_ACCESS_BIND_ADDR:-127.0.0.1}:${SDLC_ACCESS_HOST_PORT:-8443}:8443',
-          );
+            '${SDLC_ACCESS_WEBHOOK_BIND_ADDR:-127.0.0.1}:${SDLC_ACCESS_WEBHOOK_HOST_PORT:-8444}:8444',
+          ]).toContain(port);
         else expect(port, name).toMatch(/^\$\{SDLC_BIND_ADDR:-127\.0\.0\.1\}:/);
       }
     }

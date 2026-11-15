@@ -15,6 +15,7 @@ const onLink = (service: string, address: string, link: string | null) =>
 
 const readme = () => text('doctor.fix.readme', { section: 'Team access (operator)' });
 const t11 = () => text('doctor.fix.runbook', { section: '§3d' });
+const webhookReadme = () => text('doctor.fix.readme', { section: 'GitHub webhooks (operator)' });
 
 /** The public origin the proxy serves: `https://<host name>`, with the port unless 443. */
 export function expectedOrigin(a: AccessFact): string | null {
@@ -31,7 +32,24 @@ function portsCheck(
   const out: CheckResult[] = [];
   for (const s of services) {
     for (const p of s.published ?? []) {
-      if (s.service === PROXY) {
+      if (s.service === PROXY && String(p.port) === a.webhook.hostPort) {
+        // O08 (ADR-M112 §2.1): the webhook port, on its own address (this machine when unset).
+        const expected = a.webhook.bindAddr;
+        if (expected === null ? !LOOPBACK.has(p.address) : p.address !== expected) {
+          out.push(
+            problem(
+              'access.ports',
+              'failed',
+              text('doctor.access.ports_proxy_address', {
+                address: p.address,
+                expected: expected ?? '127.0.0.1',
+              }),
+              webhookReadme(),
+              s.service,
+            ),
+          );
+        }
+      } else if (s.service === PROXY) {
         if (p.address === '0.0.0.0' || p.address === '::') {
           out.push(
             problem(
@@ -211,4 +229,41 @@ export function accessChecks(f: OperatorFacts): CheckResult[] {
     originCheck(a),
     trustedProxyCheck(a),
   ];
+}
+
+/**
+ * O08 (ADR-M112 §2.9): GitHub webhooks. Off: one ok line. On: the listener's settings, and a
+ * delivery with a correct signature (a `ping` counts) in the api's logs of the last 24 hours; a
+ * quiet repository, or an api started again since, can give this warning too.
+ */
+export function webhookChecks(f: OperatorFacts): CheckResult[] {
+  if (!f.envFile.exists || !f.access) return [skipped('github.webhook', 'doctor.skipped.no_env')];
+  const a = f.access;
+  if (!a.githubWebhooks) return [ok('github.webhook', text('doctor.webhook.off'))];
+  const out: CheckResult[] = [];
+  if (a.webhook.bindAddr === null) {
+    out.push(
+      problem('github.webhook', 'warning', text('doctor.webhook.no_listener'), webhookReadme()),
+    );
+  }
+  if (a.webhook.allowCidr === '0.0.0.0/0') {
+    out.push(
+      problem('github.webhook', 'warning', text('doctor.webhook.allow_all'), webhookReadme()),
+    );
+  }
+  if (f.logs === undefined) {
+    out.push(skipped('github.webhook', 'doctor.skipped.platform_stopped'));
+  } else if (f.logs === null) {
+    out.push(
+      problem(
+        'github.webhook',
+        'warning',
+        text('doctor.logs.unreadable'),
+        text('doctor.fix.logs', { service: 'sdlc-api' }),
+      ),
+    );
+  } else if (f.logs.webhookDelivered !== true) {
+    out.push(problem('github.webhook', 'warning', text('doctor.webhook.silent'), webhookReadme()));
+  }
+  return out.length > 0 ? out : [ok('github.webhook', text('doctor.webhook.ok'))];
 }

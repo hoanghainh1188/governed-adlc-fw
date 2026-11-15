@@ -2,6 +2,7 @@
 // The live checks are in platform/tests/integration/openbao/bootstrap.test.ts.
 import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -479,5 +480,49 @@ describe('files used by the OpenBao bootstrap are tracked by Git', () => {
       { cwd: root },
     );
     expect(r.status).toBe(1); // 1 = not ignored
+  });
+});
+
+describe('github-webhook-secret (bootstrap.sh, O08, ADR-M112 §2.8)', () => {
+  const bootstrap = fs.readFileSync(BOOTSTRAP, 'utf8');
+  const start = bootstrap.indexOf('cmd_github_webhook_secret() {');
+  const body = bootstrap.slice(start, bootstrap.indexOf('\n}\n', start));
+
+  it('is a command of bootstrap.sh, listed in its usage', () => {
+    expect(bootstrap).toMatch(/^\s+github-webhook-secret\)\s+cmd_github_webhook_secret ;;$/m);
+    expect(bootstrap).toMatch(/\| github-webhook-secret[ )|]/);
+    expect(bootstrap).toMatch(/^ {2}github-webhook-secret\n {23}\S/m);
+  });
+
+  it('stores the secret where only the api reads it, through stdin, never an argument', () => {
+    expect(canRead('api', 'kv/data/api/github-webhook')).toBe(true);
+    for (const other of policyNames.filter((n) => !['api', 'platform-admin'].includes(n))) {
+      expect(canRead(other, 'kv/data/api/github-webhook'), other).toBe(false);
+    }
+    expect(body).toContain('bao kv put -mount=kv api/github-webhook -');
+    // The value travels on stdin only: never on a command line of the host or the container.
+    const execCall = body.slice(
+      body.indexOf('bao_exec'),
+      body.indexOf('||', body.indexOf('bao_exec')),
+    );
+    expect(execCall).not.toContain('$webhook_secret');
+    expect(body).toContain('unset webhook_secret');
+    expect(body).toContain('od -An -tx1 -N32 /dev/urandom');
+    // Shown once, then the screen and its scroll-back are cleared.
+    expect(body).toContain("printf '\\033[2J\\033[3J\\033[H'");
+  });
+
+  it('refuses to run without a terminal, before asking for anything', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-o08-'));
+    try {
+      const env = path.join(tmp, '.env');
+      fs.writeFileSync(env, 'COMPOSE_PROJECT_NAME=sdlc-test\n', { mode: 0o600 });
+      const r = runBootstrap(['github-webhook-secret'], { SDLC_ENV_FILE: env });
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/run it in your own terminal/);
+      expect(r.stdout).toBe('');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

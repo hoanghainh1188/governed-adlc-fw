@@ -73,6 +73,13 @@ Commands:
                        GitHub sign-in (U05, ADR-M73 §2.2). Only the api AppRole reads it. Prints
                        no secret. Run it again to rotate (the api reads it again within 10
                        minutes).
+  github-webhook-secret
+                       Ask for an admin token (hidden), create a random webhook secret (32
+                       bytes, hex), store it at kv/api/github-webhook, field secret, for the
+                       api's GitHub webhook route (O08, ADR-M112 §2.8), and show it ONCE to paste
+                       into the GitHub App's settings (Webhook secret). Needs a terminal; the
+                       screen and its scroll-back are cleared after you press Enter. Run it again
+                       to rotate (paste the new value too; the api reads it within 10 minutes).
   worker-evidence-credentials
                        The same for the worker's release packs at G8: kv/worker/evidence, the
                        identity "worker-evidence" with the same four rights (E03, ADR-M49). The
@@ -181,7 +188,7 @@ case "$command" in
     usage
     exit 0
     ;;
-  status | init | unseal | configure | root-token | litellm-credentials | backup-credentials | api-credentials | worker-credentials | runner-credentials | runner-evidence-credentials | api-evidence-credentials | worker-evidence-credentials | worker-purge-credentials | worker-anchor-credentials | worker-langfuse-credentials | worker-knowledge-credentials | knowledge-issuer-credentials | api-github-oauth-credentials | rotate-credentials) ;;
+  status | init | unseal | configure | root-token | litellm-credentials | backup-credentials | api-credentials | worker-credentials | runner-credentials | runner-evidence-credentials | api-evidence-credentials | worker-evidence-credentials | worker-purge-credentials | worker-anchor-credentials | worker-langfuse-credentials | worker-knowledge-credentials | knowledge-issuer-credentials | api-github-oauth-credentials | github-webhook-secret | rotate-credentials) ;;
   *)
     usage >&2
     exit 2
@@ -563,6 +570,36 @@ cmd_api_github_oauth_credentials() {
   echo "stored: kv/api/github-oauth (client_secret). Set SDLC_API_WEB_SIGNIN=github and SDLC_API_PUBLIC_ORIGIN, then restart sdlc-api (runbook T11 §5n)."
 }
 
+# The api's GitHub webhook secret (O08, ADR-M112 §2.8). GitHub keeps one secret per App and does
+# not create it: this command creates it, stores it, and shows it once for the owner to paste into
+# the App's settings. Owner's terminal only (rule R035; the Claude Code hook refuses it).
+cmd_github_webhook_secret() {
+  [ -t 0 ] && [ -t 1 ] ||
+    fail "github-webhook-secret shows the secret once: run it in your own terminal (not a pipe)"
+  require_unsealed
+  token="$(read_secret 'Admin or root token (hidden)')"
+  [ -n "$token" ] || fail "no token given"
+  webhook_secret="$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')"
+  printf '%s' "$webhook_secret" | grep -Eq '^[0-9a-f]{64}$' || fail "could not create a random secret"
+  printf '%s\n%s\n' "$token" "$webhook_secret" |
+    bao_exec sh -c 'set -e
+      IFS= read -r BAO_TOKEN && export BAO_TOKEN
+      IFS= read -r ws
+      printf "{\"secret\":\"%s\"}" "$ws" | bao kv put -mount=kv api/github-webhook - >/dev/null' ||
+    fail "storing kv/api/github-webhook failed"
+  unset token
+  echo "stored: kv/api/github-webhook (secret)."
+  echo "Paste this value into the GitHub App's settings, field \"Webhook secret\", now. It is shown once:"
+  echo
+  printf '    %s\n' "$webhook_secret"
+  echo
+  unset webhook_secret
+  printf 'Press Enter when it is saved in GitHub; the screen and its scroll-back are then cleared. '
+  IFS= read -r _ || true
+  printf '\033[2J\033[3J\033[H'
+  echo "kv/api/github-webhook is stored. Next: set SDLC_API_GITHUB_WEBHOOKS=on, then restart sdlc-api (deploy README \"GitHub webhooks\", runbook T11 §5o)."
+}
+
 # The runner's write-only SeaweedFS identity for L1 proposals (C06 session 2b, ADR-M33 §2.9) and
 # run diffs (C07, ADR-M34 §2.2).
 # The openbao container makes the key pair, stores it at kv/runner/evidence (JSON on stdin) and
@@ -924,5 +961,6 @@ case "$command" in
   worker-knowledge-credentials) cmd_worker_knowledge_credentials ;;
   knowledge-issuer-credentials) cmd_knowledge_issuer_credentials ;;
   api-github-oauth-credentials) cmd_api_github_oauth_credentials ;;
+  github-webhook-secret) cmd_github_webhook_secret ;;
   rotate-credentials) cmd_rotate_credentials ;;
 esac

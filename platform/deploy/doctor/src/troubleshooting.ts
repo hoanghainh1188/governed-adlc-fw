@@ -35,6 +35,8 @@ export const TROUBLESHOOTING: Readonly<Record<string, Coverage>> = {
     ],
   },
   '`sdlc-access` does not start': { checks: ['access.proxy', 'access.tls_files'] },
+  // GitHub webhooks (O08, design/ADR-M112 §2.9).
+  'GitHub shows failed webhook deliveries': { checks: ['github.webhook', 'access.ports'] },
   'People on other machines get a certificate error': {
     checks: ['access.tls_names', 'access.tls_expiry'],
   },

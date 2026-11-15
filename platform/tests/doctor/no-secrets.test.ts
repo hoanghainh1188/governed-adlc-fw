@@ -62,6 +62,7 @@ describe('pnpm doctor prints no secret', () => {
     expect(found).toEqual({
       events: ['worker.approle_login_failed', 'worker.evidence_missing'],
       started: ['sdlc-worker'],
+      webhookDelivered: false,
     });
     expect(JSON.stringify(found)).not.toContain(MARK);
   });

@@ -124,6 +124,8 @@ export function healthyFacts(overrides: Partial<OperatorFacts> = {}): OperatorFa
       trustedProxy: '172.30.1.6',
       publicOrigin: 'https://sdlc.example.internal:8443',
       webSignIn: 'github',
+      githubWebhooks: false,
+      webhook: { bindAddr: null, hostPort: '8444', allowCidr: null },
       tls: {
         dir: '/srv/sdlc/access-tls',
         missing: [],

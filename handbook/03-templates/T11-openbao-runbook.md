@@ -1,6 +1,6 @@
 # T11 Runbook: operating OpenBao (unseal, root token, the processes' credentials, backup, restore)
 
-> Status: **v0.55. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) gives the commands; the drill on the real server is task A10 PR 3.
+> Status: **v0.56. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) gives the commands; the drill on the real server is task A10 PR 3.
 > Readers: key holders, infrastructure operator, the OpenBao admin (the operator who holds the admin token, section 5.1).
 > The real initialisation on the internal server **has not been done**. It waits until leadership names the three key holders.
 
@@ -912,6 +912,36 @@ Run `pnpm openbao:bootstrap knowledge-issuer-credentials` again to repair the is
 
 The retention loop (section 5j) deletes an index version from `knowledge-db` when every intent that used it is finished and not held and it was not used for the project's evidence retention (never under 180 days), and every version of an archived project after the archive grace. Each deletion appends `knowledge.purged`. A later pass also sweeps what a failed delete or a failed build left in `knowledge-db` after one hour (`knowledgeSwept`). In `report` mode it only counts (`knowledgeDue` in `worker.retention_pass`). A failure logs `retention.knowledge_failed` with a code; the next pass tries again.
 
+## 5p. GitHub webhooks: the webhook secret
+
+GitHub can send its events to the platform as webhooks, so a comment reaches the workflow in about a second instead of at the next poll (task O08, `design/ADR-M112-git-host-webhooks.md`). Each delivery is signed with the App's **webhook secret**. It lives in OpenBao at `kv/api/github-webhook` (field `secret`), read only by the `api` AppRole. Webhooks are off until you turn them on; the deploy README, section "GitHub webhooks (operator)", has the whole set-up (the listener, the company's edge, the App's settings).
+
+**Never** paste the webhook secret into a chat, an issue, a log or a file in a repository. Run the command yourself, in a terminal on the machine of the stack (the macOS Terminal app on a developer machine), never through a chat tool.
+
+### First set-up
+
+Needs `core` running and OpenBao unsealed.
+
+1. **Create and store it.**
+   ```bash
+   pnpm openbao:bootstrap github-webhook-secret
+   ```
+   It asks for an admin token at a hidden prompt, creates a random secret (64 hex characters), stores it, and shows it **once**. It refuses to run without a terminal (a pipe, a script).
+2. **Paste it into GitHub** while it is on the screen: the App's settings, **Webhook** → **Secret**. Save the App's settings, then press Enter in the terminal: the screen and its scroll-back are cleared.
+3. **Turn the api's route on**: `SDLC_API_GITHUB_WEBHOOKS=on` in `platform/deploy/.env`, then restart `sdlc-api`. Without the secret the api does not start (`api.settings.webhook_secret_missing`).
+4. Record the date in the operations log.
+
+### Rotation
+
+| What | Steps |
+|---|---|
+| The webhook secret (every 90 days, or when it may have leaked) | Run step 1 again and paste the new value into the App's settings. GitHub keeps one secret per App: deliveries between the two steps fail their check (`401`), and the poller reads their events later. The api reads the new value within 10 minutes; no restart |
+
+### Notes
+
+- A delivery only wakes the worker's poll of its repository; the platform keeps nothing of its content.
+- `pnpm doctor` line `github.webhook` warns when no delivery with a correct signature arrived in the last 24 hours; the api logs `webhook.secret_refresh_failed` when it cannot read the secret again.
+
 ## 6. Daily backup
 
 The whole platform is backed up by one command, `pnpm backup` (`platform/deploy/backup/backup.sh`, task A10, `design/ADR-M63-openbao-tls-and-backups.md` §5, QUESTIONS #326–#329). It writes one folder per run into `SDLC_BACKUP_DIR`:
@@ -1158,6 +1188,7 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 | 0.53 | 2026-11-12 | Claude Code (task V19) | Section 3.2 step 6: `pnpm server:setup` goes on with "Fresh deployment" steps 8–13 when its settings name the tenant, the admin, the project file and the sandbox image |
 | 0.54 | 2026-11-13 | Claude Code (task X06, PR 2) | Section 5o step 7: the code tool `read_code` uses the same set-up (its own schema per project, the OpenBao role `kdocs-<run_id>-code`, no model) |
 | 0.55 | 2026-11-13 | Claude Code (task H06) | New section 5g-2: a stronger sandbox runtime (gVisor or Kata) on a rootful runner Engine, and the AuthZ plugin option `SDLC_DOCKER_AUTHZ_REQUIRE_RUNTIME` |
+| 0.56 | 2026-11-15 | Claude Code (task O08, PR 3) | New section 5p: the GitHub webhook secret (`pnpm openbao:bootstrap github-webhook-secret`, ADR-M112 §2.8) |
 | 0.44 | 2026-10-24 | Claude Code (task O01, PR 2) | Section 5g step 3: the runner on its own Docker Engine (`SDLC_RUNNER_DOCKER_HOST`, `SDLC_RUNNER_SOURCE_CIDR`, `runner-host.sh restart`; ADR-M91) |
 | 0.39 | 2026-10-12 | Claude Code (task V08) | New section 3.1b: the trial stack's key file (the two shares encrypted with a passphrase, `pnpm trial:start`, its limits; never on a server; QUESTIONS #356, #415–#419, ADR-M76) |
 | 0.38 | 2026-10-12 | Claude Code (task V09, PR 2) | New section 3d: the team access proxy's certificate (company CA `import`, internal CA `server`, throw-away `dev`, `check`, renewal with `reload` without a restart, the 30-day reminder). Tested with throw-away certificates (`pnpm test:access`, `access-static.test.ts`) |

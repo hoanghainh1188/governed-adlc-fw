@@ -10,6 +10,9 @@
 #   - Never set or remove a Content-Security-Policy: the api's CSP passes through unchanged.
 #   - X-Forwarded-For is always overwritten with the TCP peer; the api trusts it from us only.
 #   - Logs hold no header and no query string (the token travels in Authorization only).
+#   - O08 (ADR-M112 §2.1): GitHub webhooks only on their own listener (8444), one route, a peer
+#     allow-list and a 1 MiB body limit (the api's WEBHOOK_BODY_LIMIT_BYTES); never on the LAN
+#     listener, where the webhook path answers 404.
 
 server_tokens off;
 
@@ -17,6 +20,8 @@ server_tokens off;
 limit_req_zone $binary_remote_addr zone=sdlc_api:10m rate=${SDLC_ACCESS_RATE_PER_SECOND}r/s;
 limit_req_zone $binary_remote_addr zone=sdlc_auth:10m rate=${SDLC_ACCESS_SIGNIN_RATE_PER_MINUTE}r/m;
 limit_conn_zone $binary_remote_addr zone=sdlc_conn:10m;
+# O08: deliveries per peer (normally the company's edge, ADR-M112 §2.4).
+limit_req_zone $binary_remote_addr zone=sdlc_webhook:10m rate=${SDLC_ACCESS_WEBHOOK_RATE_PER_SECOND}r/s;
 limit_req_status 429;
 limit_conn_status 429;
 
@@ -115,6 +120,10 @@ server {
     limit_req zone=sdlc_auth burst=${SDLC_ACCESS_SIGNIN_BURST} nodelay;
     proxy_pass $sdlc_api;
   }
+  # O08 (ADR-M112 §2.1): webhooks never through the LAN listener.
+  location /v1/webhooks/ {
+    return 404;
+  }
   location /v1/ {
     limit_req zone=sdlc_api burst=${SDLC_ACCESS_RATE_BURST} nodelay;
     proxy_pass $sdlc_api;
@@ -126,6 +135,58 @@ server {
   # Status only, no data: `adlc doctor` calls it (V07, cli.api_ready).
   location = /health/ready {
     limit_req zone=sdlc_api burst=${SDLC_ACCESS_RATE_BURST} nodelay;
+    proxy_pass $sdlc_api;
+  }
+  location / {
+    return 404;
+  }
+  location @plain_http {
+    default_type text/plain;
+    return 400 "Use https:// for this address.\n";
+  }
+}
+
+# GitHub webhooks (O08, ADR-M112 §2.1, §2.4): their own listener, published on
+# SDLC_ACCESS_WEBHOOK_BIND_ADDR only (127.0.0.1 when unset). The company's edge (a DMZ proxy or a
+# tunnel) forwards GitHub's deliveries here over TLS; only its address passes the allow-list
+# (127.0.0.1/32 when unset: no peer through Docker's port mapping passes). Any Host: the edge may
+# keep GitHub's. One route, POST only; everything else 404 (405 for another method).
+server {
+  listen 8444 ssl;
+  server_name _;
+  keepalive_timeout 30s;
+  access_log /dev/stdout sdlc_access;
+  error_page 497 = @plain_http;
+
+  allow ${SDLC_ACCESS_WEBHOOK_ALLOW_CIDR};
+  deny all;
+  limit_conn sdlc_conn ${SDLC_ACCESS_CONN_PER_ADDR};
+  # Equal to the api's WEBHOOK_BODY_LIMIT_BYTES (1 MiB).
+  client_max_body_size 1m;
+
+  add_header X-Content-Type-Options "nosniff" always;
+
+  set $sdlc_api http://sdlc-api:8080;
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header Connection "";
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header Forwarded "";
+  proxy_set_header X-Forwarded-Proto "";
+  proxy_set_header X-Forwarded-Host "";
+  proxy_set_header X-Real-IP "";
+  proxy_hide_header X-Content-Type-Options;
+  proxy_hide_header X-Powered-By;
+  proxy_connect_timeout 5s;
+  proxy_read_timeout 15s;
+  proxy_send_timeout 15s;
+  proxy_buffering on;
+
+  location = /v1/webhooks/github {
+    if ($request_method != POST) {
+      return 405;
+    }
+    limit_req zone=sdlc_webhook burst=${SDLC_ACCESS_WEBHOOK_RATE_BURST} nodelay;
     proxy_pass $sdlc_api;
   }
   location / {

@@ -42,6 +42,7 @@ No attacker is trusted. The inputs are the paths into the agent's context or int
 | I5 Repository content (source, README, comments, `.gitignore`, build files, package manifests, `AGENTS.md`) | Anyone with commit rights; a dependency's maintainer | The agent reads and runs it; build tools execute it | Data by design; `AGENTS.md` only at its pinned path (ADR-M34 §2.4) |
 | I6 Package registry (packages and their install scripts) | Anyone who publishes to npmjs | Code that runs in the sandbox at install or test time | The package proxy; the sandbox's own network limits |
 | I7 Model output (tool calls, messages, the `finish` text) | The model, steered by I1–I6 | Shell commands in the sandbox; files; the diff | Three tools only; a model on `allowed_models`; everything outside is recomputed from the diff |
+| I8 GitHub webhook deliveries (O08, when the operator turned them on) | Anyone who can reach the company's edge; GitHub | The api's webhook route only, never the agent | Own listener with a peer allow-list and body and rate limits; the signature (`X-Hub-Signature-256`, constant time) checked before the body is read; a verified delivery only wakes the poll of its repository, which reads the events again from the GitHub API with the I4 checks; nothing of the body is stored or logged (ADR-M112) |
 
 The agent itself is therefore an attacker once any of I1–I7 steers it. The threat model assumes **a fully compromised agent process inside the sandbox**, with a shell as user 10001, and asks what it can still reach.
 
@@ -270,4 +271,4 @@ Optional, once, outside CI: one run with `gpt-oss:20b` (Ollama on the owner's ma
 | 0.12 | 2026-11-13 | Claude (task H06) | §5 gap G-6: optional gVisor or Kata runtime (ADR-M25 §2.12) |
 | 0.13 | 2026-11-13 | Claude (task X13 PR 1) | ASI06: the agent memory text of 0.7 approved with ADR-M74 0.2 (QUESTIONS #711) |
 | 0.14 | 2026-11-14 | Claude (task X13 PR 2) | ASI06: the memory read path is built; proof `platform/tests/agent/memory-prompt.test.ts` (an injected note stays in its nonce block), `platform/tests/runner/memory-files.test.ts` (hash check, canary never in the run event) |
-
+| 0.15 | 2026-11-15 | Claude Code (task O08, PR 3) | §2.2: input I8, GitHub webhook deliveries (ADR-M112) |

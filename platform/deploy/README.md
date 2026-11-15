@@ -441,6 +441,44 @@ With `pnpm server:setup`, the settings' `access` section does steps 2–4 ([Fres
 
 **Turn it off:** stop the proxy (`docker compose -f platform/deploy/docker-compose.yml --env-file platform/deploy/.env --profile access stop sdlc-access`), empty `SDLC_ACCESS_BIND_ADDR`, `SDLC_ACCESS_HOSTNAME` and `SDLC_API_TRUSTED_PROXY`, and set `SDLC_API_PUBLIC_ORIGIN` back if the sign-in is on.
 
+## GitHub webhooks (operator)
+
+GitHub can send each new comment, review, closed pull request and finished check to the platform as a **webhook** (task O08, [ADR-M112](../../design/ADR-M112-git-host-webhooks.md)). A comment command then reaches the workflow in about a second instead of at the next poll, and idle projects use less of the App's API quota. **Webhooks are off by default**, and the platform works fully without them: the poller reads every event anyway.
+
+**What a delivery does.** The api checks its signature (`X-Hub-Signature-256`, the App's webhook secret) before it reads anything else, and then only tells the worker to poll that repository at once. The poll reads the events from the GitHub API as always, through the same checks: numeric account IDs, no bot decides, each command applied once. Nothing of a delivery is stored or logged. A repeated delivery ID changes nothing. With webhooks on, the poller still runs as **reconciliation**, every `github.webhooks.reconcile_interval_seconds` (default 300), so a lost delivery costs time, never an event.
+
+**How deliveries reach the server.** GitHub needs a public HTTPS address with a publicly trusted certificate. The platform never faces the internet itself:
+
+```text
+GitHub ──HTTPS──▶ the company's edge (DMZ proxy or tunnel) ──TLS──▶ sdlc-access :8444 (webhook listener) ──▶ sdlc-api
+```
+
+- **The edge is yours**: a reverse proxy in a DMZ, or a tunnel the company already runs (an outbound connection to a public endpoint). It terminates GitHub's HTTPS with a public certificate and forwards `POST /v1/webhooks/github` to the webhook listener over TLS (the access profile's certificate). The platform builds no relay and uses no hosted relay.
+- **The webhook listener** is a second listener of the team access proxy (profile `access`), on its own address and port. It serves one route, `POST /v1/webhooks/github`, admits only the edge's address (`SDLC_ACCESS_WEBHOOK_ALLOW_CIDR`, others get `403`), limits the body to 1 MiB and each peer to 20 deliveries a second (burst 100), and logs no header. The LAN port (8443) never passes a webhook on (`404`).
+
+### Turn it on
+
+Turn webhooks on only when every step below works:
+
+1. **Team access** runs ([Team access](#team-access-operator)): the webhook listener uses its certificate.
+2. **Settings** in `platform/deploy/.env`:
+
+   ```bash
+   SDLC_ACCESS_WEBHOOK_BIND_ADDR=192.0.2.10        # the address the edge reaches (not 0.0.0.0 unless you must)
+   SDLC_ACCESS_WEBHOOK_HOST_PORT=8444              # never the LAN port
+   SDLC_ACCESS_WEBHOOK_ALLOW_CIDR=198.51.100.7/32  # the edge's address (one address or network)
+   SDLC_API_GITHUB_WEBHOOKS=on
+   ```
+
+3. **The secret** ([T11 §5p](../../handbook/03-templates/T11-openbao-runbook.md#5p-github-webhooks-the-webhook-secret)): `pnpm openbao:bootstrap github-webhook-secret` in your own terminal. It shows the secret once; paste it into the App's settings (step 5).
+4. **The edge**: forward `https://<public name>/v1/webhooks/github` to `https://<SDLC_ACCESS_WEBHOOK_BIND_ADDR>:<SDLC_ACCESS_WEBHOOK_HOST_PORT>/v1/webhooks/github`, POST only. Trust the access profile's CA there, or the edge cannot verify the listener.
+5. **The App's settings on GitHub**: **Webhook** → **Active**, the URL `https://<public name>/v1/webhooks/github`, the secret from step 3, SSL verification on; **Subscribe to events**: Issue comment, Pull request, Pull request review, Check run. The App's permissions do not change. `pnpm github-app:create` always creates the App with the webhook off.
+6. **Start** with `access` in the same call (`platform/deploy/scripts/up.sh … platform access`). `up.sh` checks the webhook settings first: the address, the allow-list, a port that is not the LAN port.
+7. **Check**: GitHub sends a `ping` when the webhook is saved; the App's **Recent deliveries** shows `202`. `pnpm doctor` shows `github.webhook` ok once a delivery with a correct signature arrived.
+8. **Each project**: in its configuration, `github.webhooks.enabled: true` (the poller then reconciles every `github.webhooks.reconcile_interval_seconds`, default 300, never below `poll_interval_seconds`). Turn it on only after step 7.
+
+**Turn it off**: `github.webhooks.enabled: false` in each project (the poller returns to `poll_interval_seconds` at once), then deactivate the App's webhook, set `SDLC_API_GITHUB_WEBHOOKS=off`, empty `SDLC_ACCESS_WEBHOOK_BIND_ADDR`, and restart `sdlc-api` and `sdlc-access`.
+
 ## The runner on its own Docker Engine (operator)
 
 The runner controls Docker. On the server it runs with its sandboxes on **its own Docker Engine**, which holds no platform service and no platform data (task O01, [ADR-M91](../../design/ADR-M91-runner-own-engine.md)). Do this before the first real agent run on the company server (QUESTIONS #455). Developer machines and the trial keep the single Engine; there `pnpm doctor` only warns.
@@ -558,7 +596,7 @@ Expect more CPU time on system calls (file and network work) under gVisor: a dep
 
 ## Ports
 
-All published ports bind to `127.0.0.1` by default (`SDLC_BIND_ADDR`), except the team access proxy, which binds to `SDLC_ACCESS_BIND_ADDR`. The server accepts no inbound internet connections (D-03 section 9). Change a host port in `.env` when it is already in use.
+All published ports bind to `127.0.0.1` by default (`SDLC_BIND_ADDR`), except the team access proxy, which binds to `SDLC_ACCESS_BIND_ADDR`, and its webhook listener, which binds to `SDLC_ACCESS_WEBHOOK_BIND_ADDR`. The server accepts no inbound internet connections (D-03 section 9). Change a host port in `.env` when it is already in use.
 
 | Service | Default host port | Notes |
 |---|---|---|
@@ -570,6 +608,7 @@ All published ports bind to `127.0.0.1` by default (`SDLC_BIND_ADDR`), except th
 | Langfuse | 3000 | `observability` profile only |
 | API (`sdlc-api`) | 8090 | `platform` profile only. 8080 is taken by the Temporal UI. Also serves the read-only dashboard at `/dashboard/` (U01, `SDLC_API_DASHBOARD_DIR`, built into the image; `off` turns it off). Keep it on `127.0.0.1`: other machines use the proxy of the profile `access` (ADR-M54 §2.2, ADR-M67; how people use it: [handbook Ch.19 §19.8e](../../handbook/02-playbook/ch19-approval-queues.md#198e-using-the-platform-the-dashboard)) |
 | Team access proxy (`sdlc-access`) | 8443 | `access` profile only. **The only port on another address**: `SDLC_ACCESS_BIND_ADDR`, the server's LAN address ([Team access](#team-access-operator)); without it the profile does not start |
+| Webhook listener (`sdlc-access`) | 8444 | `access` profile only, GitHub webhooks (O08). On `SDLC_ACCESS_WEBHOOK_BIND_ADDR`, `127.0.0.1` when unset; one route, only the edge's address passes ([GitHub webhooks](#github-webhooks-operator)) |
 | Sandbox image registry | 5050 | `sandbox` profile only. **Always 127.0.0.1** (not `SDLC_BIND_ADDR`): it has no authentication. Not 5000: macOS uses it |
 | The runner's link | 5432, 8200, 7233, 8333, 4000, 5433, 5050 | Only with `SDLC_RUNNER_LINK_ADDR` (profile `runner-link`, overlay `docker-compose.runner-link.yml`): PostgreSQL, OpenBao (TLS), Temporal, SeaweedFS S3, LiteLLM, knowledge-db and the registry, **on the link address only**, for a runner on its own Engine ([The runner on its own Docker Engine](#the-runner-on-its-own-docker-engine-operator)) |
 | The GPU host's gateway | 8443 | **On the GPU host**, not the platform server (`gpu-host/docker-compose.yml`): `SDLC_GPU_LINK_PORT`, **only on `SDLC_GPU_LINK_ADDR`**, mutual TLS. The platform's `vllm-link` publishes no port ([Self-hosted model on a separate GPU host](#self-hosted-model-on-a-separate-gpu-host-operator)) |
@@ -993,6 +1032,7 @@ A tag (`0.2.0`, `sha-<commit>`) never moves, but use the digest anyway: the plat
 | `github.app` | The GitHub App's permissions and each project repository's installation against `platform/deploy/github-app/manifest.json`. The worker runs the check with its own AppRole (`docker compose exec -T sdlc-worker node /app/dist/doctor-github.js`, read only, codes only), so the App key never leaves OpenBao and the worker; skipped while OpenBao is sealed or the worker is stopped |
 | `images.mode` | `pnpm images mode` (`local` or `published`) |
 | `access.proxy`, `access.tls_files`, `access.tls_expiry`, `access.tls_names`, `access.ports`, `access.public_origin`, `access.trusted_proxy` | Team access (V09): `sdlc-access` runs and is healthy; its CA and certificate in `SDLC_ACCESS_TLS_DIR`, their end dates (a warning within 30 days) and whether the certificate names `SDLC_ACCESS_HOSTNAME` and `SDLC_ACCESS_IPS` (never the key file); every published port of the project on `127.0.0.1` except the proxy's on `SDLC_ACCESS_BIND_ADDR` (a warning on `0.0.0.0`); `SDLC_API_PUBLIC_ORIGIN` is the proxy's origin; `SDLC_API_TRUSTED_PROXY` is the proxy's address. Without team access: one line says it is off, and the ports are still checked |
+| `github.webhook` | GitHub webhooks (O08): off is one ok line; on, the webhook listener's address, an allow-list other than `0.0.0.0/0`, and a delivery with a correct signature (`webhook.accepted`, `webhook.duplicate` or `webhook.ignored`, a `ping` counts) in the last 24 hours of the `sdlc-api` log. See [GitHub webhooks](#github-webhooks-operator) |
 
 **Read only.** It runs only the commands of its allowlist (`platform/deploy/doctor/src/commands.ts`): no `up`, `down`, `rm`, `prune`, no OpenBao command other than `status`, no SQL that writes. It prints no secret (never a token, key share, password or key) and works on a stopped or sealed stack: it says so instead of failing. It may run anywhere a person runs commands for the stack, including through Claude Code. Exit 0 when no check failed (warnings included), 1 when one did, 2 for a usage error. A person checks their own login with `adlc doctor` (handbook Ch.19 §19.8c).
 
@@ -1050,6 +1090,7 @@ Run `pnpm doctor` first ([Doctor](#doctor-pnpm-doctor)): it checks the rows of t
 | `sdlc-access` does not start; `access-tls-init` says a file is missing in `SDLC_ACCESS_TLS_DIR` | No certificate for the proxy | `pnpm access:tls import`, `server` or (test machine) `dev`: [T11 §3d](../../handbook/03-templates/T11-openbao-runbook.md#3d-tls-for-team-access-the-proxys-certificate) |
 | People on other machines get a certificate error | Their machine does not know the CA, or the address is not a name in the certificate | `NODE_EXTRA_CA_CERTS=<ca.pem>` for the CLI, the CA in the browser; open the name of `SDLC_ACCESS_HOSTNAME`; `pnpm access:tls check` |
 | Every person gets `429` at the same time | The proxy sees one shared client address (Docker Desktop, some rootless set-ups) | Run the stack on Docker for Linux with the default port publishing ([Team access](#team-access-operator)) |
+| GitHub shows failed webhook deliveries (`401`, `403`, `404`, timeouts), or `pnpm doctor` warns `github.webhook` | `401`: the secret differs between GitHub and OpenBao. `403`: the edge's address is not `SDLC_ACCESS_WEBHOOK_ALLOW_CIDR`. `404`: `SDLC_API_GITHUB_WEBHOOKS` is off, or the edge sends to the LAN port. A timeout: the edge cannot reach the listener | Fix as [GitHub webhooks](#github-webhooks-operator) says; the poller still reads every event meanwhile |
 
 Problems with a gate or an intent (refused commands, held intents, escalations): [USER-GUIDE §5](../USER-GUIDE.md#5-when-something-goes-wrong). Still stuck: open an issue with the bug report template, and never paste a log line with a secret or client data. Security problems: [SECURITY.md](../../SECURITY.md).
 

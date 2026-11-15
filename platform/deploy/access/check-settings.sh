@@ -106,6 +106,36 @@ if [ -n "$host" ]; then
   fi
 fi
 
+# GitHub webhooks (O08, ADR-M112 §2.1-§2.2): their own listener, only for the edge's address.
+# The allow value goes into the nginx configuration, so only an address or a network passes.
+allow_ok() {
+  printf '%s' "$1" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}(/[0-9]{1,2})?$' || return 1
+  [ -n "$(ip_int "${1%/*}")" ] || return 1
+  case "$1" in */*) [ "${1#*/}" -le 32 ] ;; esac
+}
+wh_bind="$(setting SDLC_ACCESS_WEBHOOK_BIND_ADDR '')"
+wh_port="$(setting SDLC_ACCESS_WEBHOOK_HOST_PORT 8444)"
+wh_allow="$(setting SDLC_ACCESS_WEBHOOK_ALLOW_CIDR '')"
+webhooks="$(setting SDLC_API_GITHUB_WEBHOOKS off)"
+if [ -n "$wh_bind" ]; then
+  if [ -z "$(ip_int "$wh_bind")" ]; then
+    block "SDLC_ACCESS_WEBHOOK_BIND_ADDR is not an IPv4 address: $wh_bind"
+  elif [ "$wh_port" = "$port" ]; then
+    block "SDLC_ACCESS_WEBHOOK_HOST_PORT must differ from SDLC_ACCESS_HOST_PORT ($port): webhooks never use the LAN port"
+  fi
+  if [ -z "$wh_allow" ]; then
+    block "set SDLC_ACCESS_WEBHOOK_ALLOW_CIDR to the address of the edge that forwards GitHub's deliveries (README \"GitHub webhooks\")"
+  elif ! allow_ok "$wh_allow"; then
+    block "SDLC_ACCESS_WEBHOOK_ALLOW_CIDR is not one IPv4 address or network: $wh_allow"
+  elif [ "${wh_allow%/*}" = 0.0.0.0 ] && [ "${wh_allow#*/}" = 0 ]; then
+    warn "SDLC_ACCESS_WEBHOOK_ALLOW_CIDR=0.0.0.0/0 admits every address to the webhook listener; prefer the edge's address"
+  fi
+  [ "$webhooks" = on ] ||
+    warn "the webhook listener is set, but SDLC_API_GITHUB_WEBHOOKS is off: every delivery answers 404"
+elif [ "$webhooks" = on ]; then
+  warn "SDLC_API_GITHUB_WEBHOOKS=on, but SDLC_ACCESS_WEBHOOK_BIND_ADDR is empty: no delivery can reach the api through the proxy"
+fi
+
 # The certificate: missing or wrong blocks; ending within 30 days warns.
 tls_dir="$(setting SDLC_ACCESS_TLS_DIR '')"
 if [ -z "$tls_dir" ]; then

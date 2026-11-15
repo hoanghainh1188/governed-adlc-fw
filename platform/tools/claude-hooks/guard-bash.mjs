@@ -154,6 +154,17 @@ function printsOperatorSecret(cliArgs) {
   return ops === 'ops' && (action === 'bootstrap' || action === 'token');
 }
 
+/**
+ * `openbao:bootstrap` / `bootstrap.sh` actions that print or take a secret (rule R035):
+ * key shares, tokens, credentials, and the GitHub webhook secret (O08, ADR-M112 §2.8).
+ */
+function printsBootstrapSecret(action) {
+  return (
+    ['init', 'unseal', 'root-token', 'github-webhook-secret'].includes(action) ||
+    action.endsWith('-credentials')
+  );
+}
+
 function checkPackageManager(cmd, args) {
   const first = firstPositional(args);
   if (first === 'publish') return 'R040';
@@ -165,9 +176,7 @@ function checkPackageManager(cmd, args) {
   const script = first === 'run' ? firstPositional(rest) : first;
   const scriptArgs = first === 'run' ? rest.slice(rest.indexOf(script) + 1) : rest;
   if (script === 'openbao:bootstrap') {
-    const action = firstPositional(scriptArgs) ?? '';
-    if (['init', 'unseal', 'root-token'].includes(action) || action.endsWith('-credentials'))
-      return 'R035';
+    if (printsBootstrapSecret(firstPositional(scriptArgs) ?? '')) return 'R035';
   }
   // `pnpm adlc …`; `pnpm sdlc …`, its alias in v0.9.x, stays refused for older checkouts (ADR-M100 §2.5).
   if (CLI_NAMES.has(script) && printsOperatorSecret(scriptArgs)) return 'R035';
@@ -209,11 +218,7 @@ function checkSegment(segment) {
     base(firstPositional(args) ?? '') === 'runner-host-setup.sh'
   )
     return 'R149';
-  if (cmd === 'bootstrap.sh') {
-    const action = firstPositional(args) ?? '';
-    if (['init', 'unseal', 'root-token'].includes(action) || action.endsWith('-credentials'))
-      return 'R035';
-  }
+  if (cmd === 'bootstrap.sh' && printsBootstrapSecret(firstPositional(args) ?? '')) return 'R035';
   return null;
 }
 
