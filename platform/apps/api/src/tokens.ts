@@ -11,6 +11,7 @@ export const SPECS = Symbol('SpecsService');
 export const PLANS = Symbol('PlansService');
 export const MEMORY = Symbol('MemoryService');
 export const LESSONS = Symbol('LessonsService');
+export const BREAK_GLASS = Symbol('BreakGlassService');
 export const RUNS = Symbol('RunsService');
 export const COST = Symbol('CostService');
 export const METRICS = Symbol('MetricsService');

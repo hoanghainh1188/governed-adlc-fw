@@ -9,6 +9,7 @@
 // - `adlc ops agent show|list|suspend|quarantine` (ops-agent.ts);
 // - `adlc ops ai-record set|show` (ops-ai-record.ts);
 // - `adlc ops run kill` (ops-run.ts, C11);
+// - `adlc ops break-glass list|revoke` (ops-break-glass.ts, H08): never request or approve;
 // - `adlc ops retention report` (ops-retention.ts, E05): counts only;
 // - `adlc ops eval start` (ops-eval.ts, L04): queues an evaluation on the server.
 // A token is printed once, to stdout, and never logged. Run these in a terminal, not in a chat.
@@ -40,6 +41,7 @@ import {
 } from './ops-client-data-deletion.js';
 import { parseEvalCommand, runEvalCommand } from './ops-eval.js';
 import { parseRunCommand, runRunCommand } from './ops-run.js';
+import { parseBreakGlassCommand, runBreakGlassCommand } from './ops-break-glass.js';
 
 type Values = Record<string, string | boolean | undefined>;
 
@@ -119,6 +121,10 @@ async function runOpsCommand(args: readonly string[], ctx: CliContext): Promise<
   }
   if (first === 'run') {
     return runScoped(parseRunCommand(args.slice(1)), runRunCommand, 'cli.ops.run.usage', ctx);
+  }
+  if (first === 'break-glass') {
+    const parsed = parseBreakGlassCommand(args.slice(1));
+    return runScoped(parsed, runBreakGlassCommand, 'cli.ops.break_glass.usage', ctx);
   }
   if (first === 'eval') {
     const parsed = parseEvalCommand(args.slice(1));

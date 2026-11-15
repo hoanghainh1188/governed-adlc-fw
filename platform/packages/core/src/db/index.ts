@@ -149,6 +149,7 @@ export type {
   ApiToken,
   AuditLogRow,
   CostRecordRow,
+  BreakGlassGrant,
   Escalation,
   Evaluation,
   EvaluationConfigurationRow,

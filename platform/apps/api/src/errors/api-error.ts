@@ -10,6 +10,8 @@ import {
   memoryErrorMessage,
   LessonError,
   lessonErrorMessage,
+  BreakGlassError,
+  breakGlassErrorMessage,
   CommandError,
   EvaluationError,
   KillError,
@@ -116,6 +118,7 @@ export const API_ERROR_CODES = [
   'memory_version_not_found',
   'lesson_not_found',
   'lesson_refused',
+  'break_glass_refused',
   'role_binding_not_found',
   'project_archived',
   'project_has_open_intents',
@@ -210,6 +213,7 @@ const ERROR_MESSAGE_KEYS: Readonly<Record<ApiErrorCode, MessageKey>> = {
   memory_refused: 'api.error.memory_refused',
   memory_version_not_found: 'api.error.memory_version_not_found',
   lesson_not_found: 'api.error.lesson_not_found',
+  break_glass_refused: 'api.error.break_glass_refused',
   lesson_refused: 'api.error.lesson_refused',
   role_binding_not_found: 'api.error.role_binding_not_found',
   project_archived: 'api.error.project_archived',
@@ -470,6 +474,37 @@ export function lessonApiError(error: LessonError): ApiError {
   );
 }
 
+/** Break-glass refusals (H08 PR 3a, ADR-M111 §2.4–§2.9). `reason` is the break-glass error code. */
+const BREAK_GLASS: Readonly<Record<BreakGlassError['code'], [number, ApiErrorCode]>> = {
+  intent_not_found: [404, 'intent_not_found'],
+  project_not_found: [404, 'project_not_found'],
+  intent_not_open: [409, 'break_glass_refused'],
+  disabled: [409, 'break_glass_refused'],
+  forbidden: [403, 'forbidden'],
+  same_person: [403, 'forbidden'],
+  producer: [403, 'forbidden'],
+  scope_invalid: [409, 'break_glass_refused'],
+  duration_invalid: [409, 'break_glass_refused'],
+  budget_invalid: [409, 'break_glass_refused'],
+  already_open: [409, 'break_glass_refused'],
+  no_grant: [409, 'break_glass_refused'],
+  lapsed: [409, 'break_glass_refused'],
+  nothing_to_review: [409, 'break_glass_refused'],
+  git_host_unavailable: [503, 'git_host_unavailable'],
+  git_host_error: [503, 'git_host_unavailable'],
+  comment_invalid: [409, 'break_glass_refused'],
+  comment_not_found: [409, 'break_glass_refused'],
+  comment_not_on_intent: [409, 'break_glass_refused'],
+};
+
+export function breakGlassApiError(error: BreakGlassError): ApiError {
+  const [status, code] = BREAK_GLASS[error.code];
+  const reason = error.code === 'git_host_error' ? (error.gitCode ?? error.code) : error.code;
+  return new ApiError(status, code, reason, undefined, undefined, (locale) =>
+    breakGlassErrorMessage(error, locale),
+  );
+}
+
 /** Kill switch refusals (C11, ADR-M42 §2.6). */
 const KILL: Readonly<Record<KillErrorCode, [number, ApiErrorCode]>> = {
   run_not_found: [404, 'run_not_found'],
@@ -538,6 +573,7 @@ export function toApiError(error: unknown): ApiError {
   if (error instanceof EvaluationError) return evaluationApiError(error);
   if (error instanceof MemoryError) return memoryApiError(error);
   if (error instanceof LessonError) return lessonApiError(error);
+  if (error instanceof BreakGlassError) return breakGlassApiError(error);
   if (error instanceof AiRecordError) {
     if (error.code === 'version_conflict') return new ApiError(409, 'ai_record_version_conflict');
     if (error.code === 'not_a_writer') return new ApiError(403, 'forbidden');
