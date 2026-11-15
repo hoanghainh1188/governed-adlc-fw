@@ -27,6 +27,7 @@ These points were open:
 - The worker runs a loop (`PollerLoop`, `platform/apps/worker/src/poller-loop.ts`).
   - Every tick (`SDLC_WORKER_TICK_MS`, default 1 s), it reads the pollable projects (`SystemScope.listPollableProjects()`) and starts the polls that are due.
   - Before every poll it reads the project's `github.poll_interval_seconds` (default 30) from the project configuration. A configuration change applies without a restart.
+  - Version 0.5 (O08, ADR-M112 §2.6): with `github.webhooks.enabled`, the interval is `github.webhooks.reconcile_interval_seconds` (default 300), and a webhook hint makes the repository's projects due at once.
   - A project never has two polls running at once in one process. At most `SDLC_WORKER_MAX_CONCURRENT_POLLS` polls run at once (default 4); the projects that have waited longest go first, so none is starved.
   - After a `rate_limited` error, the project waits until GitHub's reset time (`retry_at`).
   - A project whose configuration cannot be read is skipped and tried again after 60 s. This is a technical retry delay, not a handbook rule.
@@ -194,3 +195,4 @@ These points were open:
 | 0.2 | 2026-09-27 | Claude (task B06, review of PR #94) | §2.2: failed attempts counted per event outside the batch, `failed_internal` after `SDLC_WORKER_MAX_EVENT_ATTEMPTS`; §2.3: exact rule for a reason code alone; §2.7: live test scope, human-account check later; §3 updated |
 | 0.3 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
 | 0.4 | 2026-11-14 | Claude Code (task X08b PR 1), approved by Harry | §2.4: `/lesson` may match a finished intent inside its lesson window (ADR-M109 §2.3, QUESTIONS #708) |
+| 0.5 | 2026-11-15 | Claude Code (task O08 PR 1), approved by Harry in the O08 plan (QUESTIONS #749) | §2.1: the reconciliation interval and the immediate poll when webhooks are on (ADR-M112) |
