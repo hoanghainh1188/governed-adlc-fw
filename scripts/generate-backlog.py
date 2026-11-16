@@ -1110,7 +1110,8 @@ DONE={**{t:"v0.1.0" for t in ("V01","V02","V03")},
       **{t:"v0.13.0" for t in ("O06",)},
       **{t:"v0.14.0" for t in ("U09","V14","X06","H06")},
       **{t:"v0.15.0" for t in ("X13","O07")},
-      **{t:"v0.16.0" for t in ("X08a","X08b")}}
+      **{t:"v0.16.0" for t in ("X08a","X08b")},
+      **{t:"v0.17.0" for t in ("H08","H09","O08")}}
 r=[]; a=r.append
 a("""# Roadmap
 

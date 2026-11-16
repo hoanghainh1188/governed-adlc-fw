@@ -108,8 +108,8 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **X13** Agent memory (done, v0.15.0)
 - **O06** Real repositories: very large trees, monorepos, repositories without CI or AGENTS.md (done, v0.13.0)
 - **O07** Load test: many intents and tenants at once (done, v0.15.0)
-- **H08** Break-glass: audited emergency access for a production P0 incident (design first)
-- **O08** Git host webhooks with polling kept as reconciliation
-- **H09** PostgreSQL row-level security as a second tenant barrier
+- **H08** Break-glass: audited emergency access for a production P0 incident (design first) (done, v0.17.0)
+- **O08** Git host webhooks with polling kept as reconciliation (done, v0.17.0)
+- **H09** PostgreSQL row-level security as a second tenant barrier (done, v0.17.0)
 
 Also later, not yet planned as tasks: a full policy engine (OPA or Cedar), an incident module, automatic rollback, the recertification workflow, client reports, SSO and Kubernetes, several agents in one intent, the deferred approval queue, PQC metrics (D-02 §4.2); a support policy for older CLI versions against a newer server (QUESTIONS #440).
