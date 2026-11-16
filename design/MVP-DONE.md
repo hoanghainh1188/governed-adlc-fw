@@ -2,8 +2,8 @@
 
 | Item | Value |
 |---|---|
-| Version | 0.8 |
-| Date | 2026-10-10 |
+| Version | 0.9 |
+| Date | 2026-11-16 |
 | Status | **Draft** (task E07). AC4 prepared, waiting for the API-model run, now before M-F (QUESTIONS #81); 0.8 approved by Harry on 2026-10-10 (wording only: "MVP" retired, v0.1 baseline and Later; meaning unchanged; QUESTIONS #360) |
 | Readers | Leadership, tech lead, Claude Code |
 | Related documents | D-02 §10 (the criteria), D-08 task E07, D-09 §7 and §10, QUESTIONS #81 |
@@ -70,7 +70,7 @@ Decisions taken during v0.1 that left a known item for a later milestone. Each h
 | A per-project `release.environment` and the non-production HOTL path at G8; an explicit PM/BrSE confirmation of the client's own disclosure note | QUESTIONS #220, #222 (E03) | Later |
 | The web UI scope (web UI with actions, other users), written from the trial data; candidate list in `design/MVP1-UI-SCOPE.md` 0.1. The read-only dashboard is done: U01, U02 (QUESTIONS #255) | D-02 §4.2, D-08 E07 note | After M-E (U01: in parallel with M-E) |
 | Template T13 differs from the plan schema v1 (platform fields, `change_flags`, tool names) | B09 PR 2 (#150) | Handbook authors |
-| Who owns the project AI record: D-02 §3 and handbook Ch.2 §2.5 differ | QUESTIONS #103 | Docs follow-up |
+| ~~Who owns the project AI record: D-02 §3 and handbook Ch.2 §2.5 differ~~ **Done:** D-02 1.12 §3 follows the handbook (Person A owns it) | QUESTIONS #103 | Done |
 
 ## Version history
 
@@ -84,3 +84,4 @@ Decisions taken during v0.1 that left a known item for a later milestone. Each h
 | 0.6 | 2026-10-07 | Claude (coordinator), approved by Harry | §5: the interface scope's candidate list (`design/MVP1-UI-SCOPE.md`); U01 and U02 done |
 | 0.7 | 2026-10-08 | Claude (coordinator), approved by Harry | §5: the deploy image upgrade (#177) is done before M-E (#195, #197) |
 | 0.8 | 2026-10-10 | Claude (coordinator), approved by Harry | Wording only: "MVP" retired; v0.1.0 is the "v0.1 baseline", unscheduled work is "Later"; meaning unchanged (QUESTIONS #360) |
+| 0.9 | 2026-11-16 | Claude (coordinator), approved by Harry | §5: who owns the project AI record is aligned (QUESTIONS #103, D-02 1.12) |

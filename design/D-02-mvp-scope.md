@@ -2,9 +2,9 @@
 
 | Item | Value |
 |---|---|
-| Version | 1.11 |
-| Date | 2026-11-15 |
-| Status | **Approved** (Harry, 2026-09-24) — version 1.0, aligned with the handbook (tag `design-v1.0`); 1.1 approved by Harry on 2026-09-27 in the C05 session 2 plan (local Ollama model on developer machines for the C05 proof only; QUESTIONS #78); 1.2 approved by Harry on 2026-10-03 in the C08 plan (§5 flow: the runner pushes after G5, the platform opens the pull request; QUESTIONS #52); 1.3 approved by Harry on 2026-10-06 (§4.2, §12: the trial M-E runs with the local Ollama model; the API-model run moves to before M-F; QUESTIONS #81); 1.4 approved by Harry on 2026-10-07 (§4.2: a read-only dashboard starts before MVP+1; QUESTIONS #255); 1.5 approved by Harry on 2026-10-08 (citations of an unpublished earlier draft removed before the repository goes public; meaning unchanged); 1.6 approved by Harry on 2026-10-08 (§4.2: the BMAD / Spec Kit spec tasks and WeKnora come before the trial M-E; QUESTIONS #285); 1.7 approved by Harry on 2026-10-09 (§5 flow: the order of the merge and G7 corrected; the rest is wording); 1.8 approved by Harry on 2026-10-09 (§13.3: the trial M-E is run by the community; QUESTIONS #340); 1.9 approved by Harry on 2026-10-10 (wording only: "MVP" retired, v0.1 baseline and Later; meaning unchanged; QUESTIONS #360); 1.10 approved by Harry on 2026-10-10 in the V11 plan (§4.2: the dashboard's actions in waves; ADR-M73; QUESTIONS #375–#380) |
+| Version | 1.12 |
+| Date | 2026-11-16 |
+| Status | **Approved** (Harry, 2026-09-24) — version 1.0, aligned with the handbook (tag `design-v1.0`); 1.1 approved by Harry on 2026-09-27 in the C05 session 2 plan (local Ollama model on developer machines for the C05 proof only; QUESTIONS #78); 1.2 approved by Harry on 2026-10-03 in the C08 plan (§5 flow: the runner pushes after G5, the platform opens the pull request; QUESTIONS #52); 1.3 approved by Harry on 2026-10-06 (§4.2, §12: the trial M-E runs with the local Ollama model; the API-model run moves to before M-F; QUESTIONS #81); 1.4 approved by Harry on 2026-10-07 (§4.2: a read-only dashboard starts before MVP+1; QUESTIONS #255); 1.5 approved by Harry on 2026-10-08 (citations of an unpublished earlier draft removed before the repository goes public; meaning unchanged); 1.6 approved by Harry on 2026-10-08 (§4.2: the BMAD / Spec Kit spec tasks and WeKnora come before the trial M-E; QUESTIONS #285); 1.7 approved by Harry on 2026-10-09 (§5 flow: the order of the merge and G7 corrected; the rest is wording); 1.8 approved by Harry on 2026-10-09 (§13.3: the trial M-E is run by the community; QUESTIONS #340); 1.9 approved by Harry on 2026-10-10 (wording only: "MVP" retired, v0.1 baseline and Later; meaning unchanged; QUESTIONS #360); 1.10 approved by Harry on 2026-10-10 in the V11 plan (§4.2: the dashboard's actions in waves; ADR-M73; QUESTIONS #375–#380); 1.12 approved by Harry on 2026-11-16 (§3: Person A owns the project AI record, as handbook Ch.2 §2.3 and §2.5 say; QUESTIONS #103) |
 | Readers | Leadership (sections 1–4, 10–12), tech lead / developers (all), Claude Code (sections 5–9, 13) |
 | Related documents | D-01 (build vs buy), D-07 (models and tokens), handbook codes table and Chapters 2–6, 10–20 |
 
@@ -31,10 +31,10 @@ The platform follows the handbook's **2+N team** (handbook Chapter 5).
 
 | Role (project role in D-05) | Uses v0.1 to |
 |---|---|
-| Person A (`person_a`) — owner / executor | Create intents, approve G1 and G2 (Low/Medium risk), operate runs, receive escalations about intent and budget |
+| Person A (`person_a`) — owner / executor | Create intents, approve G1 and G2 (Low/Medium risk), operate runs, receive escalations about intent and budget; own the project AI record (accountable for it) |
 | Person B (`person_b`) — independent reviewer / approver | Approve G2 (High+), G3, G6 (High+), G7, G8; receive technical and security escalations; freeze or lower autonomy |
 | Second approver (`second_approver`) | Second approval at G7 for sensitive change types; Critical-risk G8 |
-| PM / BrSE (`pm_brse`) | Maintain the project AI record (client consent); client disclosure note |
+| PM / BrSE (`pm_brse`) | Ask the client about AI use and keep the written answer; fill and update the project AI record with Person A; client disclosure note |
 | Governance (`governance`) — leadership | Exceptions, raising autonomy, Critical escalations, agent approval for L3+ |
 | Platform admin (`admin`) | Tenants, budgets, agent register, Git hosts |
 
@@ -411,3 +411,4 @@ v0.1 is done when **all** of the following are true:
 | 1.9 | 2026-10-10 | Claude (coordinator), approved by Harry | Wording only: "MVP" retired; v0.1.0 is the "v0.1 baseline", unscheduled work is "Later"; meaning unchanged (QUESTIONS #360) |
 | 1.10 | 2026-10-10 | Claude (task V11), approved by Harry | §4.2: the dashboard's actions in three waves through the same API checks; wave 1 in the milestone UX (ADR-M73, `design/MVP1-UI-SCOPE.md` 1.2, QUESTIONS #375–#380) |
 | 1.11 | 2026-11-15 | Claude (task O08, PR 1), approved by Harry in the O08 plan (QUESTIONS #746–#750) | §6.3 "Receiving GitHub events": webhooks may be turned on where GitHub can reach a webhook listener; polling stays as reconciliation (ADR-M112) |
+| 1.12 | 2026-11-16 | Claude (coordinator), approved by Harry | §3: Person A owns the project AI record; PM / BrSE asks the client, keeps the written answer and fills the record with Person A, as handbook Ch.2 §2.3, §2.5 and template T7 say. The platform is unchanged: both roles may write the record (ADR-M32 §2.4; QUESTIONS #103) |
