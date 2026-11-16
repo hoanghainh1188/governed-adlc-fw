@@ -101,7 +101,7 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **H06** An optional stronger sandbox runtime (gVisor or Kata) (done, v0.14.0)
 - **X05** Documents outside the repository (Office, PDF, Confluence, Drive, Backlog)
 - **X06** A code index for agents (Tree-sitter or SCIP and pgvector) (done, v0.14.0)
-- **X08** Knowledge for people and the G8 learning loop (design first)
+- **X08** Knowledge for people and the G8 learning loop (design first) (done, v0.16.0)
 - **X08a** Intent search and links for people (done, v0.16.0)
 - **X08b** Lessons at G8 and the learning loop (done, v0.16.0)
 - **X10** An adapter for a second Git host
