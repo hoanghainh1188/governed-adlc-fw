@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #746–#750); PR 1 is this ADR; PR 2 and PR 3 build it. Version 0.2 (PR 2): repeated delivery IDs and the last delivery time in the api's memory, not Valkey (QUESTIONS #751); §2.4b records what PR 2 built. Version 0.3 (PR 3): one allow-list value, the doctor check reads the api's log events, §2.4c records what PR 3 built. Version 0.4: the unused in-memory delivery time removed |
+| Status | **Accepted** (Harry, 2026-11-16), after O08 was built and merged (#543–#547); proposed on 2026-11-15. Plan approved by Harry on 2026-11-15 (QUESTIONS #746–#750); PR 1 is this ADR; PR 2 and PR 3 build it. Version 0.2 (PR 2): repeated delivery IDs and the last delivery time in the api's memory, not Valkey (QUESTIONS #751); §2.4b records what PR 2 built. Version 0.3 (PR 3): one allow-list value, the doctor check reads the api's log events, §2.4c records what PR 3 built. Version 0.4: the unused in-memory delivery time removed |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); O08 builds it |
 | Related | D-08 O08 (AC1–AC5); D-02 FR-21 and the "Receiving GitHub events" note, NFR-01, NFR-05; D-03 §9, §12 (ADR-M11); ADR-M23 §2.5 (the adapter's webhook check, B05 AC2); ADR-M26 §2.7 (the api's limits, `trustProxy`); ADR-M27 (the poller); ADR-M67 (the access proxy); ADR-M80 (the threat model); ADR-M101 (operational alerts); ADR-M106 (several projects on one repository); ADR-M110 (row-level security); CLAUDE.md R031, R034, R035, R037, R082, R083; QUESTIONS #732, #746–#751 |
@@ -211,3 +211,4 @@ The order matters: a project switches to the longer reconciliation interval only
 | 0.2 | 2026-11-15 | Claude Code (task O08, PR 2), approved by Harry (QUESTIONS #751) | §2.5, §2.9, §2.10: repeated delivery IDs and the last delivery time in the api's memory, not Valkey; §2.4b as built; §2.4, §2.7: the api's rate limit per minute, the secret path setting; §2.6: every group polled after a reconnect, a log line instead of a metric; §2.7: defaults in the default configuration, no new schema version |
 | 0.3 | 2026-11-15 | Claude Code (task O08, PR 3) | §2.1, §2.7: one allow-list value (`SDLC_ACCESS_WEBHOOK_ALLOW_CIDR`); §2.4c as built; §2.9: doctor reads the api's log events of the last 24 hours, no setting; §4.1 PR 3 as built |
 | 0.4 | 2026-11-15 | Claude Code (task O08, clean-up) | §2.9, §2.10: the api's in-memory time of the last verified delivery removed; the doctor check reads the log events |
+| 0.5 | 2026-11-16 | Claude Code, accepted by Harry | Accepted: O08 is built and merged (#543–#547); no change to the design |
