@@ -42,6 +42,7 @@ Six points were open in the B12 plan:
 
 ### 2.4. Who writes it, and through what (D3, D4 = C, QUESTIONS #103)
 
+- Who owns it (QUESTIONS #103, closed 2026-11-16): **Person A** owns the record and is accountable for it; PM / BrSE asks the client, keeps the written answer and fills the record with Person A (handbook Ch.2 §2.3, §2.5, template T7; D-02 §3 from version 1.12). Both roles write it by default; the audit event names who saved each version (`updated_by`).
 - Config `access.ai_record_write_roles` (default `[person_a, pm_brse]`) and `access.ai_record_read_roles` (default the same list as `intent_read_roles`). Writers always read. **Mandatory rule M19**: `viewer` never writes the record.
 - `saveAiRecord` (core) checks that the accountable person (`updatedBy`) is an active user with a write role (`not_a_writer`), then saves; a stale version is `version_conflict`.
 - **API** (the path with a logged-in user): `GET` and `PUT /v1/projects/:project/ai-record`. No role on the project → 404 `project_not_found`; a read role only → 403 on `PUT`; a rule broken → 422 `ai_record_invalid` with the reason code; a stale `expected_version` → 409 `ai_record_version_conflict`; no record yet → 404 `ai_record_not_found`. After a save, the project's draft intents are woken (§2.5).
@@ -104,3 +105,4 @@ The fixed rules stay in code (Harry, B12 plan): they are the floor of handbook C
 |---|---|---|---|
 | 0.1 | 2026-09-27 | Claude (task B12) | First version |
 | 0.2 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
+| 0.3 | 2026-11-16 | Claude (coordinator), approved by Harry | §2.4: who owns the record, now the same in D-02 §3 and handbook Ch.2 (QUESTIONS #103); no change to the design |
