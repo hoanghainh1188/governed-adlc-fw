@@ -92,6 +92,8 @@ export function healthyFacts(overrides: Partial<OperatorFacts> = {}): OperatorFa
       { table: 'audit_log', bytes: 2 * GIB },
       { table: 'run_events', bytes: 1 * GIB },
     ],
+    // H08: no active break-glass grant.
+    breakGlass: [],
     approles: [
       { service: 'sdlc-api', credentials: 'api-credentials', state: 'ok', ageDays: 10 },
       { service: 'sdlc-worker', credentials: 'worker-credentials', state: 'ok', ageDays: 10 },

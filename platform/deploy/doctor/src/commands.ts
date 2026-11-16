@@ -35,7 +35,7 @@ export const APPROLE_SCRIPT =
   'test -s "$1/role_id" && test -s "$1/secret_id" || { echo missing; exit 0; }; ' +
   'stat -c %Y "$1/secret_id" 2>/dev/null || echo unreadable';
 
-/** The two read-only queries (`-c` each), in a read-only transaction (`PGOPTIONS`). */
+/** The read-only queries (`-c` each), in a read-only transaction (`PGOPTIONS`). */
 export const SQL_MIGRATIONS =
   "select coalesce(json_agg(name order by name), '[]'::json) from kysely_migration";
 export const SQL_PROJECTS =
@@ -77,6 +77,16 @@ export const SQL_TABLE_SIZES =
   "('r', 'p') and not c.relispartition and c.relname in (" +
   APPEND_ONLY_TABLES.map((t) => `'${t}'`).join(', ') +
   ')';
+/**
+ * H08 (ADR-M111 §2.10): every active break-glass grant, as its ID, the intent code and the expiry
+ * time (UTC). Never the reason or review links, the scopes or a person. `platform` reads every
+ * tenant through the `owner_all` policy of migration 0061 (ADR-M110: never `BYPASSRLS`).
+ */
+export const SQL_BREAK_GLASS =
+  "select coalesce(json_agg(json_build_object('id', g.id, 'intent', i.code, 'expires_at', " +
+  'to_char(g.expires_at at time zone \'UTC\', \'YYYY-MM-DD"T"HH24:MI:SS"Z"\')) order by ' +
+  "g.expires_at, g.id), '[]'::json) from break_glass_grants g join intents i on i.tenant_id = " +
+  "g.tenant_id and i.id = g.intent_id where g.status = 'active'";
 export const PG_READ_ONLY = 'PGOPTIONS=-c default_transaction_read_only=on';
 
 export const VALKEY_SCRIPT = 'REDISCLI_AUTH="$VALKEY_PASSWORD" valkey-cli info memory';
@@ -152,7 +162,7 @@ function same(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * True only for a command `commands` builds with allowed arguments: the fixed forms above, an
- * AppRole folder of `APPROLE_FOLDERS`, one of the two queries, a pinned image, the two scripts.
+ * AppRole folder of `APPROLE_FOLDERS`, one of the queries, a pinned image, the two scripts.
  */
 export function isAllowed(
   argv: readonly string[],
@@ -187,6 +197,7 @@ export function isAllowed(
     commands.psql(target, SQL_MIGRATIONS),
     commands.psql(target, SQL_PROJECTS),
     commands.psql(target, SQL_TABLE_SIZES),
+    commands.psql(target, SQL_BREAK_GLASS),
     commands.valkey(target),
     commands.workerGitHub(target),
     ...APPROLE_FOLDERS.map((f) => commands.approle(target, f.service, f.folder)),
