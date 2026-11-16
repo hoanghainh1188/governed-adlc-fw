@@ -9,6 +9,7 @@ import {
   APPROLE_FOLDERS,
   commands,
   isAllowed,
+  SQL_BREAK_GLASS,
   SQL_MIGRATIONS,
   SQL_PROJECTS,
   SQL_TABLE_SIZES,
@@ -43,6 +44,7 @@ describe('pnpm doctor is read only', () => {
       commands.psql(target, SQL_MIGRATIONS),
       commands.psql(target, SQL_PROJECTS),
       commands.psql(target, SQL_TABLE_SIZES),
+      commands.psql(target, SQL_BREAK_GLASS),
       commands.valkey(target),
       commands.workerGitHub(target),
       commands.openbaoStatus(scripts.bootstrap),
@@ -103,12 +105,16 @@ describe('pnpm doctor is read only', () => {
   });
 
   it('the psql session is read only and the queries only select', () => {
-    for (const sql of [SQL_MIGRATIONS, SQL_PROJECTS, SQL_TABLE_SIZES]) {
+    for (const sql of [SQL_MIGRATIONS, SQL_PROJECTS, SQL_TABLE_SIZES, SQL_BREAK_GLASS]) {
       expect(sql.trim().toLowerCase().startsWith('select ')).toBe(true);
       expect(sql.toLowerCase()).not.toMatch(
         /\b(insert|update|delete|drop|alter|truncate|grant|create)\b/,
       );
     }
+    // H08 (ADR-M111 §2.10): the grant ID, intent code and expiry only; never a link or a person.
+    expect(SQL_BREAK_GLASS).not.toMatch(
+      /reason_url|review_url|operator_id|approver_id|revoked_by|reviewed_by|scopes|budget/,
+    );
     expect(commands.psql(target, SQL_MIGRATIONS)).toContain(
       'PGOPTIONS=-c default_transaction_read_only=on',
     );

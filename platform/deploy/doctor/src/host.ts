@@ -12,6 +12,7 @@ import {
   APPROLE_FOLDERS,
   commands,
   PINNED_IMAGE,
+  SQL_BREAK_GLASS,
   SQL_MIGRATIONS,
   SQL_PROJECTS,
   SQL_TABLE_SIZES,
@@ -24,6 +25,7 @@ import { findLogEvents } from './logs.js';
 import type {
   AccessFact,
   AppRoleFact,
+  BreakGlassFact,
   CertFact,
   GitHubFact,
   OpenBaoState,
@@ -122,6 +124,35 @@ export function backupHours(values: Readonly<Record<string, string>>): {
     warnHours: hours(values.SDLC_BACKUP_WARN_HOURS, BACKUP_WARN_HOURS),
     failHours: hours(values.SDLC_BACKUP_FAIL_HOURS, BACKUP_FAIL_HOURS),
   };
+}
+
+const GRANT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const INTENT_CODE = /^INT-\d{4}-\d{4,9}$/;
+const UTC_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+/**
+ * The rows of `SQL_BREAK_GLASS` (H08, ADR-M111 §2.10), or null when the answer is not that shape:
+ * a grant ID, an intent code and a UTC time each, nothing else reaches a doctor line or an alert.
+ */
+export function parseBreakGlass(stdout: string): BreakGlassFact[] | null {
+  const rows = jsonArray(stdout);
+  if (rows === null) return null;
+  const out: BreakGlassFact[] = [];
+  for (const row of rows) {
+    const r = row as { id?: unknown; intent?: unknown; expires_at?: unknown };
+    if (
+      typeof r?.id !== 'string' ||
+      !GRANT_ID.test(r.id) ||
+      typeof r.intent !== 'string' ||
+      !INTENT_CODE.test(r.intent) ||
+      typeof r.expires_at !== 'string' ||
+      !UTC_TIME.test(r.expires_at)
+    ) {
+      return null;
+    }
+    out.push({ id: r.id, intent: r.intent, expiresAt: r.expires_at });
+  }
+  return out;
 }
 
 /** The rows of `SQL_TABLE_SIZES`, or null when the answer is not that shape. */
@@ -415,6 +446,7 @@ export async function gatherFacts(
   let migrations: OperatorFacts['migrations'];
   let projects: OperatorFacts['projects'];
   let tableSizes: OperatorFacts['tableSizes'];
+  let breakGlass: OperatorFacts['breakGlass'];
   if (running(services, 'postgres')) {
     const applied = await exec(commands.psql(target, SQL_MIGRATIONS));
     const names = applied.status === 0 ? jsonArray(applied.stdout) : null;
@@ -427,6 +459,8 @@ export async function gatherFacts(
     projects = await projectImages(exec, target);
     const sizes = await exec(commands.psql(target, SQL_TABLE_SIZES));
     tableSizes = sizes.status === 0 ? parseTableSizes(sizes.stdout) : null;
+    const grants = await exec(commands.psql(target, SQL_BREAK_GLASS));
+    breakGlass = grants.status === 0 ? parseBreakGlass(grants.stdout) : null;
   }
 
   const approles: AppRoleFact[] = [];
@@ -466,6 +500,7 @@ export async function gatherFacts(
     ...(migrations ? { migrations } : {}),
     ...(projects !== undefined ? { projects } : {}),
     ...(tableSizes !== undefined ? { tableSizes } : {}),
+    ...(breakGlass !== undefined ? { breakGlass } : {}),
     approles,
     ...(logs !== undefined ? { logs } : {}),
     ...(valkey !== undefined ? { valkey } : {}),

@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2 builds §2.1, §2.4–§2.7, §2.11 and the core of §2.8 (migration 0061, D-05 1.76); PR 3a builds §2.9; PR 3b builds §2.2, §2.5 (the worker loop) and §2.8 (G8); PR 4 builds §2.10 |
+| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2 builds §2.1, §2.4–§2.7, §2.11 and the core of §2.8 (migration 0061, D-05 1.76); PR 3a builds §2.9; PR 3b builds §2.2, §2.5 (the worker loop) and §2.8 (G8); PR 4 builds §2.10 (ADR 0.5) |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); H08 builds it |
 | Related | D-08 H08 (AC1–AC5); D-02 FR-41, FR-44, NFR-03; handbook Ch.6 §6.7, §6.9, §6.11; codes table §2.1, §4, §5, §6.3; ADR-M28 (escalations); ADR-M34 (budgets); ADR-M41 (G7 producers); ADR-M42 (kill switch); ADR-M49 (G8); ADR-M54 (waiting reasons); ADR-M101 (operational alerts); ADR-M110 (row-level security); CLAUDE.md R028–R031, R044–R047; QUESTIONS #731, #741–#744 |
@@ -152,7 +152,8 @@ People act through the API with their personal token, so every action has a pers
 ### 2.10. Operational alert (QUESTIONS #743)
 
 - A new doctor check `break_glass.active`: one `warning` line per active grant, subject = the grant ID, text with the intent code and the expiry time only. `pnpm alerts` (ADR-M101) sends a line when it is new, so **every approval** is sent on the next alert run, and a "resolved" line when the grant ends.
-- The check reads every tenant. Under ADR-M110 it loops over the tenants and sets the tenant per transaction, like the other cross-tenant work (QUESTIONS #733); it never uses a role with `BYPASSRLS`.
+- The check reads every tenant. As built (0.5, QUESTIONS #745): one read-only `SELECT` (`SQL_BREAK_GLASS` in `platform/deploy/doctor/src/commands.ts`) through `psql` in the postgres container as the owner role `platform`, which reads every tenant through the `owner_all` policy of migration 0061, like doctor's other queries; never a role with `BYPASSRLS`. It reads the grant ID, the intent code and `expires_at` (UTC) only, never the links, scopes or people. The check is `skipped` when the grants cannot be read, and one `ok` line when none is active, so `pnpm alerts` sends the resolved lines.
+- The deploy README section "Break-glass (operator)" is the fix of every warning: `adlc ops break-glass list|revoke`.
 - The alert interval is the O03 timer; the Critical escalation (§2.6) is the fast channel to people.
 
 ### 2.11. Configuration
@@ -204,6 +205,7 @@ The schema keeps `max_hours` at 1–8, `request_ttl_minutes` at 5–240 and `rev
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-15 | Claude (task H08, PR 1) | First version, from the plan Harry approved on 2026-11-15 (QUESTIONS #741–#744) |
+| 0.5 | 2026-11-16 | Claude (task H08, PR 4) | §2.10 as built: the doctor check `break_glass.active` is one read-only query as the owner role `platform` (policy `owner_all`), not a loop over the tenants (QUESTIONS #745, waiting for Harry); an `ok` line when no grant is active; deploy README "Break-glass (operator)" |
 | 0.4 | 2026-11-16 | Claude (task H08, PR 3b) | §2.2 as built: who a scope serves (`runner_priority`: the operator's run or a run the platform started; `hotl_window_skip`: the intent), Temporal task priority, the budget raised once at approval; the worker loop `BreakGlassLoop` (`SDLC_WORKER_BREAK_GLASS_TICK_MS`, default 60 s); G8 waits (`break_glass_review`); notice `break_glass_review_overdue`; the API wakes the intent after approve, revoke and review |
 | 0.3 | 2026-11-15 | Claude (task H08, PR 3a) | §2.9 built: the API routes, `adlc break-glass`, `adlc ops break-glass list|revoke`, refusal code `break_glass_refused`; PR 3 split into 3a (interfaces) and 3b (worker, scope effects, G8) |
 | 0.2 | 2026-11-15 | Claude (task H08, PR 2) | As built in the core: migration 0061 (`created_at` is the request time, trigger `SDA32`); the producers are those known before G7; the schema bounds and rule M37 instead of separate rules for the hours; refusal codes `break_glass.error.*` |

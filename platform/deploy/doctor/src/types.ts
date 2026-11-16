@@ -33,6 +33,7 @@ export const CHECK_IDS = [
   'openbao.tls_expiry',
   'db.migrations',
   'db.table_size',
+  'break_glass.active',
   'credentials.approle',
   'credentials.logs',
   'models.litellm',
@@ -111,6 +112,13 @@ export interface AccessFact {
 export interface TableSizeFact {
   readonly table: string;
   readonly bytes: number;
+}
+
+/** H08 (ADR-M111 §2.10): one active break-glass grant: its ID, intent code and expiry (UTC). */
+export interface BreakGlassFact {
+  readonly id: string;
+  readonly intent: string;
+  readonly expiresAt: string;
 }
 
 export type OpenBaoState = 'uninitialised' | 'sealed' | 'unsealed' | 'unreachable';
@@ -212,6 +220,8 @@ export interface OperatorFacts {
   };
   /** O04 (ADR-M103): each append-only table's bytes with indexes; null: could not be read. */
   readonly tableSizes?: readonly TableSizeFact[] | null;
+  /** H08 (ADR-M111 §2.10): the active break-glass grants; null: could not be read. */
+  readonly breakGlass?: readonly BreakGlassFact[] | null;
   /** `applied` null: the table could not be read. */
   readonly migrations?: {
     readonly expected: readonly string[];

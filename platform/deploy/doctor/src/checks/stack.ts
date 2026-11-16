@@ -261,6 +261,30 @@ function tableSizeChecks(f: OperatorFacts, services: readonly ServiceState[]): C
   return out;
 }
 
+/**
+ * H08 (ADR-M111 §2.10): a break-glass grant gives one intent less waiting for a few hours. Each
+ * active grant is a warning, so `pnpm alerts` sends every approval once and a resolved line when
+ * the grant ends; the line holds the grant ID, the intent code and the expiry only.
+ */
+function breakGlassChecks(f: OperatorFacts, services: readonly ServiceState[]): CheckResult[] {
+  if (!running(services, 'postgres') || f.breakGlass === undefined) {
+    return [skipped('break_glass.active', 'doctor.skipped.not_running')];
+  }
+  if (f.breakGlass === null) return [skipped('break_glass.active', 'doctor.skipped.break_glass')];
+  if (f.breakGlass.length === 0) {
+    return [ok('break_glass.active', text('doctor.break_glass.none'))];
+  }
+  return f.breakGlass.map((g) =>
+    problem(
+      'break_glass.active',
+      'warning',
+      text('doctor.break_glass.active', { intent: g.intent, expires: g.expiresAt }),
+      readme('Break-glass (operator)'),
+      g.id,
+    ),
+  );
+}
+
 function migrationCheck(f: OperatorFacts, services: readonly ServiceState[]): CheckResult {
   if (!running(services, 'postgres') || !f.migrations)
     return skipped('db.migrations', 'doctor.skipped.not_running');
@@ -484,6 +508,7 @@ export function stackChecks(f: OperatorFacts): CheckResult[] {
     'openbao.state',
     'db.migrations',
     'db.table_size',
+    'break_glass.active',
     'credentials.approle',
     'credentials.logs',
     'models.litellm',
@@ -531,6 +556,7 @@ export function stackChecks(f: OperatorFacts): CheckResult[] {
     ...tls,
     migrationCheck(f, services),
     ...tableSizeChecks(f, services),
+    ...breakGlassChecks(f, services),
     ...approleChecks(f),
     ...logChecks(f),
     modelsCheck(services),

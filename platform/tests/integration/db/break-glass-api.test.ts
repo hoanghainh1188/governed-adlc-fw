@@ -16,6 +16,8 @@ import { sql } from 'kysely';
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 
 import { createApp, type ApiDeps } from '../../../apps/api/src/app.js';
+import { SQL_BREAK_GLASS } from '../../../deploy/doctor/src/commands.js';
+import { parseBreakGlass } from '../../../deploy/doctor/src/host.js';
 import { issueApiToken } from '../../../packages/core/src/admin/tokens.js';
 import { parseTenantId } from '../../../packages/core/src/db/tenant-id.js';
 import type { TenantScope } from '../../../packages/core/src/db/tenant-scope.js';
@@ -268,6 +270,28 @@ describeDb('H08 PR 3a: break-glass through the API on PostgreSQL', () => {
     );
     expect((await inject('GET', '/v1/break-glass', 'outsider')).body.items).toEqual([]);
     expect((await inject('GET', '/v1/break-glass?project=shop', 'outsider')).status).toBe(404);
+  });
+
+  it('PR 4: the doctor query lists the active grants only, as ID, intent code and UTC expiry', async () => {
+    const { code, issue } = await intent();
+    await request(code, issue);
+    const approved = await inject('POST', `/v1/intents/${code}/break-glass/approve`, 'b', {});
+    // The query doctor runs, as the owner role `platform` (policy `owner_all`, never BYPASSRLS).
+    const { rows } = await sql<{ out: unknown }>`${sql.raw(SQL_BREAK_GLASS)}`.execute(db.owner);
+    const grants = parseBreakGlass(JSON.stringify(Object.values(rows[0] ?? {})[0]));
+    expect(grants).not.toBeNull();
+    expect(grants).toContainEqual({
+      id: approved.body.id,
+      intent: code,
+      expiresAt: '2026-11-15T05:00:00Z',
+    });
+    // Requested, refused and revoked grants are not listed.
+    const listed = await inject('GET', '/v1/break-glass', 'b');
+    const active = (listed.body.items as { id: string; status: string }[])
+      .filter((g) => g.status === 'active')
+      .map((g) => g.id)
+      .sort();
+    expect(grants!.map((g) => g.id).sort()).toEqual(active);
   });
 
   it('stores codes, IDs, times and the links only: never the words of the comment', async () => {

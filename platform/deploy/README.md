@@ -954,6 +954,14 @@ Some tables only grow (task O04, `design/ADR-M103-growing-data.md`):
 - **The append-only tables** (`audit_log`, `gate_decisions`, `run_events`, `cost_records` and the others of R030) are kept at least 2 years and never deleted. They hold codes, IDs, hashes and counts only: about 300–700 bytes a row with their indexes, so a busy deployment adds well under 1 GiB a year. `pnpm doctor` (`db.table_size`), and so [Alerts](#alerts), warn when one reaches `SDLC_DB_TABLE_WARN_GB` (default 20 GiB, set in the env file). That is years of notice to add monthly partitions; ADR-M103 §2.4 describes how.
 - **The dashboard's sessions and passkey challenges** are removed by the worker's retention loop, also without the evidence identities. A session goes 30 days after it ended (`SDLC_WORKER_SESSION_KEEP_DAYS`, at least 7), a challenge 24 hours after it was used or expired (`SDLC_WORKER_CHALLENGE_KEEP_HOURS`, at least 1). `SDLC_WORKER_HOUSEKEEPING_MODE`: `remove` (default), `report` (counts only, in the log line `worker.housekeeping_pass`) or `off`. Each tenant with removals gets one audit event `housekeeping.removed` with the counts. The database itself refuses any other removal of these rows.
 
+## Break-glass (operator)
+
+A break-glass grant gives one open intent less waiting for a few hours during a production P0 incident: a runner first, more budget, or no HOTL block window at G2 and G3 (task H08, `design/ADR-M111-break-glass.md`, handbook [Ch.18 §18.8e](../../handbook/02-playbook/ch18-timeouts-rollback-and-containment.md)). People request and approve it with `adlc break-glass`; the operator never does.
+
+- `pnpm doctor` (`break_glass.active`) shows one warning per active grant: the grant ID, the intent code and the end time (UTC). So [Alerts](#alerts) sends every approval once, and a "resolved" line when the grant ends, is revoked or expires. The Critical escalation of the grant is the fast channel to people; the alert is the operator's record.
+- To see the grants of a tenant: `pnpm adlc ops break-glass list --tenant <slug> --open`. To end one at once: `pnpm adlc ops break-glass revoke --tenant <slug> --intent <INT-…>`. The operator can never request or approve a grant.
+- The worker ends a grant at its expiry (the loop `SDLC_WORKER_BREAK_GLASS_TICK_MS`, 60 seconds). A warning that stays after the end time means the worker is stopped: see `services.health`.
+
 ## Upgrade
 
 Upgrade to a **release tag** (`vX.Y.Z`), and follow the "Upgrade notes" of every release between yours and the new one in the [CHANGELOG](../../CHANGELOG.md): they list the migrations, the credentials commands to run again and the changed settings ([RELEASING.md](../../RELEASING.md)). The first bullet of each release's notes says what every running stack must do; the other bullets are optional or explain one change. `main` is for developers: it may hold changes that are not released yet.
@@ -1024,6 +1032,7 @@ A tag (`0.2.0`, `sha-<commit>`) never moves, but use the digest anyway: the plat
 | `openbao.state`, `openbao.tls_files`, `openbao.tls_expiry` | `pnpm openbao:bootstrap status`; the CA and server certificate in `SDLC_OPENBAO_TLS_DIR` and their end dates (a warning within 30 days). Never the key file |
 | `db.migrations` | The applied migrations (`psql` in the postgres container as `platform`, a read-only session) against the migration files of this checkout |
 | `db.table_size` | The size of each append-only table with its indexes (a read-only `SELECT` of `pg_total_relation_size`): a warning from `SDLC_DB_TABLE_WARN_GB` (20 GiB) per table. See [Database growth](#database-growth) |
+| `break_glass.active` | The active break-glass grants (a read-only `SELECT` of `break_glass_grants`, every tenant): one warning per grant with its ID, intent code and end time, never the links, scopes or people. See [Break-glass](#break-glass-operator) |
 | `credentials.approle` | Each process's AppRole files exist, and the secret ID's age (a warning 14 days before the 90 days end, `SDLC_APPROLE_WARN_DAYS`; failed at 90; renew them all with `pnpm openbao:bootstrap rotate-credentials`): `test -s` and `stat` inside the service, never the content |
 | `credentials.logs` | Event codes of the last 24 hours of the `sdlc-api`, `sdlc-worker` and `sdlc-runner` logs: `…_missing`, `worker.runs_off`, `worker.cost_sync_off`, `worker.cost_sync_gap`, a failed AppRole login, a sealed OpenBao. Only the event field is read; no line is printed |
 | `models.litellm` | The platform runs with the profile `models` (the LiteLLM sidecar) |

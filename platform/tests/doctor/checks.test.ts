@@ -4,10 +4,12 @@
 import { catalogFor, placeholdersOf } from '@sdlc/messages';
 import { describe, expect, it } from 'vitest';
 
+import { decide } from '../../deploy/alerts/src/decide.js';
 import { evaluate } from '../../deploy/doctor/src/checks/index.js';
 import {
   isTrialProject,
   parseAppRole,
+  parseBreakGlass,
   parseOpenBaoStatus,
   parseTableSizes,
   parsePs,
@@ -388,6 +390,86 @@ describe('pnpm doctor: the checks', () => {
       ]);
       expect(parseTableSizes('not json')).toBeNull();
       expect(parseTableSizes('[{"table":1}]')).toBeNull();
+    });
+  });
+
+  describe('break_glass.active (H08, ADR-M111 §2.10): one warning per active grant', () => {
+    const G1 = '00000000-0000-4000-8000-0000000000c1';
+    const G2 = '00000000-0000-4000-8000-0000000000c2';
+    const grant = (id: string, intent: string) => ({
+      id,
+      intent,
+      expiresAt: '2026-11-15T05:00:00Z',
+    });
+    const withGrants = (breakGlass: OperatorFacts['breakGlass']) =>
+      evaluate(healthyFacts({ breakGlass }));
+
+    it('one ok line while no grant is active', () => {
+      expect(one(withGrants([]), 'break_glass.active')).toMatchObject({
+        status: 'ok',
+        text: { key: 'doctor.break_glass.none' },
+      });
+    });
+
+    it('a warning per grant: subject the grant ID, text the intent code and expiry, the fix', () => {
+      const results = withGrants([grant(G1, 'INT-2026-0042'), grant(G2, 'INT-2026-0043')]);
+      expect(of(results, 'break_glass.active').map((r) => [r.subject, r.status])).toEqual([
+        [G1, 'warning'],
+        [G2, 'warning'],
+      ]);
+      expect(one(results, 'break_glass.active', G1)).toEqual({
+        id: 'break_glass.active',
+        status: 'warning',
+        subject: G1,
+        text: {
+          key: 'doctor.break_glass.active',
+          params: { intent: 'INT-2026-0042', expires: '2026-11-15T05:00:00Z' },
+        },
+        fix: { key: 'doctor.fix.readme', params: { section: 'Break-glass (operator)' } },
+      });
+    });
+
+    it('skipped when the grants could not be read or the database is stopped', () => {
+      expect(one(withGrants(null), 'break_glass.active').status).toBe('skipped');
+      expect(one(withGrants(undefined), 'break_glass.active').text.key).toBe(
+        'doctor.skipped.not_running',
+      );
+    });
+
+    it('pnpm alerts sends each approval once, then a resolved line when the grant ends', () => {
+      const t0 = new Date('2026-11-15T03:00:00.000Z');
+      const later = (minutes: number) => new Date(t0.getTime() + minutes * 60_000);
+      const first = decide({}, withGrants([grant(G1, 'INT-2026-0042')]), t0, 24);
+      expect(first.items.map((i) => [i.kind, i.result.subject])).toEqual([['problem', G1]]);
+      // Still active 10 minutes later: nothing new. A second approval: that one only.
+      const second = decide(
+        first.next,
+        withGrants([grant(G1, 'INT-2026-0042'), grant(G2, 'INT-2026-0043')]),
+        later(10),
+        24,
+      );
+      expect(second.items.map((i) => [i.kind, i.result.subject])).toEqual([['problem', G2]]);
+      // Both ended: two resolved lines.
+      const third = decide(second.next, withGrants([]), later(20), 24);
+      expect(third.items.map((i) => [i.kind, i.result.subject]).sort()).toEqual([
+        ['resolved', G1],
+        ['resolved', G2],
+      ]);
+      expect(third.next).not.toHaveProperty(`break_glass.active|${G1}`);
+    });
+
+    it('parses the query result strictly: grant ID, intent code and UTC time, else null', () => {
+      const row = { id: G1, intent: 'INT-2026-0042', expires_at: '2026-11-15T05:00:00Z' };
+      expect(parseBreakGlass(`${JSON.stringify([row])}\n`)).toEqual([grant(G1, 'INT-2026-0042')]);
+      expect(parseBreakGlass('[]')).toEqual([]);
+      expect(parseBreakGlass('not json')).toBeNull();
+      for (const bad of [
+        { ...row, id: 'not-a-uuid' },
+        { ...row, intent: 'Orders fail in production' },
+        { ...row, expires_at: '2026-11-15 05:00:00+00' },
+      ]) {
+        expect(parseBreakGlass(JSON.stringify([bad])), JSON.stringify(bad)).toBeNull();
+      }
     });
   });
 
