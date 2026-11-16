@@ -22,6 +22,7 @@ describe('worker settings', () => {
       escalationTickMs: 15_000,
       escalationBatch: 100,
       memoryTickMs: 300_000,
+      breakGlassTickMs: 60_000,
       temporal: { address: 'temporal:7233', namespace: 'default' },
       reconcileMs: 600_000,
       reconcileBatch: 500,

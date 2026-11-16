@@ -306,6 +306,8 @@ class ApiModule {
           useValue: new BreakGlassService(
             deps.lessonGitHost ? { gitHost: deps.lessonGitHost } : undefined,
             now,
+            signals,
+            wakeLogger,
           ),
         },
         {

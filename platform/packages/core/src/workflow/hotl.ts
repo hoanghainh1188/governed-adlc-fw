@@ -39,6 +39,7 @@ import type { TenantScope } from '../db/tenant-scope.js';
 import type { Registry } from '../registry/registry.js';
 import { specHasCriteria } from './g2-criteria.js';
 import { gateHistory } from './gate-history.js';
+import { grantWithScope, SKIPPABLE_WINDOW_GATES } from '../break-glass/active.js';
 
 /** True when `earlier` comes before `later` in the gate order. */
 export function gateBefore(earlier: GateCode, later: GateCode): boolean {
@@ -168,6 +169,12 @@ export async function hotlBlockWindowOpenUntil(
   if (!intent) return null;
   const { config } = await registry.policyFor(scope, intent.project_id);
   const { passed } = await passedGates(scope, intent, config);
-  const open = passed.map((p) => p.windowEnd.getTime()).filter((end) => end > at.getTime());
+  // H08 (ADR-M111 §2.2): an active break-glass grant with `hotl_window_skip` ends the windows of
+  // G2 and G3. A person may still block those gates (`openBlockWindow`), as after any window.
+  const skip = (await grantWithScope(scope, intentId, at, 'hotl_window_skip')) !== undefined;
+  const open = passed
+    .filter((p) => !(skip && SKIPPABLE_WINDOW_GATES.includes(p.gate)))
+    .map((p) => p.windowEnd.getTime())
+    .filter((end) => end > at.getTime());
   return open.length === 0 ? null : new Date(Math.max(...open));
 }

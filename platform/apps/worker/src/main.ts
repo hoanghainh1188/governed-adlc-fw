@@ -14,6 +14,8 @@ import { createSimplePolicyEngine } from '@sdlc/adapter-policy-simple';
 import { GitHostError, type IntentWorkflowSignals } from '@sdlc/contracts';
 import {
   advanceEscalation,
+  parseTenantId,
+  runBreakGlassPass,
   checkStoredConfigsAtStart,
   runAnchorPass,
   runHousekeepingPass,
@@ -42,6 +44,7 @@ import {
 
 import { connectDatabase } from './database.js';
 import { createIntentActivities } from './activities/intent-activities.js';
+import { BreakGlassLoop } from './break-glass-loop.js';
 import { CostSyncLoop } from './cost-sync-loop.js';
 import { openWorkerEvidence } from './evidence-store.js';
 import { EscalationLoop } from './escalation-loop.js';
@@ -238,6 +241,17 @@ async function main(): Promise<void> {
     batchSize: settings.escalationBatch,
   });
   memory.start(settings.memoryTickMs);
+  // H08 PR 3b (ADR-M111 §2.5): break-glass expiry, lapse and overdue reviews; one tenant at a time.
+  const breakGlass = new BreakGlassLoop({
+    listTenants: async () =>
+      (await db.system.listTenants())
+        .filter((tenant) => tenant.status === 'active')
+        .map((tenant) => parseTenantId(tenant.id)),
+    pass: (tenantId, now) => runBreakGlassPass(db.forTenant(tenantId), now),
+    now: () => new Date(),
+    logger,
+  });
+  breakGlass.start(settings.breakGlassTickMs);
   // The scheduled spend sync (C12, ADR-M24 §2.5): needs the Cost Controller, so the cost AppRole.
   const costSync = workerRuns
     ? new CostSyncLoop({
@@ -462,6 +476,7 @@ async function main(): Promise<void> {
       loop.stop(),
       escalations.stop(),
       memory.stop(),
+      breakGlass.stop(),
       reconcile?.stop(),
       costSync?.stop(),
       evaluations?.stop(),

@@ -10,6 +10,7 @@ import type {
   ToolSecretsHandoff,
 } from '@sdlc/contracts';
 import {
+  breakGlassRunPriority,
   abandonPublish,
   abandonRun,
   buildReleasePack,
@@ -47,6 +48,8 @@ export type PrepareRunActivityResult =
       readonly wrappedFeedbackToken?: string;
       /** X04 PR 3b: by tool key, a wrapping token and an index ID (never the secrets). */
       readonly toolSecrets?: Readonly<Record<string, ToolSecretsHandoff>>;
+      /** H08 (ADR-M111 §2.2): `break_glass` when the run goes first in the runner queue. */
+      readonly priority?: 'break_glass';
     }
   | { readonly ok: false; readonly reason: string };
 
@@ -185,7 +188,9 @@ export function createIntentActivities(deps: IntentActivityDeps): IntentActiviti
     async prepareRun(ref) {
       const result = await startRun(scope(ref), runs(), ref.intentId);
       if (!result.ok) return { ok: false, reason: result.reason };
+      const first = await breakGlassRunPriority(scope(ref), result.run.runId, new Date());
       return {
+        ...(first ? { priority: 'break_glass' as const } : {}),
         ok: true,
         runId: result.run.runId,
         modelRef: result.run.modelRef,

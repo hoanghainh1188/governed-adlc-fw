@@ -20,6 +20,7 @@ export const WORKER_ENV = {
   escalationTickMs: 'SDLC_WORKER_ESCALATION_TICK_MS',
   escalationBatch: 'SDLC_WORKER_ESCALATION_BATCH',
   memoryTickMs: 'SDLC_WORKER_MEMORY_TICK_MS',
+  breakGlassTickMs: 'SDLC_WORKER_BREAK_GLASS_TICK_MS',
   temporalAddress: 'SDLC_WORKER_TEMPORAL_ADDRESS',
   temporalNamespace: 'SDLC_WORKER_TEMPORAL_NAMESPACE',
   reconcileMs: 'SDLC_WORKER_RECONCILE_MS',
@@ -104,6 +105,9 @@ const schema = z.object({
   [WORKER_ENV.escalationBatch]: z.coerce.number().int().min(1).max(1000).default(100),
   // X13 PR 3b: the memory loop (ADR-M74 §2.5); a memory pull request is never urgent.
   [WORKER_ENV.memoryTickMs]: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
+  // H08 PR 3b: the break-glass loop (ADR-M111 §2.5): expiry is also checked on every read, so a
+  // minute is close enough for the audit event and the end of the grant.
+  [WORKER_ENV.breakGlassTickMs]: z.coerce.number().int().min(5_000).max(600_000).default(60_000),
   // `off` runs the worker without the intent workflow: development mode only.
   [WORKER_ENV.temporalAddress]: z
     .string()
@@ -424,6 +428,8 @@ export interface WorkerSettings {
   readonly escalationBatch: number;
   /** How often the memory loop runs (X13 PR 3b, ADR-M74 §2.5). Technical, not a handbook rule. */
   readonly memoryTickMs: number;
+  /** How often the break-glass loop runs (H08, ADR-M111 §2.5). Technical, not a handbook rule. */
+  readonly breakGlassTickMs: number;
   /** The Temporal frontend of the intent workflow (B07); null: no workflow (development only). */
   readonly temporal: TemporalSettings | null;
   /** How often every open intent's workflow is woken, to catch up a lost signal (B07). */
@@ -533,6 +539,7 @@ export function loadSettings(env: Readonly<Record<string, string | undefined>>):
     escalationTickMs: v[WORKER_ENV.escalationTickMs],
     escalationBatch: v[WORKER_ENV.escalationBatch],
     memoryTickMs: v[WORKER_ENV.memoryTickMs],
+    breakGlassTickMs: v[WORKER_ENV.breakGlassTickMs],
     temporal: temporalOff
       ? null
       : {

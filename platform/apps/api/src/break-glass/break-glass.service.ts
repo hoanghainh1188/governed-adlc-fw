@@ -15,7 +15,10 @@ import {
 } from '@sdlc/core';
 import type { z } from 'zod';
 
+import type { IntentWorkflowSignals } from '@sdlc/contracts';
+
 import type { Principal } from '../auth/principal.js';
+import { wakeQuietly, type WakeLogger } from '../intent-signals.js';
 import { presentBreakGlass } from './present.js';
 import type {
   listBreakGlassSchema,
@@ -27,7 +30,18 @@ export class BreakGlassService {
   constructor(
     private readonly git: BreakGlassGitHost | undefined,
     private readonly now: () => Date,
+    private readonly signals: IntentWorkflowSignals,
+    private readonly logger: WakeLogger,
   ) {}
+
+  /** PR 3b: a grant changes what the intent may do (the HOTL window, G8): the step reads it again. */
+  private wake(p: Principal, intent: Intent): Promise<void> {
+    return wakeQuietly(
+      this.signals,
+      { tenantId: p.scope.tenantId, intentId: intent.id },
+      this.logger,
+    );
+  }
 
   async request(
     p: Principal,
@@ -51,6 +65,7 @@ export class BreakGlassService {
   async approve(p: Principal, intentRef: string): Promise<Record<string, unknown>> {
     const input = { intentRef, actorId: p.userId, now: this.now() };
     const { intent, grant, incident } = await approveBreakGlass(p.scope, input);
+    await this.wake(p, intent);
     return view(p.scope, intent, grant, incident);
   }
 
@@ -66,6 +81,7 @@ export class BreakGlassService {
       actor: { type: 'human', id: p.userId },
       now: this.now(),
     });
+    await this.wake(p, intent);
     return view(p.scope, intent, grant, undefined);
   }
 
@@ -80,6 +96,7 @@ export class BreakGlassService {
       actorId: p.userId,
       now: this.now(),
     });
+    await this.wake(p, intent);
     return view(p.scope, intent, grant, incident);
   }
 

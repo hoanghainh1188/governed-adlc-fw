@@ -34,6 +34,7 @@
 import {
   INTENT_KILL_SIGNAL,
   INTENT_WAKE_SIGNAL,
+  BREAK_GLASS_PRIORITY_KEY,
   RUNNER_TASK_QUEUE,
   type IntentStepResult,
   type IntentWorkflowRef,
@@ -103,6 +104,17 @@ const { executeRun } = proxyActivities<RunnerActivities>({
   retry: { maximumAttempts: 1 },
   // C11: a kill cancels the activity and waits until the runner stopped the agent and cleaned up.
   cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+});
+
+// H08 (ADR-M111 §2.2): the same activity, first in the runner queue (Temporal task priority: a
+// lower key goes first; the default key is 3). Used only when `prepareRun` says `break_glass`.
+const { executeRun: executeRunFirst } = proxyActivities<RunnerActivities>({
+  taskQueue: RUNNER_TASK_QUEUE,
+  startToCloseTimeout: '12 hours',
+  heartbeatTimeout: '2 minutes',
+  retry: { maximumAttempts: 1 },
+  cancellationType: ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+  priority: { priorityKey: BREAK_GLASS_PRIORITY_KEY },
 });
 
 // E03 (ADR-M49 §2.1): the release pack reads every stored evidence file back (minutes). One
@@ -222,8 +234,9 @@ async function executeKillable(
 ): Promise<void> {
   const scope = new CancellationScope();
   let settled = false;
+  const run = prepared.priority === 'break_glass' ? executeRunFirst : executeRun;
   const execution = scope.run(() =>
-    executeRun({
+    run({
       tenantId: ref.tenantId,
       runId: prepared.runId,
       modelRef: prepared.modelRef,

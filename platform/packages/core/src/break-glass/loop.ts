@@ -1,5 +1,5 @@
-// The worker's break-glass pass for one tenant (task H08, ADR-M111 §2.5, §2.8). A plain loop calls
-// it (R044: never a Temporal timer or schedule); PR 3 wires it into the worker. Each move is its own
+// The worker's break-glass pass for one tenant (task H08, ADR-M111 §2.5, §2.8). The worker's
+// `BreakGlassLoop` calls it per tenant (R044: never a Temporal timer or schedule). Each move is its own
 // transaction with its audit event, written once: the row lock and trigger SDA32 keep a second
 // worker from writing it again.
 import type { BreakGlassGrant } from '../db/schema.js';
@@ -87,6 +87,18 @@ async function markReviewOverdue(scope: TenantScope, id: string, now: Date): Pro
     if (grant.escalation_id === null) return false;
     const escalation = await tx.escalations.getById(grant.escalation_id);
     await tx.breakGlass.update(grant.id, { review_overdue_at: now });
+    const intent = await tx.intents.getById(grant.intent_id);
+    if (intent) {
+      await tx.intentNotices.record({
+        intentId: intent.id,
+        kind: 'break_glass_review_overdue',
+        status: intent.status,
+        gate: intent.current_gate,
+        previousGate: intent.current_gate,
+        decisionId: null,
+        audienceRoles: ['person_a', 'person_b', 'governance'],
+      });
+    }
     await tx.audit.append({
       action: 'break_glass.review_overdue',
       actorType: 'system',

@@ -17,6 +17,10 @@ import { describe, expect, it } from 'vitest';
 import type { IntentStepResult } from '../../../packages/contracts/src/index.js';
 import { decideGate } from '../../../packages/core/src/commands/gate-command.js';
 import type { Intent } from '../../../packages/core/src/db/schema.js';
+import {
+  approveBreakGlass,
+  revokeBreakGlass,
+} from '../../../packages/core/src/break-glass/index.js';
 import { raiseEscalation } from '../../../packages/core/src/escalation/raise.js';
 import { currentPackHashes } from '../../../packages/core/src/evidence/build.js';
 import { buildReleasePack } from '../../../packages/core/src/workflow/g8.js';
@@ -401,6 +405,43 @@ describeDb('E03: gate G8, release, on PostgreSQL', () => {
       await w.decideOn(intent, 'terminate');
       expect(await settle(intent)).toEqual({ outcome: 'finished', status: 'cancelled' });
       expect((await packs(intent)).some((p) => p.sealed_at !== null)).toBe(false);
+    });
+  });
+
+  describe('H08 (ADR-M111 §2.8): G8 waits for the break-glass review', () => {
+    it('no release while a grant is active or unreviewed; the review lets it close', async () => {
+      const intent = await toG8();
+      const now = w.t.f.registry.now();
+      await scope().breakGlass.request({
+        project_id: intent.project_id,
+        intent_id: intent.id,
+        operator_id: w.t.f.users.a,
+        scopes: ['runner_priority'],
+        duration_seconds: 3600,
+        reason_url: 'https://github.com/acme/shop/issues/1#issuecomment-11',
+        lapses_at: new Date(now.getTime() + HOUR),
+      });
+      await approveBreakGlass(scope(), { intentRef: intent.code, actorId: carol(), now });
+      await settle(intent);
+      await decide(intent, 'approve', carol());
+      expect(await settle(intent)).toMatchObject({
+        outcome: 'waiting',
+        reason: 'break_glass_review',
+      });
+      const { grant } = await revokeBreakGlass(scope(), {
+        intentRef: intent.code,
+        actor: { type: 'system' },
+        now,
+      });
+      expect(await settle(intent)).toMatchObject({ reason: 'break_glass_review' });
+      expect((await packs(intent)).some((p) => p.sealed_at !== null)).toBe(false);
+      await scope().breakGlass.update(grant.id, {
+        review_url: 'https://github.com/acme/shop/issues/1#issuecomment-12',
+        reviewed_by: w.t.f.users.a,
+        reviewed_at: now,
+      });
+      await settle(intent);
+      expect(await notices(w.t, intent)).toContain('released');
     });
   });
 

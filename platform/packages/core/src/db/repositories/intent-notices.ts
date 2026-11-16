@@ -91,6 +91,8 @@ export const INTENT_NOTICE_KINDS = [
   'g8_escalated',
   'g8_resumed',
   'released',
+  // H08 (ADR-M111 §2.8): a break-glass grant ended without its post-incident review in time.
+  'break_glass_review_overdue',
 ] as const;
 export type IntentNoticeKind = (typeof INTENT_NOTICE_KINDS)[number];
 

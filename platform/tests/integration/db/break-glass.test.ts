@@ -319,6 +319,26 @@ describeDb('H08 PR 2: break-glass grants on PostgreSQL', () => {
       expect(grant.budget_increase_usd).toBe('12.500000');
     });
 
+    it('the budget scope raises the intent and run budgets once, at the approval (R045)', async () => {
+      const w = await world();
+      await request(w, { scopes: ['budget'], budgetIncreaseUsd: '7.25' });
+      const before = (await w.scope.intents.getById(w.intent.id))!;
+      const { grant } = await approve(w, 'b');
+      const after = (await w.scope.intents.getById(w.intent.id))!;
+      expect(Number(after.budget_usd) - Number(before.budget_usd)).toBeCloseTo(7.25, 6);
+      // No run budget yet: the project's default (2) plus the amount.
+      expect(Number(after.run_budget_usd)).toBeCloseTo(9.25, 6);
+      const raised = await w.scope.audit.listForEntity(w.intent.id, ['intent.budget_increased']);
+      expect(raised).toHaveLength(1);
+      expect(raised[0]?.payload).toMatchObject({ escalation_id: grant.escalation_id });
+      await revokeBreakGlass(w.scope, {
+        intentRef: w.intent.code,
+        actor: { type: 'system' },
+        now: at(1),
+      });
+      expect((await w.scope.intents.getById(w.intent.id))!.budget_usd).toBe(after.budget_usd);
+    });
+
     it('refuses a scope the project does not allow, and a project that turned it off', async () => {
       const limited = await world({ configYaml: 'break_glass:\n  allowed_scopes: [budget]\n' });
       expect(await failure(request(limited))).toBe('scope_invalid');
@@ -461,6 +481,12 @@ describeDb('H08 PR 2: break-glass grants on PostgreSQL', () => {
       });
       expect(await runBreakGlassPass(w.scope, at(48.9))).toMatchObject({ reviewOverdue: 0 });
       expect(await runBreakGlassPass(w.scope, at(49.1))).toMatchObject({ reviewOverdue: 1 });
+      const overdue = (await w.scope.intentNotices.listForIntent(w.intent.id)).filter(
+        (n) => n.kind === 'break_glass_review_overdue',
+      );
+      expect(overdue.map((n) => [...n.audience_roles].sort())).toEqual([
+        ['governance', 'person_a', 'person_b'],
+      ]);
       expect(await runBreakGlassPass(w.scope, at(50))).toMatchObject({ reviewOverdue: 0 });
       expect(
         await failure(
