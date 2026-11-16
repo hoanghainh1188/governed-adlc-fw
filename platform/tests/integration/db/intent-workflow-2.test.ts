@@ -19,6 +19,7 @@ import { advanceEscalation } from '../../../packages/core/src/escalation/advance
 import { raiseEscalation } from '../../../packages/core/src/escalation/raise.js';
 import type { GateReasonCode } from '../../../packages/contracts/src/index.js';
 import { hotlBlockWindowOpenUntil } from '../../../packages/core/src/workflow/hotl.js';
+import { approveBreakGlass } from '../../../packages/core/src/break-glass/index.js';
 import { stepIntent } from '../../../packages/core/src/workflow/step.js';
 import {
   createWorkflowFixture,
@@ -550,5 +551,33 @@ describeDb('B07 session 2: dual approval from the configuration (FR-16)', () => 
     expect(new Set(g3.map((d) => d.approver_role))).toEqual(
       new Set(['person_b', 'second_approver']),
     );
+  });
+
+  describe('H08 (ADR-M111 §2.2): break-glass `hotl_window_skip`', () => {
+    it('an active grant ends the G2 and G3 windows; after its expiry they hold again', async () => {
+      t.setClock(T0);
+      const intent = await atG2(t, 'low');
+      await t.f.addInputs(intent);
+      await t.settle(intent);
+      expect(await hotlBlockWindowOpenUntil(t.f.scope, t.f.registry, intent.id)).toEqual(
+        WINDOW_END,
+      );
+      await t.f.scope.breakGlass.request({
+        project_id: intent.project_id,
+        intent_id: intent.id,
+        operator_id: t.f.users.a,
+        scopes: ['hotl_window_skip'],
+        duration_seconds: 3600,
+        reason_url: 'https://github.com/acme/shop/issues/1#issuecomment-21',
+        lapses_at: new Date(T0.getTime() + 1_800_000),
+      });
+      await approveBreakGlass(t.f.scope, { intentRef: intent.code, actorId: t.f.users.b, now: T0 });
+      expect(await hotlBlockWindowOpenUntil(t.f.scope, t.f.registry, intent.id, T0)).toBeNull();
+      expect(await t.settle(intent)).not.toMatchObject({ reason: 'hotl_block_window' });
+      const later = new Date(T0.getTime() + 2 * 3_600_000);
+      expect(await hotlBlockWindowOpenUntil(t.f.scope, t.f.registry, intent.id, later)).toEqual(
+        WINDOW_END,
+      );
+    });
   });
 });

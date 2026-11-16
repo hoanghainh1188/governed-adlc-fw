@@ -207,6 +207,8 @@ export async function approveBreakGlass(
     throw new BreakGlassError('disabled', 'break-glass is off');
   }
   return scope.transaction(async (tx) => {
+    // The intent lock first: the budget raise below needs it (`raiseBudget`).
+    await tx.intents.lockAndGet(intent.id);
     const grant = await lockForDecision(tx, intent, project, input);
     const expiresAt = new Date(input.now.getTime() + grant.duration_seconds * 1000);
     const escalation = await raiseEscalation(
@@ -234,6 +236,9 @@ export async function approveBreakGlass(
       expires_at: expiresAt,
       escalation_id: escalation.id,
     });
+    if (grant.budget_increase_usd !== null) {
+      await raiseBudgetFor(tx, intent.id, grant.budget_increase_usd, escalation.id);
+    }
     await tx.audit.append({
       action: 'break_glass.approved',
       actorType: 'human',
@@ -251,6 +256,27 @@ export async function approveBreakGlass(
       },
     });
     return { intent, grant: updated, incident: escalation.code };
+  });
+}
+
+/**
+ * The `budget` scope (ADR-M111 §2.2): the approval is the decision that names the amount (R045).
+ * The intent budget and the run budget of its next runs go up by it, once; budgets never go down.
+ */
+async function raiseBudgetFor(
+  tx: TenantScope,
+  intentId: string,
+  amount: string,
+  escalationId: string,
+): Promise<void> {
+  const current = await tx.intents.getById(intentId);
+  if (!current) return;
+  const { config } = await loadEffectiveConfig(tx.projectConfigs, current.project_id);
+  const runBudget = current.run_budget_usd ?? String(config.budget.default_run_usd);
+  await tx.intents.raiseBudget(intentId, {
+    addUsd: fromMicros(toMicros(amount)),
+    runBudgetUsd: fromMicros(toMicros(runBudget) + toMicros(amount)),
+    escalationId,
   });
 }
 

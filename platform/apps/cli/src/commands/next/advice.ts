@@ -60,6 +60,7 @@ export const ADVICE_CODES = [
   'setup_later_gate',
   'setup_agent',
   'setup_budget',
+  'break_glass_review',
   'finished',
   'blocked',
   'unknown',
@@ -105,6 +106,7 @@ const ADVICE_KEYS: Readonly<Record<AdviceCode, MessageKey>> = {
   setup_later_gate: 'cli.next.advice.setup_later_gate',
   setup_agent: 'cli.next.advice.setup_agent',
   setup_budget: 'cli.next.advice.setup_budget',
+  break_glass_review: 'cli.next.advice.break_glass_review',
   finished: 'cli.next.advice.finished',
   blocked: 'cli.next.advice.blocked',
   unknown: 'cli.next.advice.unknown',
@@ -136,6 +138,9 @@ const DEFAULT_ACCESS = {
   ai_record_write: ['person_a', 'pm_brse'],
   kill: ['person_a', 'person_b', 'governance'],
 } as const;
+
+/** Who records a break-glass review (ADR-M111 §2.4). */
+const BREAK_GLASS_REVIEW_ROLES = ['person_a', 'person_b'] as const;
 
 /** Who owns the escalation that holds the intent, by the default routing (ADR-M28 §2.3). */
 const ESCALATION_OWNERS: Readonly<Record<string, readonly string[]>> = {
@@ -336,6 +341,18 @@ export const REASON_RULES: Readonly<Record<IntentWaitReason, Rule>> = {
   publish_review: escalationRule('publish_review'),
   g7_review: escalationRule('g7_review'),
   g8_review: escalationRule('g8_review'),
+  // H08 (ADR-M111 §2.8): Person A or Person B revokes the grant and records the review (fixed
+  // roles, not a project setting).
+  break_glass_review: (facts) =>
+    holdsAny(facts.caller, BREAK_GLASS_REVIEW_ROLES)
+      ? advice('you_act', 'break_glass_review', facts)
+      : advice(
+          'waits_for',
+          'waits_role',
+          facts,
+          { roles: BREAK_GLASS_REVIEW_ROLES.join(', ') },
+          BREAK_GLASS_REVIEW_ROLES,
+        ),
   // The passed gate is an earlier one (the intent may already wait at G4): one advice for all.
   hotl_block_window: (facts) => advice('platform', 'block_window', facts),
   g4_check: (facts) => {

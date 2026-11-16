@@ -154,6 +154,8 @@ export function intentNoticeKey(notice: Pick<IntentNotice, 'kind' | 'gate'>): Me
       return 'intent.status.g8_resumed';
     case 'released':
       return 'intent.status.released';
+    case 'break_glass_review_overdue':
+      return 'intent.status.break_glass_review_overdue';
     default:
       return notice.gate !== null && isCommandGate(notice.gate)
         ? 'intent.status.advanced'

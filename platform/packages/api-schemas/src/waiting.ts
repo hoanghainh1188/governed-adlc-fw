@@ -33,6 +33,7 @@ export const WAITING_REASON_KEYS: Readonly<Record<string, string>> = {
   g7_review: 'intent.waiting.g7_review',
   g8_decision: 'intent.waiting.g8_decision',
   g8_review: 'intent.waiting.g8_review',
+  break_glass_review: 'intent.waiting.break_glass_review',
   evidence_unavailable: 'intent.waiting.evidence_unavailable',
   not_in_gate: 'intent.waiting.not_in_gate',
 };

@@ -59,6 +59,7 @@ import { gateHistory, type GateHistory } from './gate-history.js';
 import { hotlBlockWindowOpenUntil } from './hotl.js';
 import { checkGateOverdue, closeGateOverdue, gateClockStart } from './overdue.js';
 import { resolveGateOversight } from './oversight.js';
+import { breakGlassReviewPending } from '../break-glass/service.js';
 
 /** Why G8 stopped (audit `gate.g8_check_failed`): a stored evidence file failed its re-check. */
 export type G8Check = 'evidence_hash_mismatch' | 'evidence_missing';
@@ -135,6 +136,9 @@ export async function stepG8(
     if (until !== null)
       return wait('hotl_block_window', Math.max(0, until.getTime() - now.getTime()));
     if (!(await releaseAllowed(tx, intent, registry))) return wait('frozen');
+    // H08 (ADR-M111 §2.8): no release while a break-glass grant is active or ended without its
+    // post-incident review; recording the review wakes the intent.
+    if (await breakGlassReviewPending(tx, intent.id)) return wait('break_glass_review');
     return release(tx, registry, intent, facts, approvals.at(-1)!.id);
   }
 

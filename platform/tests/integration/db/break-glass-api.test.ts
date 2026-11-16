@@ -59,6 +59,7 @@ describeDb('H08 PR 3a: break-glass through the API on PostgreSQL', () => {
   const git = new FakeGitHost();
   const users = {} as Record<'a' | 'b' | 'gov' | 'second' | 'outsider', string>;
   const tokens = {} as Record<keyof typeof users, string>;
+  const woken: string[] = [];
   let nextIssue = 200;
   let nextComment = 5000;
 
@@ -102,6 +103,13 @@ describeDb('H08 PR 3a: break-glass through the API on PostgreSQL', () => {
       settings: { rateLimitPerMinute: 1000, authFailuresPerMinute: 1000 },
       now: () => NOW,
       lessonGitHost: git.gitHost,
+      intentSignals: {
+        wake: (ref) => {
+          woken.push(ref.intentId);
+          return Promise.resolve();
+        },
+        kill: () => Promise.resolve(),
+      },
     });
   }, 60_000);
 
@@ -245,6 +253,10 @@ describeDb('H08 PR 3a: break-glass through the API on PostgreSQL', () => {
     });
     expect(reviewed.status).toBe(200);
     expect(reviewed.body).toMatchObject({ review_url: review, reviewed_by: users.a });
+    // PR 3b: approve, revoke and review wake the intent (the step reads the grant again); the
+    // request does not. One more wake: the intent's creation.
+    const id = (await scope.intents.getByCode(code))!.id;
+    expect(woken.filter((w) => w === id)).toHaveLength(4);
 
     const listed = await inject('GET', '/v1/break-glass?project=shop', 'second');
     expect(listed.status).toBe(200);

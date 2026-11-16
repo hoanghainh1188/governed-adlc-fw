@@ -222,6 +222,11 @@ export type IntentWaitReason =
    * a person decides on the `security` escalation.
    */
   | 'g8_review'
+  /**
+   * H08 (ADR-M111 §2.8): G8 is decided, but the intent has a break-glass grant that is active or
+   * ended without its post-incident review (`adlc break-glass review`).
+   */
+  | 'break_glass_review'
   /** E03: the worker cannot build Evidence Packs (no evidence store, or it cannot be reached). */
   | 'evidence_unavailable'
   /** A status that the workflow does not move (`paused`, `blocked`, `running`). */
@@ -261,6 +266,7 @@ export const INTENT_WAIT_REASONS = [
   'g7_review',
   'g8_decision',
   'g8_review',
+  'break_glass_review',
   'evidence_unavailable',
   'not_in_gate',
 ] as const satisfies readonly IntentWaitReason[];

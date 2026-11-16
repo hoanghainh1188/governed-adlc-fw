@@ -12,6 +12,12 @@
 /** Temporal task queue of the runner (ADR-M25 §2.7). */
 export const RUNNER_TASK_QUEUE = 'sdlc-runner';
 
+/**
+ * H08 (ADR-M111 §2.2): the Temporal task priority key of a run that a break-glass grant puts first
+ * (`runner_priority`). Lower goes first; Temporal's default key is 3.
+ */
+export const BREAK_GLASS_PRIORITY_KEY = 1;
+
 export interface ExecuteRunInput {
   readonly tenantId: string;
   readonly runId: string;

@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2 builds §2.1, §2.4–§2.7, §2.11 and the core of §2.8 (migration 0061, D-05 1.76); PR 3a builds §2.9; PR 3b and PR 4 build the rest |
+| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15 (QUESTIONS #741–#744); PR 1 is this ADR; PR 2 builds §2.1, §2.4–§2.7, §2.11 and the core of §2.8 (migration 0061, D-05 1.76); PR 3a builds §2.9; PR 3b builds §2.2, §2.5 (the worker loop) and §2.8 (G8); PR 4 builds §2.10 |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); H08 builds it |
 | Related | D-08 H08 (AC1–AC5); D-02 FR-41, FR-44, NFR-03; handbook Ch.6 §6.7, §6.9, §6.11; codes table §2.1, §4, §5, §6.3; ADR-M28 (escalations); ADR-M34 (budgets); ADR-M41 (G7 producers); ADR-M42 (kill switch); ADR-M49 (G8); ADR-M54 (waiting reasons); ADR-M101 (operational alerts); ADR-M110 (row-level security); CLAUDE.md R028–R031, R044–R047; QUESTIONS #731, #741–#744 |
@@ -55,7 +55,11 @@ A closed list of scope codes in `@sdlc/contracts` (QUESTIONS #741). A project al
 | `budget` | One increase of the intent's run budget, by the amount named in the request | At most `break_glass.max_budget_increase_usd`; the approval is the decision that names `budget_increase` with an amount (R045); budgets only go up |
 | `hotl_window_skip` | Ends the open HOTL block windows of G2 and G3 at once, so a run may start (`hotlBlockWindowOpenUntil`, R046) | Only for a gate that passed as HOTL; never touches a HITL gate |
 
-The effects apply only to actions of the operator (runs the operator starts or allows). A run started by another person does not use the grant.
+The grant is not transferable (Ch.6 §6.9). As built (PR 3b):
+
+- `runner_priority`: a run goes first when the operator allowed it at G4, or when the platform started it by itself (G4 passed by policy, no person). A run that another person allowed never uses the grant. The run's `executeRun` activity gets Temporal task priority key 1 (`BREAK_GLASS_PRIORITY_KEY`; the default key is 3); evaluation runs use their own queue and slots (ADR-M81), so they never compete.
+- `budget`: the approval raises the intent budget and the run budget of its next runs by the amount, once (`raiseBudget`, audit `intent.budget_increased` with the stand-in escalation). Revocation or expiry never lowers it (budgets only go up, R045).
+- `hotl_window_skip`: `hotlBlockWindowOpenUntil` leaves out the windows of G2 and G3 while the grant is active. A window has no actor, so this effect is for the intent. A person may still block G2 or G3 later, as after any window.
 
 ### 2.3. What a grant never changes
 
@@ -200,5 +204,6 @@ The schema keeps `max_hours` at 1–8, `request_ttl_minutes` at 5–240 and `rev
 | Version | Date | Author | Notes |
 |---|---|---|---|
 | 0.1 | 2026-11-15 | Claude (task H08, PR 1) | First version, from the plan Harry approved on 2026-11-15 (QUESTIONS #741–#744) |
+| 0.4 | 2026-11-16 | Claude (task H08, PR 3b) | §2.2 as built: who a scope serves (`runner_priority`: the operator's run or a run the platform started; `hotl_window_skip`: the intent), Temporal task priority, the budget raised once at approval; the worker loop `BreakGlassLoop` (`SDLC_WORKER_BREAK_GLASS_TICK_MS`, default 60 s); G8 waits (`break_glass_review`); notice `break_glass_review_overdue`; the API wakes the intent after approve, revoke and review |
 | 0.3 | 2026-11-15 | Claude (task H08, PR 3a) | §2.9 built: the API routes, `adlc break-glass`, `adlc ops break-glass list|revoke`, refusal code `break_glass_refused`; PR 3 split into 3a (interfaces) and 3b (worker, scope effects, G8) |
 | 0.2 | 2026-11-15 | Claude (task H08, PR 2) | As built in the core: migration 0061 (`created_at` is the request time, trigger `SDA32`); the producers are those known before G7; the schema bounds and rule M37 instead of separate rules for the hours; refusal codes `break_glass.error.*` |

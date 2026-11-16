@@ -346,7 +346,7 @@ Use break-glass when a **production P0 incident** needs one intent to move faste
 
 **What break-glass never changes.** G1, G4, G6, G7 and G8 work as always: a person still merges at G7, the checks of G6 still run, and the policy check of G4, the tool list and the autonomy level stay the same. A frozen intent stays frozen; a kill stays a kill. Agents and bots can never request, approve or revoke a grant. To merge or deploy outside the platform, follow your production break-glass process; the platform records only what it does.
 
-> **Not built yet** (task H08 PR 3b): today the platform records, approves, revokes and audits a grant, but the scopes do not change anything yet, a grant does not end by itself at expiry, and G8 does not wait for the review. Revoke a grant by hand when the incident is over.
+**Who a scope serves.** The grant is not transferable. `runner_priority` puts a run first when you (the operator) allowed it at G4, or when the platform started it by itself; a run that another person allowed waits in the normal queue. `budget` raises the intent's budget once, at the approval; ending the grant never lowers it. `hotl_window_skip` is for the intent: the G2 and G3 windows close while the grant is active.
 
 **The steps.**
 
@@ -361,8 +361,8 @@ Use break-glass when a **production P0 incident** needs one intent to move faste
    `--hours` is 1 to `break_glass.max_hours` (default 4, never more than 8). One request at a time per intent. A request nobody approves within `break_glass.request_ttl_minutes` (default 30) lapses.
 3. **Approve or refuse** (governance or Person B of the project; never the person who requested it, and never a person who produced the intent's change): `adlc break-glass approve INT-2026-0042` or `adlc break-glass refuse INT-2026-0042`.
 4. On approval the grant is active until its expiry, and the platform opens a **Critical escalation** as the incident (route `policy`, so governance receives it; codes table §6.3: 15 minutes to acknowledge). It does not freeze the intent. `adlc break-glass list --open` shows the incident code and the expiry.
-5. **Revoke** as soon as the grant is not needed: `adlc break-glass revoke INT-2026-0042`. The operator, the approver, Person B or governance may revoke, at once and alone. When the API is down, the server operator runs `pnpm adlc ops break-glass revoke --tenant <slug> --intent <INT-…>` (recorded as the system).
-6. **Review** within `break_glass.review_due_hours` (default 48) after the grant ended: hold the blameless review of Chapter 6 §6.7 step 5, write it as a comment on the intent's issue or pull request, then record its link (Person A or Person B): `adlc break-glass review INT-2026-0042 --comment <comment URL>`. This closes the incident escalation.
+5. **The grant ends** at its expiry by itself (the worker checks every minute; the grant has no effect after its expiry even before that). **Revoke** it earlier as soon as it is not needed: `adlc break-glass revoke INT-2026-0042`. The operator, the approver, Person B or governance may revoke, at once and alone. When the API is down, the server operator runs `pnpm adlc ops break-glass revoke --tenant <slug> --intent <INT-…>` (recorded as the system).
+6. **Review** within `break_glass.review_due_hours` (default 48) after the grant ended: hold the blameless review of Chapter 6 §6.7 step 5, write it as a comment on the intent's issue or pull request, then record its link (Person A or Person B): `adlc break-glass review INT-2026-0042 --comment <comment URL>`. This closes the incident escalation. **G8 waits** for it: an intent whose grant is active, or ended without its review, is not released even after its G8 approval (`adlc next` shows `break_glass_review`). When the review is late, the platform comments on the intent's issue for Person A, Person B and governance (`break_glass.review_overdue` in the audit log).
 
 **What the platform keeps.** Codes, IDs, times and the two comment links. The audit log records `break_glass.requested`, `approved`, `refused`, `revoked`, `expired`, `lapsed`, `reviewed` and `review_overdue` with codes and IDs only.
 
@@ -443,3 +443,4 @@ Track:
 | 0.10 | 2026-10-04 | Claude (task B09, PR 2) | §18.8b: the decisions after a failed run (`modify` / `roll-back` → G3 HITL for every cause); §18.8d: the same after a kill (QUESTIONS #211) |
 | 0.11 | 2026-10-22 | Claude (task X03, PR 3) | §18.8d: `agent_stuck` comes from OpenHands only; a run that ends `agent_config_changed` (adapter `opencode`) and what Person B checks (ADR-M88) |
 | 0.12 | 2026-11-15 | Claude (task H08, PR 3a) | §18.8e platform usage: break-glass (`adlc break-glass`, `adlc ops break-glass`, who, the scopes, what never changes, the review; ADR-M111) |
+| 0.13 | 2026-11-16 | Claude (task H08, PR 3b) | §18.8e: who a scope serves, the grant ends by itself, G8 waits for the review, the overdue comment (ADR-M111 0.4) |
