@@ -2,7 +2,7 @@
 
 | Item | Value |
 |---|---|
-| Status | **Proposed** (2026-11-15). Plan approved by Harry on 2026-11-15; PR 1 built §2.2–§2.4 (merged, #541); PR 2 builds §2.1 and §2.5 and adds the measured cost (§2.6) |
+| Status | **Accepted** (Harry, 2026-11-16), after H09 was built and merged (#541, #544); proposed on 2026-11-15. Plan approved by Harry on 2026-11-15; PR 1 built §2.2–§2.4 (merged, #541); PR 2 builds §2.1 and §2.5 and adds the measured cost (§2.6) |
 | Date | 2026-11-15 |
 | Decided by | Harry (to accept); H09 builds it |
 | Related | D-08 H09 (AC1–AC5); D-02 NFR-02, NFR-03; D-03 §9 (tenant isolation); D-05 §8; ADR-M09 §2.3 (roles), §2.4 (tenant guard, system scope); ADR-M103 (housekeeping definer functions, migration 0046); CLAUDE.md R026; QUESTIONS #733 |
@@ -119,3 +119,4 @@ Each process, and the path it uses:
 |---|---|---|---|
 | 0.1 | 2026-11-15 | Claude (task H09, PR 1) | First version: policies (built in PR 2), tenant-bound driver, loops per tenant, exceptions, migration 0059 |
 | 0.2 | 2026-11-15 | Claude (task H09, PR 2) | §2.1 built (migration 0060, 51 tables) and its tests; §2.6 the measured cost; §4 the test helper `appAs`, `close()` closes the shared pool |
+| 0.3 | 2026-11-16 | Claude Code, accepted by Harry | Accepted: H09 is built and merged (#541, #544); no change to the design |
