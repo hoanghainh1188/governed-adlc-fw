@@ -34,6 +34,14 @@ Commands:
                        is a terminal (pnpm server:setup reads it from a pipe, D-08 V16).
   root-token           Ask for key shares (hidden) and create a new root token. Prints it
                        ONE time, to the terminal only. Revoke it after use.
+  rekey [--pgp-keys=<file>,<file>,<file>] | rekey --cancel
+                       Ask for current key shares (hidden) and make a NEW set of key shares, for
+                       a changed key holder. Prints the new shares ONE time, to the terminal
+                       only, then asks for new shares back (hidden): the old shares stop working
+                       only after that check, and stay valid when it fails or the command stops.
+                       --pgp-keys: one PGP public key file per share (armored or base64), in the
+                       holders' order; each share is then printed encrypted for its holder.
+                       --cancel: drop a rekey that did not finish (runbook T11 section 8.3).
   litellm-credentials  Ask for an admin token (hidden), issue a new secret ID for the AppRole
                        "litellm" and write it with the role ID into the volume of the LiteLLM
                        sidecar (Compose profile "models"). Prints no secret. Run it again to
@@ -158,6 +166,8 @@ shift
 keep_token=no
 issue_admin=no
 allow_non_tty=no
+pgp_key_files=""
+rekey_cancel=no
 for arg in "$@"; do
   case "$arg" in
     --keep-token)
@@ -170,6 +180,16 @@ for arg in "$@"; do
       [ "$command" = configure ] || fail "unknown option: $arg"
       [ ! -t 1 ] || fail "--issue-admin-token prints a token; it is for a pipe only, never a terminal"
       issue_admin=yes
+      ;;
+    # One PGP public key file per new share (A10 PR 3a, runbook T11 section 8.3). Not secret.
+    --pgp-keys=*)
+      [ "$command" = rekey ] || fail "unknown option: $arg"
+      pgp_key_files="${arg#--pgp-keys=}"
+      [ -n "$pgp_key_files" ] || fail "--pgp-keys needs one file per key share"
+      ;;
+    --cancel)
+      [ "$command" = rekey ] || fail "unknown option: $arg"
+      rekey_cancel=yes
       ;;
     # Lets a caller keep the printed secrets in memory: the live tests (SDLC_OPENBAO_TEST=1) and
     # `pnpm trial:up` (SDLC_OPENBAO_THROWAWAY=1, throw-away keys of a trial stack on a developer
@@ -188,7 +208,7 @@ case "$command" in
     usage
     exit 0
     ;;
-  status | init | unseal | configure | root-token | litellm-credentials | backup-credentials | api-credentials | worker-credentials | runner-credentials | runner-evidence-credentials | api-evidence-credentials | worker-evidence-credentials | worker-purge-credentials | worker-anchor-credentials | worker-langfuse-credentials | worker-knowledge-credentials | knowledge-issuer-credentials | api-github-oauth-credentials | github-webhook-secret | rotate-credentials) ;;
+  status | init | unseal | configure | root-token | rekey | litellm-credentials | backup-credentials | api-credentials | worker-credentials | runner-credentials | runner-evidence-credentials | api-evidence-credentials | worker-evidence-credentials | worker-purge-credentials | worker-anchor-credentials | worker-langfuse-credentials | worker-knowledge-credentials | knowledge-issuer-credentials | api-github-oauth-credentials | github-webhook-secret | rotate-credentials) ;;
   *)
     usage >&2
     exit 2
@@ -360,6 +380,155 @@ cmd_root_token() {
   done
   echo "New root token (shown ONCE; revoke it after use, record the use in the operations log):"
   printf '%s' "$input" | bao_exec sh "$in_container/root-token.sh"
+}
+
+# pgp_key_base64 <file>: the base64 of a PGP public key's binary form on one line, from an armored
+# key (gpg --export --armor) or a base64 one (gpg --export | base64). Not secret.
+pgp_key_base64() {
+  [ -f "$1" ] && [ -r "$1" ] || fail "cannot read the PGP public key file $1"
+  if grep -q '^-----BEGIN PGP PUBLIC KEY BLOCK-----' "$1"; then
+    # The armor body: after the first empty line, up to the checksum line ("=....") or the end.
+    key="$(tr -d '\r' <"$1" | awk '
+      /^-----BEGIN PGP PUBLIC KEY BLOCK-----/ { begun = 1; next }
+      !begun { next }
+      /^-----END PGP PUBLIC KEY BLOCK-----/ { exit }
+      body && /^=/ { exit }
+      body { printf "%s", $0 }
+      /^[ \t]*$/ { body = 1 }')"
+  else
+    key="$(tr -d ' \r\n\t' <"$1")"
+  fi
+  printf '%s' "$key" | grep -Eq '^[A-Za-z0-9+/]{40,}={0,2}$' ||
+    fail "$1 is not a PGP public key (gpg --export --armor <key ID>)"
+  printf '%s' "$key"
+}
+
+# A new set of key shares for a changed key holder (runbook T11 section 8.3). The settings stay
+# those of bootstrap.conf (3 shares, any 2). OpenBao keeps the old shares until enough NEW shares
+# came back (require_verification), so a share that was copied wrongly, or that its holder cannot
+# decrypt, locks nobody out: the command then drops the rekey and the old shares stay.
+cmd_rekey() {
+  if [ "$rekey_cancel" = yes ]; then
+    [ -z "$pgp_key_files" ] || fail "--cancel takes no other option"
+    require_unsealed
+    bao_exec_no_input sh "$in_container/rekey.sh" drop >/dev/null ||
+      fail "could not drop the rekey; try again (runbook T11 section 9)"
+    say "no rekey is in progress now; the key shares are unchanged"
+    return 0
+  fi
+  require_terminal_output
+  require_unsealed
+  shares="$(setting BAO_KEY_SHARES)"
+  threshold="$(setting BAO_KEY_THRESHOLD)"
+  input=""
+  pgp_count=0
+  if [ -n "$pgp_key_files" ]; then
+    old_ifs="$IFS"
+    IFS=,
+    for file in $pgp_key_files; do
+      IFS="$old_ifs"
+      input="$input$(pgp_key_base64 "$file")
+"
+      pgp_count=$((pgp_count + 1))
+    done
+    IFS="$old_ifs"
+    [ "$pgp_count" -eq "$shares" ] || fail "--pgp-keys needs $shares files, one per key share"
+  fi
+  i=1
+  while [ "$i" -le "$threshold" ]; do
+    share="$(read_secret "Current key share $i of $threshold (hidden)")"
+    [ -n "$share" ] || fail "no key share given; the key shares are unchanged"
+    input="$input$share
+"
+    i=$((i + 1))
+  done
+
+  # A rekey that another run left open is never dropped here: only --cancel does that.
+  [ "$(bao_exec_no_input sh "$in_container/rekey.sh" state)" = none ] ||
+    fail "a rekey is already in progress; drop it first: bootstrap.sh rekey --cancel"
+
+  # From here until the check below passes, every way out (an error, a signal, a closed terminal)
+  # drops the rekey and then reads what OpenBao says, so the last message is never a guess.
+  rekey_open=yes
+  verify_sent=no
+  close_rekey() {
+    [ "$rekey_open" = yes ] || return 0
+    rekey_open=no
+    result="$(bao_exec_no_input sh "$in_container/rekey.sh" drop 2>/dev/null)" || result=unknown
+    case "$result:$verify_sent" in
+      dropped:*) echo "bootstrap: the rekey is dropped; the key shares are unchanged" >&2 ;;
+      none:no) ;;
+      none:yes)
+        cat >&2 <<EOF
+bootstrap: the rekey is no longer open: the check may have passed before this command stopped.
+bootstrap: KEEP BOTH the old and the new shares. Run this command again: the set it accepts as
+bootstrap: the current shares is the one in use (runbook T11 section 8.3).
+EOF
+        ;;
+      *)
+        cat >&2 <<EOF
+bootstrap: the state of the rekey could not be read. KEEP BOTH the old and the new shares.
+bootstrap: Run: bootstrap.sh rekey --cancel, then this command again (runbook T11 section 8.3).
+EOF
+        ;;
+    esac
+  }
+  trap 'restore_echo; close_rekey' EXIT
+  trap 'exit 130' INT TERM HUP
+  out="$(printf '%s' "$input" | bao_exec sh "$in_container/rekey.sh" start "$shares" "$threshold" "$pgp_count")" ||
+    fail "the rekey did not start; the key shares are unchanged"
+  verification="$(printf '%s\n' "$out" | sed -n 1p)"
+  cat <<EOF
+================================================================================
+ OpenBao rekey: $shares NEW key shares, any $threshold unseal.
+ The shares below are shown ONCE. They are not stored anywhere.
+ Give each share to a different key holder (runbook T11 section 8.3).
+ Never paste them into chat, email, issues, files or logs.
+ The OLD shares stay valid until $threshold holders typed their NEW share below.
+================================================================================
+EOF
+  printf '%s\n' "$out" | sed 1d | awk '{ print "Unseal Key " NR ": " $0 }'
+  cat <<EOF
+================================================================================
+ Each holder copies their own share now. Then $threshold holders type their NEW share
+ (in clear: a share encrypted with a PGP key is decrypted on its holder's computer).
+================================================================================
+EOF
+  input=""
+  i=1
+  while [ "$i" -le "$threshold" ]; do
+    # Not read_secret: its own signal trap would replace the ones above.
+    if [ -t 0 ]; then
+      printf 'NEW key share %s of %s (hidden): ' "$i" "$threshold" >&2
+      stty -echo
+      IFS= read -r share || share=""
+      restore_echo
+      echo >&2
+    else
+      IFS= read -r share || share=""
+    fi
+    [ -n "$share" ] || fail "no new key share given"
+    input="$input$share
+"
+    i=$((i + 1))
+  done
+  verify_sent=yes
+  verified="$(printf '%s' "$input" | bao_exec sh "$in_container/rekey.sh" verify "$verification")" ||
+    verified=""
+  if [ "$verified" != verified ]; then
+    # OpenBao keeps a rekey open after a wrong answer, so close_rekey can tell a refused check
+    # (it drops the rekey: unchanged) from a check that passed while the answer was lost.
+    fail "the new key shares were not confirmed"
+  fi
+  rekey_open=no
+  trap - EXIT INT TERM HUP
+  cat <<EOF
+================================================================================
+ Done: the NEW key shares are in use, the OLD shares no longer work.
+ Next: clear and close this terminal, destroy the old envelopes, and run a recovery
+ drill with the new shares (runbook T11 sections 7 and 8.3).
+================================================================================
+EOF
 }
 
 # Prints the role ID, a new secret ID and the new secret ID's accessor, one per line, from the
@@ -947,6 +1116,7 @@ case "$command" in
   unseal) cmd_unseal ;;
   configure) cmd_configure ;;
   root-token) cmd_root_token ;;
+  rekey) cmd_rekey ;;
   litellm-credentials) cmd_litellm_credentials ;;
   backup-credentials) cmd_backup_credentials ;;
   api-credentials) cmd_api_credentials ;;

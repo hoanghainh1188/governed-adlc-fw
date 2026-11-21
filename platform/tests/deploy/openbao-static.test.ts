@@ -14,6 +14,7 @@ const SCRIPTS = [
   'openbao/cidr-exclude.sh',
   'openbao/bootstrap/configure.sh',
   'openbao/bootstrap/root-token.sh',
+  'openbao/bootstrap/rekey.sh',
   'openbao/tls.sh',
 ];
 const settings = parseEnvFile(readDeployFile('openbao/bootstrap/bootstrap.conf'));
@@ -70,10 +71,10 @@ describe('OpenBao bootstrap scripts', () => {
     expect(fs.statSync(full).mode & 0o111).not.toBe(0);
   });
 
-  it('never sends init or root-token output to a file or through tee', () => {
+  it('never sends init, root-token or rekey output to a file or through tee', () => {
     for (const file of SCRIPTS) {
       for (const line of readDeployFile(file).split('\n')) {
-        if (/operator init|root-token\.sh/.test(line) && !line.trim().startsWith('#')) {
+        if (/operator init|root-token\.sh|rekey\.sh/.test(line) && !line.trim().startsWith('#')) {
           expect(line, `${file}: ${line}`).not.toMatch(/\btee\b|[^2&]>\s*[^&/]|>>/);
         }
       }
@@ -523,6 +524,67 @@ describe('github-webhook-secret (bootstrap.sh, O08, ADR-M112 §2.8)', () => {
       expect(r.stdout).toBe('');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('rekey (bootstrap.sh, A10 PR 3a, runbook T11 section 8.3)', () => {
+  const bootstrap = fs.readFileSync(BOOTSTRAP, 'utf8');
+  const start = bootstrap.indexOf('cmd_rekey() {');
+  const body = bootstrap.slice(start, bootstrap.indexOf('\n}\n', start));
+  const inContainer = readDeployFile('openbao/bootstrap/rekey.sh');
+
+  it('is a command of bootstrap.sh, listed in its usage', () => {
+    expect(bootstrap).toMatch(/^\s+rekey\)\s+cmd_rekey ;;$/m);
+    expect(bootstrap).toMatch(/\| rekey \|/);
+    expect(bootstrap).toMatch(/^ {2}rekey \[--pgp-keys=/m);
+  });
+
+  it('prints shares to a terminal only, and its options belong to rekey alone', () => {
+    expect(body.indexOf('require_terminal_output')).toBeLessThan(body.indexOf('read_secret'));
+    for (const option of ['--cancel', '--pgp-keys=/x']) {
+      const r = runBootstrap(['init', option]);
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain(`unknown option: ${option}`);
+    }
+  });
+
+  it('the old shares stay until new shares came back; every stop drops the rekey', () => {
+    expect(inContainer).toContain('\\"require_verification\\":true');
+    expect(inContainer).toMatch(/sys\/rekey\/verify key=- nonce=/);
+    // In the container the trap is set before the rekey is opened.
+    expect(inContainer.indexOf('trap cancel EXIT')).toBeLessThan(
+      inContainer.indexOf('bao write -field=nonce sys/rekey/init'),
+    );
+    // On the host: every way out goes through close_rekey, set before the rekey is opened.
+    expect(body).toMatch(/trap 'restore_echo; close_rekey' EXIT/);
+    expect(body).toMatch(/trap 'exit 130' INT TERM HUP/);
+    expect(body.indexOf("trap 'restore_echo; close_rekey' EXIT")).toBeLessThan(
+      body.indexOf('rekey.sh" start'),
+    );
+    // "unchanged" is said only when OpenBao confirmed the drop; else both sets are kept.
+    expect(body).toMatch(
+      /dropped:\*\) echo "bootstrap: the rekey is dropped; the key shares are unchanged"/,
+    );
+    expect(body.split('KEEP BOTH the old and the new shares').length - 1).toBe(2);
+    expect(inContainer).toMatch(/\[ "\$\(state\)" = none \] \|\| fail "the rekey is still open"/);
+  });
+
+  it('key shares travel on stdin only, on the key-holder listener, without a token', () => {
+    expect(inContainer).toContain('export BAO_ADDR=http://127.0.0.1:8210');
+    expect(inContainer).toContain('unset BAO_TOKEN');
+    const code = inContainer
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('#'))
+      .join('\n');
+    expect(code).not.toContain('bao operator');
+    for (const line of code.split('\n').filter((l) => /bao write/.test(l))) {
+      expect(line, line).toMatch(/key=- |sys\/rekey\/init -/);
+    }
+    // No share in an argument of the host's docker call either.
+    for (const line of body.split('\n').filter((l) => /bao_exec/.test(l))) {
+      const args = line.slice(line.indexOf('bao_exec'));
+      expect(args, line).not.toMatch(/\$(share|input|out|new)\b/);
     }
   });
 });

@@ -900,6 +900,8 @@ docker compose -f platform/deploy/docker-compose.yml exec valkey sh -c 'REDISCLI
 
 Measured with `docker stats` on a development machine (Docker Desktop, 8 GiB VM), at idle, right after start-up, on 2026-09-25. These are **estimates only**; task A10 does the formal measurement on the target server.
 
+**Measure a running deployment** (task A10 AC4): `pnpm measure [--env <file>] [--samples 12] [--interval 5]` samples the memory and CPU of every container of the Compose project and prints one Markdown table: the mean and the peak per service and for all, the size of the images in use and of the project's volumes. It only reads (`docker info`, `ps`, `stats`, `image inspect`, `volume ls`, `system df`) and prints numbers and names, never an env value or a log line. Run it once with the profiles you want to size, at idle, and once during an agent run. On the runner's own Engine, where sandboxes are not Compose services, run `platform/deploy/scripts/measure.sh --all` as that Engine's user. The checklist of the first deployment asks for both: [T11 §3.3](../../handbook/03-templates/T11-openbao-runbook.md#33-checklist-for-the-first-deployment-on-the-server-task-a10-pr-3).
+
 | Profile | RAM in use (idle) | Suggested minimum for the server | CPU |
 |---|---|---|---|
 | `core` | about 1.3 GiB (LiteLLM about 0.8 GiB; PostgreSQL, Temporal, SeaweedFS about 0.15–0.2 GiB each; Valkey, OpenBao, Temporal UI under 30 MiB each) | 3 GiB RAM | 2 vCPU. Idle use is well below one core |

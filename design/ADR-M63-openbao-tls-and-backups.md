@@ -54,7 +54,7 @@
 - One more one-shot job (`openbao-tls-init`) in `up.sh` and two small volumes.
 - Every OpenBao live test reaches OpenBao over TLS with the project's CA (`throwaway-compose.ts`); tests that reach it by IP from the host map the name `openbao` to the IP (`--add-host`).
 - OpenSSL 3 or later is needed on the host (already a requirement; LibreSSL is refused).
-- Open (A10 PR 3, with the operator): the real CA and key holders on the server, the first drill there, the resource measurement and the runner's VM.
+- Open (A10 PR 3b, with the operator): the real CA and key holders on the server, the first drill there, the resource measurement and the runner's own Engine. PR 3a prepared them: §7 and runbook T11 §3.3.
 - A backup stops SeaweedFS and ClickHouse for about a minute: an evidence write or a trace in that minute fails and is retried by its caller.
 
 ## 4. Rejected
@@ -73,6 +73,19 @@
   - `openbao:bootstrap worker-langfuse-credentials` makes and checks `sdlc_purge` as `sdlc_admin`; the SQL still goes on stdin.
 - **Consequences.** An `sdlc_purge` made before stays (ClickHouse keeps it in its volume); a restart of ClickHouse applies the change. Whoever can run `docker compose exec` on the server can still manage these users, as before. `pnpm test:observability` checks over the network that `langfuse` cannot create a user and `sdlc_admin` cannot sign in; a static test checks the file (loopback only, the exact grants, no double hyphen in a comment: ClickHouse refuses to start on it).
 
+## 7. Preparing the first deployment: the rekey command and the measurement (PR 3a)
+
+- **Context.** Runbook T11 §8.3 gave `bao operator rekey` by hand and said it was not tested. D-08 A10 AC4 asks for a resource measurement on the server, and the repository had no tool for it. Both are needed on the day of the first deployment (QUESTIONS #756–#760; the two choices of the rekey below: Harry, 2026-11-21, #760).
+- **`pnpm openbao:bootstrap rekey`.**
+  - It uses the key-share endpoints `sys/rekey/*` on the key-holder listener inside the container, without a token, like `root-token` (ADR-M19): `bao operator rekey` asks for each share at its own prompt.
+  - **Always with `require_verification`.** OpenBao gives the new shares but keeps the old ones until two new shares came back. A share that was copied wrongly, or that its holder cannot decrypt, therefore locks nobody out. A wrong answer, an empty answer, Ctrl-C or a closed terminal drops the rekey; `rekey --cancel` drops one that a killed run left open, and a new run never drops another run's rekey. After every stop the command reads the state from OpenBao before it says anything: "unchanged" only when OpenBao confirmed the drop; when the check may have passed while the answer was lost, it says to keep both sets of shares.
+  - `--pgp-keys=<file>,<file>,<file>` encrypts each new share for its holder, as `pnpm server:setup` does at `init` (ADR-M98). The share counts stay those of `bootstrap.conf`.
+  - Shares travel on stdin only. The new shares go to a terminal only (R035; the Claude Code hook refuses the command).
+  - **Not tested with real PGP keys**: the tests have no OpenPGP tool. The verification makes a failure there harmless; the drill on the test machine checks it (T11 §3.3).
+  - A backup made before a rekey restores a snapshot that needs the **old** shares (T11 §8.3 step 8).
+- **`pnpm measure`.** A shell script that samples `docker stats` for the project's containers and prints the mean and the peak per service and for all, the images in use and the project's volumes, as Markdown. It only reads (`docker info`, `ps`, `stats`, `image inspect`, `volume ls`, `system df`), prints numbers and names, and writes no file. It is not a `doctor` check: `doctor` answers at once and judges; a measurement takes a minute and judges nothing. `--all` measures the runner's own Engine, where sandboxes are not Compose services.
+- **Rejected.** A rekey without verification (one miscopied share would only show at the next unseal). A rekey inside `pnpm server:setup` (a rare operation; the command stays small). A measurement inside `doctor` (above). Prometheus or cAdvisor for one table (R041: the heavy observability stack is optional).
+
 ## Version history
 
 | Version | Date | Author | Notes |
@@ -81,3 +94,4 @@
 | 0.2 | 2026-10-09 | Claude Code (task A10, PR 2) | §5: backups and the restore drill (QUESTIONS #326–#329) |
 | 0.3 | 2026-10-09 | Claude Code (task A10) | §6: ClickHouse access management moves from `langfuse` to the loopback-only `sdlc_admin` (QUESTIONS #330; supersedes part of ADR-M53 §2.3) |
 | 0.4 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
+| 0.5 | 2026-11-21 | Claude Code (task A10, PR 3a), approved by Harry (QUESTIONS #760) | §7: `openbao:bootstrap rekey` with verification and PGP keys, `pnpm measure` (QUESTIONS #756–#760) |

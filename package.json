@@ -62,6 +62,7 @@
     "openbao:tls": "platform/deploy/openbao/tls.sh",
     "access:tls": "platform/deploy/access/tls.sh",
     "backup": "platform/deploy/backup/backup.sh",
+    "measure": "platform/deploy/scripts/measure.sh",
     "restore": "platform/deploy/backup/restore.sh",
     "db:migrate": "tsc -b platform/packages/core && node platform/packages/core/dist/db/migrate-cli.js latest",
     "db:status": "tsc -b platform/packages/core && node platform/packages/core/dist/db/migrate-cli.js status",

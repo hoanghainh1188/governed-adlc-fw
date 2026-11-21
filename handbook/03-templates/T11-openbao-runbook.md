@@ -1,6 +1,6 @@
 # T11 Runbook: operating OpenBao (unseal, root token, the processes' credentials, backup, restore)
 
-> Status: **v0.56. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) gives the commands; the drill on the real server is task A10 PR 3.
+> Status: **v0.57. Tested on a development machine with throw-away keys (tasks A03, 2026-09-25, and C03, 2026-09-26): sections 3.1, 4, 5, 5b, 5d and 8.1.** Sections 6 and 7 (backup, restore) are tested by `pnpm test:backup` on throw-away keys; section 8.3 (rekey) is tested by `pnpm test:openbao` on throw-away keys, without PGP keys; the first deployment and the drill on the real server are task A10 PR 3 (the checklist: section 3.3).
 > Readers: key holders, infrastructure operator, the OpenBao admin (the operator who holds the admin token, section 5.1).
 > The real initialisation on the internal server **has not been done**. It waits until leadership names the three key holders.
 
@@ -137,6 +137,46 @@ What `configure` sets up (details: `design/ADR-M19-openbao-bootstrap.md`):
 - a check that the file audit device is on.
 
 Settings (key shares, threshold, token and secret ID lifetimes) are in `platform/deploy/openbao/bootstrap/bootstrap.conf`. Access rules are in `platform/deploy/openbao/bootstrap/policies/*.hcl`. Changes to either go through a reviewed pull request, then `configure` again.
+
+### 3.3. Checklist for the first deployment on the server (task A10, PR 3)
+
+One list for the people of that day. Each line names the section that has the steps. Tick a line only when its check passed, and record it in the operations log (section 10). Every command that shows or takes a key share or a token runs in the operator's own terminal, never through a chat tool.
+
+**Before the day (the infrastructure operator and the owner):**
+
+| # | What | Where | Check |
+|---|---|---|---|
+| 1 | Leadership has named three key holders; each gave a PGP public key | Sections 2, 3.2 | Three `.asc` files outside the repository |
+| 2 | The server: Docker Compose v2.24+, Node.js 24, pnpm 10, OpenSSL 3, `age`; a checkout of a release tag | Deploy README "Requirements", "Verify the published images" | `pnpm images mode` prints `published`; `pnpm images verify` passes |
+| 3 | The host name people will use is chosen; the GitHub App for the server exists (never the test App) | Deploy README "Create the GitHub App" | The App is installed on the project's repository only |
+| 4 | **The runner has its own rootless Engine, with the authorization plugin** (a hard condition for the first real agent run, QUESTIONS #455) | Deploy README "The runner on its own Docker Engine"; section 5g-1 | `sudo platform/deploy/scripts/runner-host-setup.sh … --dry-run` reports nothing left to do |
+| 5 | The backup target outside the server is mounted; the age key pair was made on another machine; the private key is offline | Section 6, steps 1–4 | The server holds only the public key file |
+| 6 | A test machine for the recovery drill, with Docker, `age` and the same release tag | Section 7 | It has no platform data |
+| 7 | The settings file of `pnpm server:setup` is filled in, outside the repository, mode 600 | Section 3.2 "Before the day" | It names the key holders, `runner_link`, `access`, the tenant and the project file |
+| 8 | Person A and Person B of the first project are named, and are two people | Codes table §5 | `adlc admin project apply` accepts the project file |
+
+**The day (all three key holders present):**
+
+| # | What | Where | Check |
+|---|---|---|---|
+| 9 | The CA and OpenBao's certificate; the CA folder goes offline | Section 3c | `pnpm openbao:tls check` shows both end dates |
+| 10 | `pnpm server:setup --settings <file>`: initialise, hand out the shares, unseal, configure, every credential, the migrations, the platform, the team | Section 3.2 | It ends with `pnpm doctor` and no failed line; "root token revoked: yes" in the log |
+| 11 | The envelopes are sealed, signed and in the safe | Section 3.2, steps 10–11 | The safe log has three entries |
+| 12 | Backups: the AppRole `backup`, the timer, one run by hand | Section 6, steps 5–7 | A folder with a `MANIFEST` in `SDLC_BACKUP_DIR`; `pnpm doctor` line `backup.recent` |
+| 13 | Alerts: a test message on every channel, the timer | Section 6b | The operator received the test message |
+| 14 | Resource measurement at idle: once with `core` and the platform profiles, once with `observability` added | Deploy README "Resource estimate" | `pnpm measure` printed both tables; keep the output for the pull request |
+
+**After the day:**
+
+| # | What | Where | Check |
+|---|---|---|---|
+| 15 | The first real agent run, on the fictional sample repository, never on client data: one intent from G1 to G8 | `TRIAL.md` task T01; deploy README step 14 | The intent is `done`; the Evidence Pack opens. Run `pnpm measure` on both Engines during the run |
+| 16 | The recovery drill on the test machine, with two key holders and their original shares | Section 7 | Every check of step 5 there passes |
+| 17 | The rekey drill, **on the test machine after step 16**, never on the server: with the holders' PGP keys | Section 8.3 | The restarted OpenBao unseals with two new shares; then destroy the test machine's data |
+| 18 | The test machine is wiped; the operations log has every line above | Section 7, step 6 | — |
+| 19 | The owner sends the two measurement tables and the problems met (no share, token, key or log text) for the pull request that records the results | D-08 A10 | — |
+
+Stop and ask before going on when a check fails. A step that showed a share or a token on a screen someone else could see is a leak: section 8.2 or 8.3.
 
 ### 3c. TLS on port 8200: the CA, the certificate, renewal
 
@@ -1045,21 +1085,22 @@ Destroying a secret ID does **not** end the tokens already issued from it. They 
 
 ### 8.3. Rekey when a key holder changes
 
-> Not yet tested: the rekey commands need an interactive terminal. The `bao operator rekey` command may call token-protected endpoints, as `bao operator generate-root` does in OpenBao 2.5+. The A10 drill checks the commands below and adds a `bootstrap.sh rekey` command if needed.
+> Tested on throw-away keys by `pnpm test:openbao` (task A10 PR 3a): the rekey, a wrong answer at the check, a stop, `--cancel`. **Not yet tested with real PGP keys**: the first rekey with `--pgp-keys` is the drill on the test machine (section 3.3, line 17). The check in step 4 keeps the old shares valid if that fails.
 
-When a key holder leaves or changes role, create a **new set of shares** and destroy the old envelopes:
+When a key holder leaves or changes role, create a **new set of shares** and destroy the old envelopes. The command is `pnpm openbao:bootstrap rekey`. It needs no root token: it uses the key-share endpoints of the key-holder listener inside the container, like `root-token`. The root key and the stored data do not change, and the platform keeps running.
 
-1. Leadership names the new holder. Record the change in the operations log.
-2. Two current key holders start the rekey inside the container, on the key-holder listener:
+1. Leadership names the new holder. Record the change in the operations log. All three holders of the **new** set and two holders of the **current** set are in the room (section 3.2, preconditions).
+2. With PGP keys (the default on the server): each holder of the new set gives the operator their public key file, as in section 3.2. The files are named in the holders' order.
+3. The operator runs, in a terminal on the server:
    ```bash
-   docker compose -f platform/deploy/docker-compose.yml --env-file platform/deploy/.env exec openbao \
-     sh -c 'BAO_ADDR=http://127.0.0.1:8210 bao operator rekey -init -key-shares=3 -key-threshold=2'
+   pnpm openbao:bootstrap rekey --pgp-keys=holder-1.asc,holder-2.asc,holder-3.asc
    ```
-3. Each of the two holders runs `bao operator rekey -nonce=<nonce>` (same `docker compose exec … sh -c 'BAO_ADDR=http://127.0.0.1:8210 …'`) and types their share at the hidden prompt.
-4. The new 3 shares are printed once. Handle them as in section 3.2 steps 3, 7 and 8: one share for each holder, including the new one.
-5. Unseal test: restart the `openbao` container and unseal with two **new** shares.
-6. Destroy the old envelopes in front of a witness. Record it in the safe log and the operations log.
-7. Run a recovery drill (section 7) with the new shares.
+   Without `--pgp-keys` the new shares are shown in clear. Two current holders type their **current** share at the hidden prompts. The command then prints the 3 new shares once. Each holder copies only their own share, as in section 3.2 step 3.
+4. **The check.** The command asks for two **new** shares at hidden prompts. A holder whose share is encrypted first decrypts it on their own computer (`echo '<share>' | base64 -d | gpg -dq`) and types the clear share. OpenBao starts using the new shares only when this check passes. Until then the old shares stay valid: when a share was copied wrongly or cannot be decrypted, when someone presses Ctrl-C, or when the terminal closes, the command drops the rekey and says `the key shares are unchanged`. Then start again at step 3.
+5. The command's last message is what OpenBao itself answered. `the rekey is dropped; the key shares are unchanged`: start again at step 3. `KEEP BOTH the old and the new shares`: the command stopped while the check ran, or could not read the state; nobody destroys an envelope, and the next run of `rekey` shows which set is in use (it accepts only that set as the current shares). If a run was cut off so hard that it could not drop the rekey (a lost connection, a killed process), the next run says `a rekey is already in progress`: run `pnpm openbao:bootstrap rekey --cancel`, then start again.
+6. Clear the terminal and close it (section 3.2 steps 9–11). The new holders seal their envelopes.
+7. Destroy the old envelopes in front of a witness. Record it in the safe log and the operations log.
+8. Run a recovery drill (section 7) with a backup made **after** the rekey and the new shares: a backup from before the rekey still needs the old shares, so keep the old envelopes until no such backup is kept (`SDLC_BACKUP_KEEP` days), or destroy those backups with them.
 
 ### 8.4. The Run Contract signing key: rotation and revocation
 
@@ -1096,10 +1137,12 @@ After a revocation only the new version may appear. After an automatic rotation 
 | `OpenBao is not reachable` | Container not running | `pnpm compose:core`; `docker compose … logs openbao` |
 | `OpenBao is sealed; unseal it first` | Restart | Section 4 |
 | `OpenBao is not initialised` | New, empty volume | Section 3. If you expected data, **stop**: you may be on the wrong volume or project |
-| `output is not a terminal` | `init` or `root-token` run with output redirected or piped | Run it again in a normal terminal. This is intended |
+| `output is not a terminal` | `init`, `root-token` or `rekey` run with output redirected or piped | Run it again in a normal terminal. This is intended |
 | `a root token is required` | `configure` got an admin token or an expired token | Section 5 |
 | `a root token generation is already in progress` | An earlier `root-token` was interrupted | Inside the container: `BAO_ADDR=http://127.0.0.1:8210 bao delete sys/generate-root/attempt`, then try again |
 | `the key share was rejected` | Mistyped or old share | Try again carefully. After a rekey, old shares no longer work |
+| `a rekey is already in progress` | An earlier `rekey` was cut off before it could drop its attempt | `pnpm openbao:bootstrap rekey --cancel`, then run `rekey` again. The key shares are unchanged (section 8.3) |
+| `the new key shares were not confirmed` | A new share was typed wrongly at the check, or typed encrypted | Nothing changed: the old shares still work. Run `rekey` again; type the **decrypted** new share (section 8.3 step 4) |
 | A process says `AppRole login failed (HTTP status …)` | Secret ID expired (90 days), destroyed, wrong, or used outside the Compose subnet (the gateway address counts as outside) | Section 8.1; check that the process runs in a container on the Compose network, `SDLC_NETWORK_SUBNET`, `SDLC_NETWORK_GATEWAY` and the secret ID file (section 5c) |
 | `curl http://127.0.0.1:8200/…` on the server fails | OpenBao publishes no host port (by design, task A11) | `pnpm openbao:bootstrap status`, or `docker compose … exec openbao bao status` |
 | A process says `OpenBao at … is sealed` | Restart. Compose still shows OpenBao as healthy: healthy only means the API answers | Section 4 |
@@ -1142,6 +1185,7 @@ Keep one log per installation. Never write a share, a token or a secret ID in it
 
 | Version | Date | Author | Notes |
 |---|---|---|---|
+| 0.57 | 2026-11-21 | Claude Code (task A10, PR 3a) | New section 3.3: the checklist of the first deployment on the server, with the runner condition of QUESTIONS #455 and the resource measurement (`pnpm measure`). Section 8.3 rewritten: `pnpm openbao:bootstrap rekey` (with `--pgp-keys` and `--cancel`); the new shares replace the old ones only after two of them came back; a backup from before a rekey needs the old shares. Tested with throw-away keys (`pnpm test:openbao`), not yet with real PGP keys. Two troubleshooting rows |
 | 0.0 | 2026-09-24 | — | Skeleton |
 | 0.1 | 2026-09-24 | Claude (draft) | Outline; content written by Claude Code in A03/A10 |
 | 0.2 | 2026-09-25 | Claude Code (task A03) | Full content. Sections 3.1, 4, 5, 5b and 8.1 tested on a development machine with throw-away keys (`bootstrap.sh`, live test `pnpm test:openbao`). Sections 6, 7 and 8.2 to be tested in A10. The real initialisation (3.2) is described, not performed |
