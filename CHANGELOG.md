@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- **Preparing the first deployment on a server** (task A10 PR 3a, ADR-M63 0.5, QUESTIONS #756–#760).
+  - `pnpm openbao:bootstrap rekey [--pgp-keys=<file>,<file>,<file>]` makes a new set of key shares when a key holder changes (runbook T11 §8.3). The old shares stay valid until two holders typed their new share back, so a miscopied share locks nobody out; any stop drops the rekey, and `rekey --cancel` drops one left open. Owner's terminal only.
+  - `pnpm measure` prints the memory and CPU of every container of a running deployment (mean and peak), the images in use and the volumes, as a Markdown table. Read only; it prints no env value (deploy README "Resource estimate").
+  - Runbook T11 §3.3: one checklist for the first deployment on the server, the first agent run, the recovery drill and the rekey drill.
+
+### Upgrade notes
+- **A10 PR 3a:** nothing to do. No migration, no image change, no new `.env` key.
+
 ## [0.17.0] - 2026-11-16
 
 **Row-level security, break-glass and GitHub webhooks**

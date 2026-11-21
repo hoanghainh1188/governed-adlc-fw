@@ -160,7 +160,7 @@ function printsOperatorSecret(cliArgs) {
  */
 function printsBootstrapSecret(action) {
   return (
-    ['init', 'unseal', 'root-token', 'github-webhook-secret'].includes(action) ||
+    ['init', 'unseal', 'root-token', 'rekey', 'github-webhook-secret'].includes(action) ||
     action.endsWith('-credentials')
   );
 }

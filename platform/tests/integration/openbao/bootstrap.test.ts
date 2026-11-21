@@ -5,7 +5,7 @@
 // the openbao service; everything is removed afterwards. The key shares and tokens are
 // THROW-AWAY TEST KEYS. They stay in variables of this process: never printed, never written to
 // a file, never part of an assertion message or snapshot (errors go through redact()).
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -562,6 +562,217 @@ describe.skipIf(!enabled)('OpenBao bootstrap (live)', { timeout: TEST_TIMEOUT_MS
       expect((await sealStatus()).sealed).toBe(true);
       const r = configure('x');
       expect(r.stderr).toMatch(/OpenBao is sealed; unseal it first/);
+    });
+  });
+
+  // A10 PR 3a, runbook T11 section 8.3. Runs last: it replaces the key shares.
+  describe('A10: rekey for a changed key holder', () => {
+    /**
+     * `bootstrap.sh rekey` with the current shares on stdin; `answer` gets the new shares it
+     * printed and returns what is typed back at the check. The new shares stay in memory only.
+     */
+    const rekey = (
+      current: string[],
+      answer: (printed: string[]) => string[],
+    ): Promise<Result & { printed: string[] }> =>
+      new Promise((resolve, reject) => {
+        const child = spawn(bootstrap, ['rekey', '--stdout-not-tty'], {
+          env: { ...process.env, SDLC_ENV_FILE: envFile, SDLC_OPENBAO_TEST: '1' },
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+        let answered = false;
+        const printedShares = (): string[] =>
+          [...stdout.matchAll(/^Unseal Key \d+: (\S+)$/gm)].map((m) => keep(m[1]!));
+        child.stdout.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8');
+          if (!answered && /Each holder copies their own share now/.test(stdout)) {
+            answered = true;
+            child.stdin.end(
+              answer(printedShares())
+                .map((s) => `${s}\n`)
+                .join(''),
+            );
+          }
+        });
+        child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString('utf8')));
+        child.on('error', reject);
+        child.on('close', (status) => {
+          resolve({ status, stdout, stderr, printed: printedShares() });
+        });
+        child.stdin.on('error', () => undefined); // the command may stop before it reads
+        child.stdin.write(current.map((s) => `${s}\n`).join(''));
+        // A run that stops before it prints shares never asks for an answer.
+        if (current.length < 2) child.stdin.end();
+      });
+    const rekeyStarted = (): boolean =>
+      /"started": true|"verification_nonce": "[^"]/.test(
+        ok(
+          inOpenbao('BAO_ADDR=http://127.0.0.1:8210 bao read -format=json sys/rekey/init', '\n'),
+          'rekey status',
+        ).stdout,
+      );
+    const unsealWith = (a: string, b: string): Result => bootstrapCmd(['unseal'], `${a}\n${b}\n`);
+    const restart = (): void => {
+      ok(compose('--profile', 'core', 'restart', 'openbao'), 'restart');
+      ok(compose('--profile', 'core', 'up', '-d', '--wait', 'openbao'), 'wait healthy');
+    };
+
+    beforeAll(() => {
+      ok(unsealWith(shares[0]!, shares[1]!), 'unseal before the rekey');
+    });
+
+    it('refuses to print shares when output is not a terminal, and --cancel with another option', () => {
+      const r = bootstrapCmd(['rekey'], `${shares[0]}\n${shares[1]}\n`);
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/not a terminal/);
+      const both = bootstrapCmd(['rekey', '--cancel', '--pgp-keys=/nonexistent']);
+      expect(both.status).not.toBe(0);
+      expect(both.stderr).toMatch(/--cancel takes no other option/);
+      expect(bootstrapCmd(['unseal', '--cancel']).stderr).toMatch(/unknown option: --cancel/);
+      expect(rekeyStarted()).toBe(false);
+    });
+
+    it('one current share is not enough: nothing printed, no rekey left open', async () => {
+      const r = await rekey([shares[0]!], () => []);
+      expect(r.status).not.toBe(0);
+      expect(redact(r.stderr)).toMatch(/the key shares are unchanged/);
+      expect(r.printed.length).toBe(0);
+      expect(rekeyStarted()).toBe(false);
+    });
+
+    it('a file that is not a PGP public key stops the rekey before any share is asked for', () => {
+      const notAKey = path.join(tmp, 'holder.asc');
+      fs.writeFileSync(notAKey, 'hello\n');
+      const r = bootstrapCmd(
+        ['rekey', '--stdout-not-tty', `--pgp-keys=${notAKey},${notAKey},${notAKey}`],
+        `${shares[0]}\n${shares[1]}\n`,
+      );
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/is not a PGP public key/);
+      const two = bootstrapCmd(['rekey', '--stdout-not-tty', `--pgp-keys=${notAKey}`], '');
+      expect(two.stderr).toMatch(/is not a PGP public key|needs 3 files/);
+      expect(rekeyStarted()).toBe(false);
+    });
+
+    it('new shares typed back wrongly: the rekey is dropped and the OLD shares still work', async () => {
+      const r = await rekey([shares[0]!, shares[2]!], (printed) => [printed[0]!, shares[1]!]);
+      expect(r.status).not.toBe(0);
+      expect(r.printed.length).toBe(3);
+      expect(redact(r.stderr)).toMatch(/the new key shares were not confirmed/);
+      expect(redact(r.stderr)).toMatch(/the rekey is dropped; the key shares are unchanged/);
+      expect(redact(r.stderr)).not.toMatch(/KEEP BOTH/);
+      expect(rekeyStarted()).toBe(false);
+      restart();
+      ok(unsealWith(shares[0]!, shares[1]!), 'unseal with the old shares');
+      expect((await sealStatus()).sealed).toBe(false);
+    });
+
+    it('--cancel drops a rekey that another run left open', async () => {
+      // Left open on purpose: started by hand, never updated.
+      ok(
+        inOpenbao(
+          `printf '{"secret_shares":3,"secret_threshold":2}' | BAO_ADDR=http://127.0.0.1:8210 bao write sys/rekey/init - >/dev/null`,
+          '\n',
+        ),
+        'open a rekey',
+      );
+      expect(rekeyStarted()).toBe(true);
+      const blocked = await rekey([shares[0]!, shares[1]!], () => []);
+      expect(blocked.status).not.toBe(0);
+      expect(blocked.printed.length).toBe(0);
+      const r = ok(bootstrapCmd(['rekey', '--cancel']), 'rekey --cancel');
+      expect(r.stdout).toMatch(/the key shares are unchanged/);
+      expect(rekeyStarted()).toBe(false);
+    });
+
+    it('a run killed while it waits for the check leaves a rekey open; --cancel drops it', async () => {
+      // The answer never comes: the command is killed hard, so it cannot drop the rekey itself.
+      const killed = await new Promise<number | null>((resolve, reject) => {
+        const child = spawn(bootstrap, ['rekey', '--stdout-not-tty'], {
+          env: { ...process.env, SDLC_ENV_FILE: envFile, SDLC_OPENBAO_TEST: '1' },
+          stdio: ['pipe', 'pipe', 'ignore'],
+        });
+        let stdout = '';
+        child.stdout.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8');
+          for (const m of stdout.matchAll(/^Unseal Key \d+: (\S+)$/gm)) keep(m[1]!);
+          if (/Each holder copies their own share now/.test(stdout)) child.kill('SIGKILL');
+        });
+        child.on('error', reject);
+        child.on('close', (status) => resolve(status));
+        child.stdin.on('error', () => undefined);
+        child.stdin.write(`${shares[0]}\n${shares[1]}\n`);
+      });
+      expect(killed).not.toBe(0);
+      expect(rekeyStarted()).toBe(true);
+      const blocked = await rekey([shares[0]!, shares[1]!], () => []);
+      expect(redact(blocked.stderr)).toMatch(/a rekey is already in progress/);
+      expect(blocked.printed.length).toBe(0);
+      // The refused run must not drop the other run's rekey.
+      expect(rekeyStarted()).toBe(true);
+      ok(bootstrapCmd(['rekey', '--cancel']), 'rekey --cancel');
+      expect(rekeyStarted()).toBe(false);
+      restart();
+      ok(unsealWith(shares[1]!, shares[2]!), 'unseal with the old shares');
+    });
+
+    it('two current shares make 3 new shares; after the check only the NEW shares unseal', async () => {
+      const old = [...shares];
+      const r = await rekey([old[1]!, old[2]!], (printed) => [printed[2]!, printed[0]!]);
+      expect(r.status, redact(r.stderr)).toBe(0);
+      expect(r.printed.length).toBe(3);
+      expect(new Set([...r.printed, ...old]).size).toBe(6);
+      for (const s of r.printed) expect(r.stdout.split(s).length - 1).toBe(1);
+      expect(r.stdout).toMatch(/the OLD shares no longer work/);
+      expect(rekeyStarted()).toBe(false);
+      expect(await sealStatus()).toMatchObject({ sealed: false, n: 3, t: 2 });
+
+      restart();
+      const stale = unsealWith(old[0]!, old[1]!);
+      expect(stale.status).not.toBe(0);
+      expect((await sealStatus()).sealed).toBe(true);
+      shares = r.printed;
+      ok(unsealWith(shares[0]!, shares[1]!), 'unseal with the new shares');
+      expect((await sealStatus()).sealed).toBe(false);
+    });
+
+    it('the data is unchanged and a root token comes from the new shares', () => {
+      const rootToken = newRootToken();
+      const r = ok(
+        inOpenbao(
+          'BAO_ADDR=http://127.0.0.1:8210 bao read -field=type transit/keys/run-contract; ' +
+            'BAO_ADDR=http://127.0.0.1:8210 bao token revoke -self >/dev/null',
+          `${rootToken}\n`,
+        ),
+        'read the Transit key',
+      );
+      expect(r.stdout.trim()).toBe('ed25519');
+    });
+
+    it('no new share is stored in the container or the working folder', () => {
+      const r = ok(
+        composeWith(
+          shares.join('\n') + '\n',
+          'exec',
+          '-T',
+          'openbao',
+          'sh',
+          '-c',
+          'grep -rlF -f /dev/stdin /openbao /tmp /root /home /etc /var 2>/dev/null; true',
+        ),
+        'scan container',
+      );
+      expect(r.stdout.trim()).toBe('');
+      for (const entry of fs.readdirSync(tmp, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const content = fs.readFileSync(path.join(tmp, entry.name), 'utf8');
+        expect(
+          shares.some((s) => content.includes(s)),
+          entry.name,
+        ).toBe(false);
+      }
     });
   });
 });
