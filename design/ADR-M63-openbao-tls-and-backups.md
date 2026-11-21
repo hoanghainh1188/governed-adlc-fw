@@ -75,7 +75,7 @@
 
 ## 7. Preparing the first deployment: the rekey command and the measurement (PR 3a)
 
-- **Context.** Runbook T11 §8.3 gave `bao operator rekey` by hand and said it was not tested. D-08 A10 AC4 asks for a resource measurement on the server, and the repository had no tool for it. Both are needed on the day of the first deployment (QUESTIONS #756–#760).
+- **Context.** Runbook T11 §8.3 gave `bao operator rekey` by hand and said it was not tested. D-08 A10 AC4 asks for a resource measurement on the server, and the repository had no tool for it. Both are needed on the day of the first deployment (QUESTIONS #756–#760; the two choices of the rekey below: Harry, 2026-11-21, #760).
 - **`pnpm openbao:bootstrap rekey`.**
   - It uses the key-share endpoints `sys/rekey/*` on the key-holder listener inside the container, without a token, like `root-token` (ADR-M19): `bao operator rekey` asks for each share at its own prompt.
   - **Always with `require_verification`.** OpenBao gives the new shares but keeps the old ones until two new shares came back. A share that was copied wrongly, or that its holder cannot decrypt, therefore locks nobody out. A wrong answer, an empty answer, Ctrl-C or a closed terminal drops the rekey; `rekey --cancel` drops one that a killed run left open, and a new run never drops another run's rekey. After every stop the command reads the state from OpenBao before it says anything: "unchanged" only when OpenBao confirmed the drop; when the check may have passed while the answer was lost, it says to keep both sets of shares.
@@ -94,4 +94,4 @@
 | 0.2 | 2026-10-09 | Claude Code (task A10, PR 2) | §5: backups and the restore drill (QUESTIONS #326–#329) |
 | 0.3 | 2026-10-09 | Claude Code (task A10) | §6: ClickHouse access management moves from `langfuse` to the loopback-only `sdlc_admin` (QUESTIONS #330; supersedes part of ADR-M53 §2.3) |
 | 0.4 | 2026-10-16 | Harry | Accepted (the design is built and merged; open items stay follow-ups) |
-| 0.5 | 2026-11-21 | Claude Code (task A10, PR 3a), for Harry's approval | §7: `openbao:bootstrap rekey` with verification and PGP keys, `pnpm measure` (QUESTIONS #756–#760) |
+| 0.5 | 2026-11-21 | Claude Code (task A10, PR 3a), approved by Harry (QUESTIONS #760) | §7: `openbao:bootstrap rekey` with verification and PGP keys, `pnpm measure` (QUESTIONS #756–#760) |
