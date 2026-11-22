@@ -10,7 +10,7 @@ import {
   FreshDeployment,
   type OpenBaoState,
 } from '../../steps/dist/fresh-deployment.js';
-import { parseInitOutput, SecretBag } from '../../steps/dist/secrets.js';
+import { SecretBag } from '../../steps/dist/secrets.js';
 
 import { checkDevModelsGuardrails, DEFAULT_OLLAMA_URL, validatePassphrase } from './guardrails.js';
 import {
@@ -149,11 +149,7 @@ export async function devModelsUp(deps: DevModelsUpDeps): Promise<DevModelsUpRes
 
     deps.log('[3/4] Initialising throw-away dev OpenBao and provisioning LiteLLM secrets...');
     const passphrase = bag.keep(await promptNewPassphrase(deps.prompts, deps.log));
-    const init = deploy.ok(await deploy.bootstrap(['init', '--stdout-not-tty']), 'openbao:init');
-    for (const m of init.stdout.matchAll(/^(?:Unseal Key \d+|Initial Root Token): (\S+)$/gm)) {
-      bag.keep(m[1]!);
-    }
-    const { shares, rootToken } = parseInitOutput(init.stdout);
+    const { shares, rootToken } = await deploy.initOpenBao({ shares: 3, threshold: KEY_THRESHOLD });
     let activeToken = rootToken;
     deps.onActiveCleanup?.(async () => {
       if (activeToken) await deploy.revoke(activeToken);

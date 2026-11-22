@@ -112,15 +112,17 @@ describe('V24 dev:models:up fresh bootstrap, reboot unseal, and token revocation
       if (cmd.endsWith('bootstrap.sh') && args[0] === 'status') {
         return Promise.resolve({ status: 0, stdout: 'OpenBao is uninitialised\n', stderr: '' });
       }
-      if (cmd.endsWith('bootstrap.sh') && args[0] === 'init') {
+      if (cmd === 'docker' && args.join(' ').includes('bao operator init')) {
         return Promise.resolve({
           status: 0,
-          stdout: [
-            'Unseal Key 1: share-aaaaaaaaaaaaaaaaaaaaaa',
-            'Unseal Key 2: share-bbbbbbbbbbbbbbbbbbbbbb',
-            'Unseal Key 3: share-cccccccccccccccccccccc',
-            'Initial Root Token: hvs.rootdevtoken00000000000000',
-          ].join('\n'),
+          stdout: JSON.stringify({
+            unseal_keys_b64: [
+              'share-aaaaaaaaaaaaaaaaaaaaaa',
+              'share-bbbbbbbbbbbbbbbbbbbbbb',
+              'share-cccccccccccccccccccccc',
+            ],
+            root_token: 'hvs.rootdevtoken00000000000000',
+          }),
           stderr: '',
         });
       }
@@ -237,15 +239,17 @@ describe('V24 dev:models:up fresh bootstrap, reboot unseal, and token revocation
       if (cmd.endsWith('bootstrap.sh') && args[0] === 'status') {
         return Promise.resolve({ status: 0, stdout: 'OpenBao is uninitialised\n', stderr: '' });
       }
-      if (cmd.endsWith('bootstrap.sh') && args[0] === 'init') {
+      if (cmd === 'docker' && args.join(' ').includes('bao operator init')) {
         return Promise.resolve({
           status: 0,
-          stdout: [
-            'Unseal Key 1: share-aaaaaaaaaaaaaaaaaaaaaa',
-            'Unseal Key 2: share-bbbbbbbbbbbbbbbbbbbbbb',
-            'Unseal Key 3: share-cccccccccccccccccccccc',
-            'Initial Root Token: hvs.rootdevtoken00000000000000',
-          ].join('\n'),
+          stdout: JSON.stringify({
+            unseal_keys_b64: [
+              'share-aaaaaaaaaaaaaaaaaaaaaa',
+              'share-bbbbbbbbbbbbbbbbbbbbbb',
+              'share-cccccccccccccccccccccc',
+            ],
+            root_token: 'hvs.rootdevtoken00000000000000',
+          }),
           stderr: '',
         });
       }
