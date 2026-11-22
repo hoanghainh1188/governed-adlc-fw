@@ -6,6 +6,7 @@ import type { Plan } from '@sdlc/core';
 export function presentPlanVersion(plan: Plan): Record<string, unknown> {
   return {
     version: plan.version,
+    plan_source: plan.plan_source,
     commit_sha: plan.commit_sha,
     plan_sha256: plan.plan_sha256,
     planned_files: [...plan.planned_files],

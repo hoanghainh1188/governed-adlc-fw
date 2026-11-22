@@ -800,14 +800,14 @@ cmd_runner_evidence_credentials() {
       [ "${#secret}" -eq 60 ] || exit 1
       printf "{\"access_key\":\"%s\",\"secret_key\":\"%s\"}" "$access" "$secret" |
         bao kv put -mount=kv runner/evidence - >/dev/null
-      printf "s3.configure -user runner-evidence -access_key %s -secret_key %s -actions Write:evidence/proposals/*,Write:evidence/diffs/*,Read:evidence/diffs/* -apply\n" "$access" "$secret"' |
+      printf "s3.configure -user runner-evidence -access_key %s -secret_key %s -actions Write:evidence/proposals/*,Write:evidence/diffs/*,Read:evidence/diffs/*,Read:evidence/plans/* -apply\n" "$access" "$secret"' |
     compose exec -T seaweedfs $weed >/dev/null 2>&1 ||
     fail "could not create the runner evidence credentials (token valid? OpenBao configured? SeaweedFS running?)"
   [ "$(kv_version)" = "$((before + 1))" ] ||
     fail "kv/runner/evidence was not stored (token valid? OpenBao configured?); run the command again"
   echo "s3.configure" | compose exec -T seaweedfs sh -c "$weed 2>/dev/null | grep -q '\"name\": *\"runner-evidence\"'" ||
     fail "SeaweedFS has no identity runner-evidence; run the command again"
-  say "kv/runner/evidence stored; SeaweedFS identity runner-evidence (Write:evidence/proposals/*, Write:evidence/diffs/*, Read:evidence/diffs/*) applied; restart sdlc-runner to use it"
+  say "kv/runner/evidence stored; SeaweedFS identity runner-evidence (Write:evidence/proposals/*, Write:evidence/diffs/*, Read:evidence/diffs/*, Read:evidence/plans/*) applied; restart sdlc-runner to use it"
 }
 
 # SeaweedFS identities of the platform processes, made the same way: the keys are made inside the
@@ -860,7 +860,7 @@ s3_credentials() {
 # pack_evidence_credentials <role: api | worker> <access key prefix, 9 characters> <service>
 pack_evidence_credentials() {
   s3_credentials "$1" evidence "$2" \
-    'Read:evidence/proposals/*,Read:evidence/diffs/*,Read:evidence/packs/*,Write:evidence/packs/*' "$3"
+    'Read:evidence/proposals/*,Read:evidence/diffs/*,Read:evidence/packs/*,Write:evidence/packs/*,Read:evidence/plans/*,Write:evidence/plans/*' "$3"
 }
 
 # The worker's purge identity (E05, ADR-M51 §2.3): deletes every version of evidence files whose

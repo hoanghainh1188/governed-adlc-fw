@@ -186,6 +186,7 @@ export type LinkedSpecView = z.infer<typeof linkedSpecSchema>;
 
 const planVersionSchema = z.object({
   version: z.number().int(),
+  plan_source: z.enum(['repo', 'uploaded']).optional(),
   commit_sha: code.nullable(),
   plan_sha256: code,
   planned_files: z.array(z.string().max(1024)).max(1000),

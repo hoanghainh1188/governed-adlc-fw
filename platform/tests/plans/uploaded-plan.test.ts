@@ -172,9 +172,7 @@ describe('U10 uploaded plan config & submission (#559, ADR-M113)', () => {
 
     expect(first.plan_source).toBe('uploaded');
     expect(first.commit_sha).toBeNull();
-    expect(first.storage_uri).toMatch(
-      /^s3:\/\/evidence\/tenant-1\/plans\/intent-1\/[0-9a-f]{64}\.yaml$/,
-    );
+    expect(first.storage_uri).toMatch(/^s3:\/\/evidence\/tenant-1\/intent-1\/[0-9a-f]{64}\.yaml$/);
     expect(first.submitted_by).toBe('user-a');
     expect(first.planned_files).toEqual(['src/orders/tax.ts']);
     expect(first.allowed_tools).toEqual(['file_editor', 'terminal']);

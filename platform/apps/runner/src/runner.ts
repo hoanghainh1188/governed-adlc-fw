@@ -185,6 +185,7 @@ export class Runner {
           ...(this.#deps.feedbackReader ? { feedbackReader: this.#deps.feedbackReader } : {}),
           unwrapper: this.#deps.unwrapper,
           ...this.#planFileFor(contract.run_id),
+          ...(this.#agent.evidence ? { planStore: this.#agent.evidence } : {}),
         },
         request,
       );

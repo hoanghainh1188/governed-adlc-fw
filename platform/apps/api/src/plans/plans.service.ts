@@ -9,11 +9,13 @@ import {
   planAccess,
   PlanError,
   submitPlanFromGitHost,
+  submitUploadedPlan,
   type Intent,
+  type Plan,
   type SpecGitHost,
   type TenantScope,
 } from '@sdlc/core';
-import type { IntentWorkflowSignals } from '@sdlc/contracts';
+import type { EvidenceStore, IntentWorkflowSignals } from '@sdlc/contracts';
 import type { z } from 'zod';
 
 import type { Principal } from '../auth/principal.js';
@@ -27,6 +29,8 @@ export class PlansService {
     private readonly git: SpecGitHost | undefined,
     private readonly signals: IntentWorkflowSignals,
     private readonly logger: WakeLogger,
+    /** U10 (ADR-M113): evidence store with `keyPrefix: 'plans/'` for uploaded Low-risk plans. */
+    private readonly planStore?: EvidenceStore,
   ) {}
 
   async submit(
@@ -35,19 +39,35 @@ export class PlansService {
     body: z.infer<typeof submitPlanSchema>,
   ): Promise<Record<string, unknown>> {
     const intent = await this.intent(p.scope, ref);
-    if (!this.git) {
-      // Check access first, so the answer is the same as with a Git host.
-      const access = await planAccess(p.scope, intent.project_id, p.userId);
-      if (!access.canRead) throw new CommandError('intent_not_found', `intent ${ref} not found`);
-      if (!access.canSubmit)
-        throw new CommandError('forbidden', 'the caller may not submit a plan');
-      throw new PlanError('git_host_unavailable', 'no Git host in this process');
+    let plan: Plan;
+    if (body.plan_yaml !== undefined) {
+      if (!this.planStore) {
+        const access = await planAccess(p.scope, intent.project_id, p.userId);
+        if (!access.canRead) throw new CommandError('intent_not_found', `intent ${ref} not found`);
+        if (!access.canSubmit)
+          throw new CommandError('forbidden', 'the caller may not submit a plan');
+        throw new PlanError('plan_store_unavailable', 'no evidence store in this process');
+      }
+      plan = await submitUploadedPlan(p.scope, this.planStore, {
+        intent,
+        content: body.plan_yaml,
+        actorId: p.userId,
+      });
+    } else {
+      if (!this.git) {
+        // Check access first, so the answer is the same as with a Git host.
+        const access = await planAccess(p.scope, intent.project_id, p.userId);
+        if (!access.canRead) throw new CommandError('intent_not_found', `intent ${ref} not found`);
+        if (!access.canSubmit)
+          throw new CommandError('forbidden', 'the caller may not submit a plan');
+        throw new PlanError('git_host_unavailable', 'no Git host in this process');
+      }
+      plan = await submitPlanFromGitHost(p.scope, this.git, {
+        intent,
+        commitSha: body.commit_sha ?? null,
+        actorId: p.userId,
+      });
     }
-    const plan = await submitPlanFromGitHost(p.scope, this.git, {
-      intent,
-      commitSha: body.commit_sha ?? null,
-      actorId: p.userId,
-    });
     await wakeQuietly(
       this.signals,
       { tenantId: p.scope.tenantId, intentId: intent.id },
