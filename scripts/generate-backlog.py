@@ -550,6 +550,27 @@ t("V20","Server","Team access and the runner link in the `server:setup` settings
   "No secret in the settings or the `.env` keys it writes; a value already in `.env` that differs from the settings is refused, never overwritten; each step checks the state and skips what is done",
   "Tests: the settings (valid, refused), the `.env` keys, the order (the CIDR before `configure`, the profiles of step 7), a second run; the deploy README, runbook T11 and ADR-M98 updated in the same task"],
  "QUESTIONS #673 (Harry, 2026-11-11). PR 1 of the three (V20, V19, V18); the runner host itself comes with V18")
+t("V21","UX","Per-gate HOTL block window (`hotl_block_window_by_gate`)","S",["B07"],"FR-14, NFR-08",
+ "platform/packages/config/src/schema.ts, platform/packages/core/src/workflow/hotl.ts, design/D-03-mvp-architecture.md, platform/tests/*",
+ ["Optional `oversight.hotl_block_window_by_gate` supports per-gate overrides for G2, G3, G5 and G6 (including `0m` for G6) while falling back to `oversight.hotl_block_window` when omitted",
+  "Setting `G6: 0m` allows a passed G6 (CI green, no blocking security findings) to move to G7 without opening a waiting window",
+  "Mandatory HITL gates (G1, G7, production G8) and separation of duties (Rule M21) remain unchanged",
+  "Unit and workflow tests cover fallback, per-gate overrides, `0m` duration and invalid gate or duration rejection"],
+ "GitHub issue #557 (Harry, 2026-11-22). Implements Option B1 of `design/POSITIONING.md` §6.1 to reduce Low-risk waiting time")
+t("V22","Server","Lite Mode deployment profile (`server:up:lite` and observability-off checks)","S",["V07","V16"],"NFR-01, NFR-06",
+ "package.json, platform/deploy/doctor/*, platform/apps/worker/*, platform/deploy/README.md, platform/tests/*",
+ ["`pnpm server:up:lite` starts only `core`, `platform`, `sandbox` and `access` profiles (~12 containers on 8–16 GB RAM) without ClickHouse, Langfuse, OTel Collector, `knowledge-db` or vLLM",
+  "`pnpm doctor` exits 0 when `SDLC_OBSERVABILITY_ENABLED=false` and reports observability as intentionally disabled instead of failing",
+  "Worker retention loop skips the Langfuse purge pass cleanly when observability is disabled while still enforcing `evidence_retention_days` and daily audit anchoring",
+  "Token budgets, LiteLLM cost caps, `cost_records`, Evidence Packs and G1–G8 guarantees work identically to Full Stack"],
+ "GitHub issue #558 (Harry, 2026-11-22). Reduces SME/pilot footprint for M-F and consulting rollout")
+t("U10","UX","Low-risk uploaded plan (`plan_source: uploaded`, no PR to main before G3)","M",["B09","E02"],"FR-02, FR-11, FR-20, FR-40",
+ "design/ADR (next free), design/D-03-mvp-architecture.md, platform/packages/core/*, platform/apps/api/*, platform/apps/cli/*, platform/apps/runner/*, platform/tests/*",
+ ["High and Critical risk tiers always require `plan_source: repo`; Low (and optionally Medium via project config) may submit via `plan_source: uploaded` without merging a plan PR to `main` before G3",
+  "Uploaded plan bytes are stored in SeaweedFS and verified by `plan_sha256` on runner read and Evidence Pack build (fail-closed on hash mismatch; never logged or stored in plaintext DB columns)",
+  "Separation of duties (Rule M21), file scope enforcement (`planned_files`), tool allow-lists and `change_flags` work identically to repo-backed plans",
+  "Unit, DB, API, CLI (`adlc plan submit <INT> --file <path>`) and runner integration tests pass"],
+ "GitHub issue #559 (Harry, 2026-11-22). Removes the largest developer friction on Low-risk tasks (QUESTIONS #230)")
 t("V14","Later","Human-effort baseline for the agent report","S",["V13"],"FR-53",
  "platform/packages/core (intents), migrations, platform/apps/api, platform/apps/cli, platform/tests/*, design/D-05",
  ["A person with a write role may record an estimate of the human effort for an intent (hours, a number; codes and numbers only, no text); empty by default",

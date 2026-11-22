@@ -36,6 +36,8 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **L02** Evaluation harness: agents, models and prompts measured on a fixed task set (data for the GPU decision) (done, v0.3.0)
 - **V13** Agent efficiency report from real runs: `sdlc metrics agents` (done, v0.3.0)
 - **V17** `sdlc admin project apply`: a project and its team from one file (done, v0.8.0)
+- **V21** Per-gate HOTL block window (`hotl_block_window_by_gate`)
+- **U10** Low-risk uploaded plan (`plan_source: uploaded`, no PR to main before G3)
 - **H01** Threat model for agent runs and attack tests (done, v0.3.0)
 
 ## DEV: Rules as checks for contributors and Claude Code: a rules register, hooks, lint and tests (QUESTIONS #479)
@@ -78,6 +80,7 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **V18** One command to set up the runner host (done, v0.12.0)
 - **V19** `pnpm server:setup` runs steps 8–13 (done, v0.12.0)
 - **V20** Team access and the runner link in the `server:setup` settings (done, v0.12.0)
+- **V22** Lite Mode deployment profile (`server:up:lite` and observability-off checks)
 - **H02** Dependencies an agent adds: licence, known vulnerabilities, name checks (done, v0.8.0)
 - **H03** Design: deleting a client's data on request (done, v0.8.0)
 - **H03a** Client data deletion 1: tenant states and the anonymization of people (done, v0.12.0)

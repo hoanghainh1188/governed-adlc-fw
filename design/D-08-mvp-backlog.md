@@ -44,14 +44,14 @@
 | M-D | G7–G8 + evidence + cost | 8 | S×5 · M×3 |
 | Pre-M-E | Before the trial M-E: spec tools and document knowledge (QUESTIONS #285) | 4 | S×2 · M×2 |
 | M-E | The trial, run by the community (QUESTIONS #340) | 3 | S×1 · M×2 |
-| UX | Friendlier for users and deployers: v0.1.1, v0.2.0, then v0.3.0 with the agent measures and `sdlc help`; V17 in v0.8.0 (QUESTIONS #355, #364, #420, #424) | 15 | S×3 · M×10 · L×2 |
+| UX | Friendlier for users and deployers: v0.1.1, v0.2.0, then v0.3.0 with the agent measures and `sdlc help`; V17 in v0.8.0 (QUESTIONS #355, #364, #420, #424) | 17 | S×4 · M×11 · L×2 |
 | DEV | Rules as checks for contributors and Claude Code: a rules register, hooks, lint and tests (QUESTIONS #479) | 1 | M×1 |
 | EVAL | Evaluation for managers: they plan evaluations, get reports and recommendations to improve agents, prompts and models; on the server and on developer machines. After v0.3.0, before EXT (QUESTIONS #450) | 7 | S×2 · M×4 · L×1 |
 | EXT | Other Git hosts first, then other agents, tools for agents, document knowledge: v0.6.0, X12 in v0.7.0 (QUESTIONS #361, #420, #424; v0.5.0 has the X09 spike) | 9 | S×5 · M×2 · L×2 |
 | Models | Self-hosted models: L01 PR 1 and L03 in v0.6.0; then L01 PR 2 and the L03b measurement (QUESTIONS #362, #424) | 3 | S×2 · M×1 |
-| Server | A team on a server: v0.7.0 with O01, O02, H04, H05, V15; v0.8.0 with H02, H03, V16; O03 in v0.10.0; O04, O05 in v0.11.0; toward v1.0 (QUESTIONS #363) | 19 | S×5 · M×14 |
+| Server | A team on a server: v0.7.0 with O01, O02, H04, H05, V15; v0.8.0 with H02, H03, V16; O03 in v0.10.0; O04, O05 in v0.11.0; toward v1.0 (QUESTIONS #363) | 20 | S×6 · M×14 |
 | Later | Not scheduled yet (was "MVP+1"; U01–U03 were started early there and are done; U07 and U08 are done in v0.8.0) | 21 | S×4 · M×11 · L×6 |
-| **Total** | | **130** | |
+| **Total** | | **133** | |
 
 ### Order and dependencies between milestones
 
@@ -1103,6 +1103,36 @@ flowchart LR
 
 > Note: QUESTIONS #617 and #618 (Harry, 2026-10-28). Comes before V16. Bugs from trial reports come first (R123). Done: `sdlc admin project apply` (schema `projectFileSchema` in `@sdlc/api-schemas`; handbook Ch.19 §19.8d)
 
+#### V21. Per-gate HOTL block window (`hotl_block_window_by_gate`)
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| S | B07 | FR-14, NFR-08 | platform/packages/config/src/schema.ts, platform/packages/core/src/workflow/hotl.ts, design/D-03-mvp-architecture.md, platform/tests/* |
+
+**Acceptance criteria**
+
+- [ ] AC1: Optional `oversight.hotl_block_window_by_gate` supports per-gate overrides for G2, G3, G5 and G6 (including `0m` for G6) while falling back to `oversight.hotl_block_window` when omitted
+- [ ] AC2: Setting `G6: 0m` allows a passed G6 (CI green, no blocking security findings) to move to G7 without opening a waiting window
+- [ ] AC3: Mandatory HITL gates (G1, G7, production G8) and separation of duties (Rule M21) remain unchanged
+- [ ] AC4: Unit and workflow tests cover fallback, per-gate overrides, `0m` duration and invalid gate or duration rejection
+
+> Note: GitHub issue #557 (Harry, 2026-11-22). Implements Option B1 of `design/POSITIONING.md` §6.1 to reduce Low-risk waiting time
+
+#### U10. Low-risk uploaded plan (`plan_source: uploaded`, no PR to main before G3)
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| M | B09, E02 | FR-02, FR-11, FR-20, FR-40 | design/ADR (next free), design/D-03-mvp-architecture.md, platform/packages/core/*, platform/apps/api/*, platform/apps/cli/*, platform/apps/runner/*, platform/tests/* |
+
+**Acceptance criteria**
+
+- [ ] AC1: High and Critical risk tiers always require `plan_source: repo`; Low (and optionally Medium via project config) may submit via `plan_source: uploaded` without merging a plan PR to `main` before G3
+- [ ] AC2: Uploaded plan bytes are stored in SeaweedFS and verified by `plan_sha256` on runner read and Evidence Pack build (fail-closed on hash mismatch; never logged or stored in plaintext DB columns)
+- [ ] AC3: Separation of duties (Rule M21), file scope enforcement (`planned_files`), tool allow-lists and `change_flags` work identically to repo-backed plans
+- [ ] AC4: Unit, DB, API, CLI (`adlc plan submit <INT> --file <path>`) and runner integration tests pass
+
+> Note: GitHub issue #559 (Harry, 2026-11-22). Removes the largest developer friction on Low-risk tasks (QUESTIONS #230)
+
 #### H01. Threat model for agent runs and attack tests
 
 | Size | Depends on | Requirements | Code area |
@@ -1528,6 +1558,21 @@ flowchart LR
 - [ ] AC4: Tests: the settings (valid, refused), the `.env` keys, the order (the CIDR before `configure`, the profiles of step 7), a second run; the deploy README, runbook T11 and ADR-M98 updated in the same task
 
 > Note: QUESTIONS #673 (Harry, 2026-11-11). PR 1 of the three (V20, V19, V18); the runner host itself comes with V18
+
+#### V22. Lite Mode deployment profile (`server:up:lite` and observability-off checks)
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| S | V07, V16 | NFR-01, NFR-06 | package.json, platform/deploy/doctor/*, platform/apps/worker/*, platform/deploy/README.md, platform/tests/* |
+
+**Acceptance criteria**
+
+- [ ] AC1: `pnpm server:up:lite` starts only `core`, `platform`, `sandbox` and `access` profiles (~12 containers on 8–16 GB RAM) without ClickHouse, Langfuse, OTel Collector, `knowledge-db` or vLLM
+- [ ] AC2: `pnpm doctor` exits 0 when `SDLC_OBSERVABILITY_ENABLED=false` and reports observability as intentionally disabled instead of failing
+- [ ] AC3: Worker retention loop skips the Langfuse purge pass cleanly when observability is disabled while still enforcing `evidence_retention_days` and daily audit anchoring
+- [ ] AC4: Token budgets, LiteLLM cost caps, `cost_records`, Evidence Packs and G1–G8 guarantees work identically to Full Stack
+
+> Note: GitHub issue #558 (Harry, 2026-11-22). Reduces SME/pilot footprint for M-F and consulting rollout
 
 #### H02. Dependencies an agent adds: licence, known vulnerabilities, name checks
 
