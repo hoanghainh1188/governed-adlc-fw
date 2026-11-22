@@ -8,6 +8,7 @@ This folder runs the infrastructure that the platform reuses, on one server, wit
 |---|---|
 | **Try on one laptop (macOS / Linux)** | [TRIAL.md](../../TRIAL.md) (`pnpm trial:up` — 20–40 min) |
 | **Linux production server (Ubuntu 22.04/24.04)** | [Requirements](#requirements) → [Create the GitHub App](#create-the-github-app-operator) → [Fresh deployment](#fresh-deployment-operator) (`pnpm server:setup`) |
+| **Lite Mode (pilot / SME, 16 GB RAM)** | [Lite Mode (pilot / SME)](#lite-mode-pilot--sme) (`pnpm server:up:lite`, ~12 containers, no ClickHouse/Langfuse) |
 | **Isolated runner (rootless Docker / separate VM)** | [The runner on its own Docker Engine](#the-runner-on-its-own-docker-engine-operator) (`runner-host-setup.sh`) |
 | **Self-hosted GPU models (vLLM)** | [Self-hosted model](#self-hosted-model-operator) (`models-local`) or [Separate GPU host](#self-hosted-model-on-a-separate-gpu-host-operator) (`models-remote`) |
 | **Day-2 operations** | [Restart after a reboot](#restart-after-a-reboot) · [Team access](#team-access-operator) · [GitHub webhooks](#github-webhooks-operator) · [Backup and restore](#backup-and-restore) · [Upgrade](#upgrade) · [Doctor](#doctor-pnpm-doctor) · [Alerts](#alerts) · [Troubleshooting](#troubleshooting) |
@@ -29,6 +30,19 @@ This folder runs the infrastructure that the platform reuses, on one server, wit
 | `runner-link` | `registry` only, with the overlay `docker-compose.runner-link.yml` that publishes the runner's link ports on `SDLC_RUNNER_LINK_ADDR` (O01, [ADR-M91](../../design/ADR-M91-runner-own-engine.md)) | On the server, instead of `sandbox`, when the runner runs on its own Engine (`pnpm compose:runner-link`). See [The runner on its own Docker Engine](#the-runner-on-its-own-docker-engine-operator) |
 
 Three one-shot jobs run at every start and then exit: `temporal-schema` (creates or upgrades the Temporal schemas), `temporal-namespace` (creates the namespace) and `seaweedfs-init` (creates the `evidence` and `langfuse` buckets). All three are safe to re-run.
+
+## Lite Mode (pilot / SME)
+
+For pilot projects and small teams that want the full G1–G8 governance platform without the RAM and operational overhead of ClickHouse, Langfuse, pgvector (`knowledge-db`), or local vLLM (V22, `#558`):
+
+- **Hardware:** 1 Linux VM with **4 vCPU, 16 GB RAM, 50 GB SSD** (~12 running containers instead of ~22–25).
+- **Start:**
+  ```bash
+  pnpm server:up:lite         # core + models + platform + sandbox
+  pnpm server:up:lite:access  # same, plus Team Access TLS reverse proxy
+  ```
+- **Env setting:** set `SDLC_OBSERVABILITY_ENABLED=false` in `platform/deploy/.env`. `pnpm doctor` then reports observability as intentionally disabled (`ok`, exit 0) and ignores `worker.langfuse_missing` log events, while the worker retention loop skips the Langfuse purge pass (`SDLC_WORKER_LANGFUSE_URL=off`) and continues enforcing `evidence_retention_days` and daily audit anchoring.
+- **Unchanged guarantees:** token budgets, LiteLLM cost caps, `cost_records` in PostgreSQL, SeaweedFS WORM Evidence Packs, OpenBao Ed25519 Run Contracts, and G1–G8 separation of duties work identically to Full Stack.
 
 ## Requirements
 

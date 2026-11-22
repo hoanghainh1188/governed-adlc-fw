@@ -16,6 +16,13 @@ export const CORE_SERVICES = [
   'temporal-ui',
   'valkey',
 ] as const;
+/** Optional services of the profile `observability` (omitted in Lite Mode; V22, #558). */
+export const OBSERVABILITY_SERVICES = [
+  'clickhouse',
+  'langfuse-web',
+  'langfuse-worker',
+  'otel-collector',
+] as const;
 /** One-shot jobs (`restart: "no"`), the same list as `up.sh` `JOBS` (static test). */
 export const JOBS = [
   'access-tls-init',
@@ -403,7 +410,11 @@ function logChecks(f: OperatorFacts): CheckResult[] {
       ),
     ];
   }
-  const out = f.logs.events.map((event) =>
+  const observabilityDisabled = f.envFile.facts?.values.SDLC_OBSERVABILITY_ENABLED === 'false';
+  const events = observabilityDisabled
+    ? f.logs.events.filter((event) => event !== 'worker.langfuse_missing')
+    : f.logs.events;
+  const out = events.map((event) =>
     problem(
       'credentials.logs',
       'warning',
@@ -501,10 +512,29 @@ function imageChecks(f: OperatorFacts, services: readonly ServiceState[]): Check
   });
 }
 
+function observabilityCheck(f: OperatorFacts, services: readonly ServiceState[]): CheckResult {
+  const flag = f.envFile.facts?.values.SDLC_OBSERVABILITY_ENABLED;
+  const active = OBSERVABILITY_SERVICES.filter((name) => running(services, name));
+  if (flag === 'false') {
+    return active.length === 0
+      ? ok('services.observability', text('doctor.observability.disabled'))
+      : problem(
+          'services.observability',
+          'warning',
+          text('doctor.observability.disabled_but_running', { names: active.join(', ') }),
+          readme('Lite Mode (pilot / SME)'),
+        );
+  }
+  return active.length > 0
+    ? ok('services.observability', text('doctor.observability.enabled', { count: active.length }))
+    : ok('services.observability', text('doctor.observability.not_started'));
+}
+
 export function stackChecks(f: OperatorFacts): CheckResult[] {
   const tls = tlsChecks(f);
   const ids = [
     'services.health',
+    'services.observability',
     'openbao.state',
     'db.migrations',
     'db.table_size',
@@ -518,9 +548,9 @@ export function stackChecks(f: OperatorFacts): CheckResult[] {
   if (!f.docker || !f.envFile.exists || f.services === undefined) {
     const reason = !f.docker ? 'doctor.skipped.no_docker' : 'doctor.skipped.no_env';
     return [
-      ...ids.slice(0, 2).map((id) => skipped(id, reason)),
+      ...ids.slice(0, 3).map((id) => skipped(id, reason)),
       ...tls,
-      ...ids.slice(2).map((id) => skipped(id, reason)),
+      ...ids.slice(3).map((id) => skipped(id, reason)),
     ];
   }
   if (f.services === null) {
@@ -531,9 +561,10 @@ export function stackChecks(f: OperatorFacts): CheckResult[] {
         text('doctor.services.ps_failed'),
         readme('Troubleshooting'),
       ),
+      skipped('services.observability', 'doctor.skipped.ps_failed'),
       skipped('openbao.state', 'doctor.skipped.ps_failed'),
       ...tls,
-      ...ids.slice(2).map((id) => skipped(id, 'doctor.skipped.ps_failed')),
+      ...ids.slice(3).map((id) => skipped(id, 'doctor.skipped.ps_failed')),
     ];
   }
   const services = f.services;
@@ -545,13 +576,15 @@ export function stackChecks(f: OperatorFacts): CheckResult[] {
         text('doctor.services.stopped'),
         trialFix(f) ?? readme('Restart after a reboot'),
       ),
+      skipped('services.observability', 'doctor.skipped.stopped'),
       skipped('openbao.state', 'doctor.skipped.stopped'),
       ...tls,
-      ...ids.slice(2).map((id) => skipped(id, 'doctor.skipped.stopped')),
+      ...ids.slice(3).map((id) => skipped(id, 'doctor.skipped.stopped')),
     ];
   }
   return [
     ...serviceChecks(services),
+    observabilityCheck(f, services),
     openbaoCheck(f, services),
     ...tls,
     migrationCheck(f, services),

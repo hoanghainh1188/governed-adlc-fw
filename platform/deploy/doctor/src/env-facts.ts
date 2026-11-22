@@ -32,6 +32,8 @@ export const ENV_ALLOWLIST = [
   'SDLC_ACCESS_WEBHOOK_ALLOW_CIDR',
   // The runner on its own Engine (O01, design/ADR-M91): an address, not a secret.
   'SDLC_RUNNER_LINK_ADDR',
+  // Lite Mode (V22, #558): boolean switch (`false` when observability is intentionally disabled).
+  'SDLC_OBSERVABILITY_ENABLED',
 ] as const;
 
 export const PLACEHOLDER = 'CHANGEME';

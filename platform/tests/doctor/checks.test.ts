@@ -588,6 +588,72 @@ describe('pnpm doctor: the checks', () => {
     });
   });
 
+  it('Lite Mode (V22, #558): SDLC_OBSERVABILITY_ENABLED=false reports ok and ignores worker.langfuse_missing', () => {
+    const base = healthyFacts();
+    const results = evaluate(
+      healthyFacts({
+        envFile: {
+          ...base.envFile,
+          facts: {
+            values: { ...base.envFile.facts!.values, SDLC_OBSERVABILITY_ENABLED: 'false' },
+            secrets: base.envFile.facts!.secrets,
+          },
+        },
+        logs: { started: ['sdlc-api', 'sdlc-worker'], events: ['worker.langfuse_missing'] },
+      }),
+    );
+    expect(one(results, 'services.observability')).toMatchObject({
+      status: 'ok',
+      text: { key: 'doctor.observability.disabled' },
+    });
+    expect(one(results, 'credentials.logs')).toMatchObject({
+      status: 'ok',
+    });
+  });
+
+  it('Lite Mode (V22, #558): warns when SDLC_OBSERVABILITY_ENABLED=false but observability containers run', () => {
+    const base = healthyFacts();
+    const results = evaluate(
+      healthyFacts({
+        envFile: {
+          ...base.envFile,
+          facts: {
+            values: { ...base.envFile.facts!.values, SDLC_OBSERVABILITY_ENABLED: 'false' },
+            secrets: base.envFile.facts!.secrets,
+          },
+        },
+        services: [
+          ...RUNNING,
+          { service: 'clickhouse', state: 'running', health: 'healthy', exitCode: 0 },
+          { service: 'langfuse-web', state: 'running', health: 'healthy', exitCode: 0 },
+        ],
+      }),
+    );
+    expect(one(results, 'services.observability')).toMatchObject({
+      status: 'warning',
+      text: {
+        key: 'doctor.observability.disabled_but_running',
+        params: { names: 'clickhouse, langfuse-web' },
+      },
+    });
+  });
+
+  it('observability profile running reports ok with active service count (V22, #558)', () => {
+    const results = evaluate(
+      healthyFacts({
+        services: [
+          ...RUNNING,
+          { service: 'clickhouse', state: 'running', health: 'healthy', exitCode: 0 },
+          { service: 'langfuse-web', state: 'running', health: 'healthy', exitCode: 0 },
+        ],
+      }),
+    );
+    expect(one(results, 'services.observability')).toMatchObject({
+      status: 'ok',
+      text: { key: 'doctor.observability.enabled', params: { count: 2 } },
+    });
+  });
+
   it('Valkey at 90 % of its memory: a warning', () => {
     const results = evaluate(
       healthyFacts({ valkey: { usedBytes: 240 * 1024 ** 2, maxBytes: 256 * 1024 ** 2 } }),

@@ -28,6 +28,7 @@ export const CHECK_IDS = [
   'env.file',
   'env.secrets',
   'services.health',
+  'services.observability',
   'openbao.state',
   'openbao.tls_files',
   'openbao.tls_expiry',

@@ -19,6 +19,8 @@
     "clean": "tsc -b --clean",
     "test:compose": "SDLC_COMPOSE_IT=1 vitest run --config vitest.integration.config.ts platform/tests/integration/deploy",
     "server:setup": "pnpm build && node platform/deploy/server-setup/dist/main.js",
+    "server:up:lite": "platform/deploy/scripts/up.sh core models platform sandbox",
+    "server:up:lite:access": "platform/deploy/scripts/up.sh core models platform sandbox access",
     "trial:up": "pnpm build && node platform/deploy/trial/dist/main.js up",
     "trial:start": "tsc -b platform/deploy/trial && node platform/deploy/trial/dist/main.js start",
     "trial:down": "tsc -b platform/deploy/trial && node platform/deploy/trial/dist/main.js down",
