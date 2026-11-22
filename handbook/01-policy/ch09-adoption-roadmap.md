@@ -32,8 +32,8 @@ The whole company: all projects, all roles, the handbook and the platform.
 | Area | Today |
 |---|---|
 | AI tools | Claude and GitHub Copilot, paid by the company (Chapter 2) |
-| Rules | Handbook Part I being approved; Part II not written yet |
-| Platform | Design approved; **coding paused** until the handbook is agreed |
+| Rules | Handbook Parts I and II approved |
+| Platform | Released and trial-ready (see [README.md](../../README.md) and [CHANGELOG.md](../../CHANGELOG.md)) |
 | Measurement | No baseline yet |
 
 So we are at **Step 0 → Step 1** below.

@@ -69,13 +69,13 @@
 | **Invariant** | A business or technical rule that must always hold | 不変条件 |
 | **Iteration cap / time cap** ◆ | The limits of one agent run: at most so many agent steps (30 by default) and so much time (60 minutes by default). The run stops when it reaches either | 反復上限 / 時間上限 |
 | **Key share / unseal** ◆ | OpenBao's data is encrypted; after every restart it is sealed. Three people hold one key share each, and any two of them unseal it (runbook T11 §4) | キーシェア／アンシール |
-| **Kill switch** ◆ | A way to stop a running agent immediately. On the platform: `sdlc run kill` or `/kill`; the run stops and its credentials are revoked within 5 minutes | 緊急停止 |
+| **Kill switch** ◆ | A way to stop a running agent immediately. On the platform: `adlc run kill` or `/kill`; the run stops and its credentials are revoked within 5 minutes | 緊急停止 |
 | **Last known good version** | The most recent version confirmed to work, used as the rollback target (Chapter 18) | 最終正常版 |
 | **Loop detection** ◆ | The platform stops a run that repeats the same tool call more than 3 times in a row, or makes no progress within a configured time | ループ検知 |
 | **Model** | The AI engine behind a tool (for example a Claude model). Different from the agent that uses it | モデル |
 | **Observation window** | Time after release during which we watch for problems before counting a change as production-qualified (2 weeks) | 観察期間 |
 | **OTLP** | The OpenTelemetry format in which the platform and LiteLLM send their traces to the collector and Langfuse | OTLP |
-| **Operator (platform operator)** ◆ | The person who installs and runs the platform on its server, and uses the `sdlc ops` commands there. Not a project role | 運用担当者 |
+| **Operator (platform operator)** ◆ | The person who installs and runs the platform on its server, and uses the `adlc ops` commands there. Not a project role | 運用担当者 |
 | **Oversight mode** | How people are involved at a gate or action: HITL, HOTL or AUDIT | 監督方式 |
 | **Person A / Person B** | The two people in control of a project in the 2+N model: owner/executor and independent reviewer/approver (Chapter 5) | 担当者A / 承認者B |
 | **Plan file** ◆ | The plan of one intent as a YAML file, `.sdlc/plans/<intent code>.yaml` (template T13), on the default branch. It lists the tasks, the files each may change (`allowed_paths`), the tools and the change flags | 計画ファイル |
@@ -118,7 +118,7 @@
 | **Tenant admin** ◆ | A person who manages a tenant on the platform: projects, users, GitHub accounts, roles, configuration, API tokens, the agent register. Never a gate approver for that reason alone | テナント管理者 |
 | **Token** ◆ | The unit AI providers use to count text and charge for usage (a model token). Different from an API token | トークン |
 | **Viewer** ◆ | The project role `viewer`: may read, never creates intents and never decides | 閲覧者 |
-| **Waiting reason** ◆ | Why an intent does not move, as the platform recorded it (for example a failed G4 check, a block window, a frozen intent). Shown by `sdlc intent show` ("Held: …") and the dashboard ("What holds it") | 待機理由 |
+| **Waiting reason** ◆ | Why an intent does not move, as the platform recorded it (for example a failed G4 check, a block window, a frozen intent). Shown by `adlc intent show` ("Held: …") and the dashboard ("What holds it") | 待機理由 |
 
 ---
 
