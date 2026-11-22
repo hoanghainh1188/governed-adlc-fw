@@ -19,7 +19,13 @@
 // Tunable values come from the project configuration: the matrix (HOTL or HITL, the roles told),
 // the block window and the working calendar.
 import { deadlineFrom } from '@sdlc/config';
-import { GATE_CODES, type GateCode, type ProjectConfig } from '@sdlc/contracts';
+import {
+  GATE_CODES,
+  type Duration,
+  type GateCode,
+  type HotlBlockWindowGate,
+  type ProjectConfig,
+} from '@sdlc/contracts';
 
 import type { CommandGate } from '../commands/gate-input.js';
 
@@ -46,12 +52,28 @@ export function gateBefore(earlier: GateCode, later: GateCode): boolean {
   return GATE_CODES.indexOf(earlier) < GATE_CODES.indexOf(later);
 }
 
-/** When the block window of a HOTL pass closes: the pass time plus the window, working calendar. */
-export function blockWindowEnd(passAt: Date, config: ProjectConfig): Date {
+function isHotlBlockWindowGate(gate: GateCode | undefined): gate is HotlBlockWindowGate {
+  return gate === 'G2' || gate === 'G3' || gate === 'G5' || gate === 'G6';
+}
+
+/** Resolves the configured HOTL block window for `gate`, falling back to `oversight.hotl_block_window`. */
+export function blockWindowDuration(config: ProjectConfig, gate?: GateCode): Duration {
+  if (isHotlBlockWindowGate(gate)) {
+    const override = config.oversight.hotl_block_window_by_gate?.[gate];
+    if (override !== undefined) return override;
+  }
+  return config.oversight.hotl_block_window;
+}
+
+/**
+ * When the block window of a HOTL pass closes: the pass time plus the resolved window on the
+ * working calendar. A `0`-valued override disables waiting immediately, even outside working hours.
+ */
+export function blockWindowEnd(passAt: Date, config: ProjectConfig, gate?: GateCode): Date {
+  const window = blockWindowDuration(config, gate);
+  if (window.value === 0) return passAt;
   // A duration always gives an end; null would only come from "next planned work".
-  return (
-    deadlineFrom(passAt, config.oversight.hotl_block_window, config.escalation.calendar) ?? passAt
-  );
+  return deadlineFrom(passAt, window, config.escalation.calendar) ?? passAt;
 }
 
 /** The pass conditions of a HOTL gate (QUESTIONS #88). The gate's input exists already. */
@@ -114,7 +136,7 @@ async function passedGates(
       gate,
       passId: history.pass,
       passAt: history.passAt,
-      windowEnd: blockWindowEnd(history.passAt, config),
+      windowEnd: blockWindowEnd(history.passAt, config, gate),
     });
   }
   return { passed, block: null };

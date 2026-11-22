@@ -98,6 +98,12 @@ const duration = z.strictObject({
   unit: z.enum(['minutes', 'hours', 'days', 'working_hours', 'working_days']),
 });
 
+/** Per-gate HOTL block window duration (V21, #557): `value: 0` disables waiting for that gate. */
+const hotlBlockWindowGateDuration = z.strictObject({
+  value: nonNegativeInt,
+  unit: z.enum(['minutes', 'hours', 'days', 'working_hours', 'working_days']),
+});
+
 const deadline = z.union([
   duration,
   z.strictObject({ kind: z.literal('end_of_working_day') }),
@@ -174,6 +180,14 @@ export const projectConfigSchema = z.strictObject({
     }),
     hitl_gate_deadline: duration,
     hotl_block_window: duration,
+    hotl_block_window_by_gate: z
+      .strictObject({
+        G2: hotlBlockWindowGateDuration.optional(),
+        G3: hotlBlockWindowGateDuration.optional(),
+        G5: hotlBlockWindowGateDuration.optional(),
+        G6: hotlBlockWindowGateDuration.optional(),
+      })
+      .optional(),
     approval_expiry: duration,
     gate_overdue: z.strictObject({
       severity: z.enum(SEVERITIES),

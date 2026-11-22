@@ -249,7 +249,7 @@ async function viewOf(
   if (notice.kind === 'hotl_passed' && decision) {
     const { config } = await loadEffectiveConfig(scope.projectConfigs, intent.project_id);
     const passAt = await decisionRecordedAt(scope, intent.id, decision.id);
-    windowEnd = passAt === null ? null : blockWindowEnd(passAt, config);
+    windowEnd = passAt === null ? null : blockWindowEnd(passAt, config, decision.gate);
   }
   const agent = notice.agent_id === null ? undefined : await scope.agents.getById(notice.agent_id);
   const proposal = notice.kind === 'run_proposed' ? await lastProposal(scope, intent.id) : null;

@@ -95,6 +95,9 @@ export interface SecurityFindingsPolicy {
   readonly min_severity: Severity;
 }
 
+/** Gates that may define a per-gate HOTL block window override (V21, #557). */
+export type HotlBlockWindowGate = 'G2' | 'G3' | 'G5' | 'G6';
+
 export interface ProjectConfig {
   readonly schema_version: 1;
   readonly oversight: {
@@ -107,6 +110,8 @@ export interface ProjectConfig {
     readonly g6_security_findings: SecurityFindingsPolicy;
     readonly hitl_gate_deadline: Duration;
     readonly hotl_block_window: Duration;
+    /** Optional per-gate HOTL block window overrides (V21, #557); `value: 0` disables waiting. */
+    readonly hotl_block_window_by_gate?: Readonly<Partial<Record<HotlBlockWindowGate, Duration>>>;
     readonly approval_expiry: Duration;
     /** Escalation raised when a gate passes `hitl_gate_deadline` (FR-12, FR-18; QUESTIONS #90). */
     readonly gate_overdue: {

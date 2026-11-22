@@ -9,6 +9,7 @@ export {
   type StepDeps,
 } from './step.js';
 export {
+  blockWindowDuration,
   blockWindowEnd,
   hotlBlockWindowOpenUntil,
   openBlockWindow,

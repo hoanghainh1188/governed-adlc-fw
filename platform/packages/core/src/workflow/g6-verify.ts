@@ -293,7 +293,7 @@ async function ciClockStart(
 ): Promise<Date> {
   let start = new Date(intent.gate_entered_at ?? intent.updated_at).getTime();
   const g5 = await gateHistory(tx, intent.id, 'G5');
-  if (g5.passAt) start = Math.max(start, blockWindowEnd(g5.passAt, policy.config).getTime());
+  if (g5.passAt) start = Math.max(start, blockWindowEnd(g5.passAt, policy.config, 'G5').getTime());
   // The push (recorded by the runner, database clock): CI starts only then.
   const pushed = (await tx.runEvents.list(run.id))
     .filter((e) => e.event_type === 'branch_pushed')
