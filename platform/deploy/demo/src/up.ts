@@ -10,7 +10,7 @@ import path from 'node:path';
 import { databaseUrl } from '../../steps/dist/env-file.js';
 import type { Exec, ExecResult } from '../../steps/dist/exec.js';
 import { DeployStepError, FreshDeployment } from '../../steps/dist/fresh-deployment.js';
-import { parseInitOutput, SecretBag } from '../../steps/dist/secrets.js';
+import { SecretBag } from '../../steps/dist/secrets.js';
 
 import {
   DEMO_PERSON_A,
@@ -113,11 +113,7 @@ export async function demoUp(deps: DemoUpDeps): Promise<DemoUpResult> {
   // Step 2: Start core stores and auto-unseal throw-away OpenBao in memory.
   deps.log('[2/6] Starting core stores (PostgreSQL, OpenBao, SeaweedFS) and unsealing OpenBao...');
   await deploy.startStores();
-  const init = ok(await deploy.bootstrap(['init', '--stdout-not-tty']), 'openbao:init');
-  for (const m of init.stdout.matchAll(/^(?:Unseal Key \d+|Initial Root Token): (\S+)$/gm)) {
-    bag.keep(m[1]!);
-  }
-  const { shares, rootToken } = parseInitOutput(init.stdout);
+  const { shares, rootToken } = await deploy.initOpenBao({ shares: 3, threshold: KEY_THRESHOLD });
   let adminToken = '';
   try {
     try {

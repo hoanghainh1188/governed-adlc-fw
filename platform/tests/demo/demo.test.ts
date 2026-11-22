@@ -163,15 +163,17 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
         fs.writeFileSync(args[0]!, example, { mode: 0o600 });
         return Promise.resolve({ status: 0, stdout: '', stderr: '' });
       }
-      if (cmd.endsWith('bootstrap.sh') && args[0] === 'init') {
+      if (cmd === 'docker' && args.join(' ').includes('bao operator init')) {
         return Promise.resolve({
           status: 0,
-          stdout: [
-            'Unseal Key 1: share-aaaaaaaaaaaaaaaaaaaaaa',
-            'Unseal Key 2: share-bbbbbbbbbbbbbbbbbbbbbb',
-            'Unseal Key 3: share-cccccccccccccccccccccc',
-            'Initial Root Token: hvs.rootdemotoken00000000000000',
-          ].join('\n'),
+          stdout: JSON.stringify({
+            unseal_keys_b64: [
+              'share-aaaaaaaaaaaaaaaaaaaaaa',
+              'share-bbbbbbbbbbbbbbbbbbbbbb',
+              'share-cccccccccccccccccccccc',
+            ],
+            root_token: 'hvs.rootdemotoken00000000000000',
+          }),
           stderr: '',
         });
       }
