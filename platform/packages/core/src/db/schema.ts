@@ -356,6 +356,9 @@ export interface SpecRefsTable {
   created_at: CreatedAt;
 }
 
+/** How a plan was supplied (U10, #559, ADR-M113). */
+export type PlanSource = 'repo' | 'uploaded';
+
 /** A plan for an intent, one row per version. `change_flags` drive G3 and G7 oversight. */
 export interface PlansTable {
   id: GeneratedId;
@@ -367,12 +370,16 @@ export interface PlansTable {
   plan_sha256: Immutable<string>;
   proposed_by_type: Immutable<ActorType>;
   change_flags: Immutable<ChangeFlag[]>;
-  /** B09 (ADR-M40): the commit the plan file was read at; null for plans without a file. */
+  /** B09 (ADR-M40): the commit the plan file was read at; null for uploaded or legacy plans. */
   commit_sha: Immutable<string | null>;
   /** B09: the agent tools the plan's tasks list; null: the agent's registered tools (no file). */
   allowed_tools: Immutable<string[] | null>;
-  /** B09: the person who submitted the plan file, a producer of the plan at G3 (FR-11). */
+  /** B09: the person who submitted the plan, a producer of the plan at G3 (FR-11). */
   submitted_by: Immutable<string | null>;
+  /** U10 (migration 0062, ADR-M113): `repo` (default branch file) or `uploaded` (SeaweedFS). */
+  plan_source: Generated<PlanSource>;
+  /** U10 (migration 0062): SeaweedFS URI of an uploaded plan; null for repo-backed plans. */
+  storage_uri: Immutable<string | null>;
   created_at: CreatedAt;
 }
 
@@ -1474,6 +1481,9 @@ export const TABLE_COLUMNS = {
     'commit_sha',
     'allowed_tools',
     'submitted_by',
+    // U10 (migration 0062): uploaded plans.
+    'plan_source',
+    'storage_uri',
   ]),
   gate_decisions: columns<GateDecisionsTable>()([
     'id',

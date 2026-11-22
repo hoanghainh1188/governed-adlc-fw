@@ -61,6 +61,7 @@ import { migration0058LessonFollowUp } from './0058-lesson-follow-up.js';
 import { migration0059AuthTenantLookups } from './0059-auth-tenant-lookups.js';
 import { migration0060RowLevelSecurity } from './0060-row-level-security.js';
 import { migration0061BreakGlass } from './0061-break-glass.js';
+import { migration0062UploadedPlans } from './0062-uploaded-plans.js';
 import type { SqlMigration } from './define.js';
 
 export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
@@ -125,4 +126,5 @@ export const MIGRATIONS: Readonly<Record<string, SqlMigration>> = {
   '0059-auth-tenant-lookups': migration0059AuthTenantLookups,
   '0060-row-level-security': migration0060RowLevelSecurity,
   '0061-break-glass': migration0061BreakGlass,
+  '0062-uploaded-plans': migration0062UploadedPlans,
 };

@@ -26,6 +26,14 @@ export interface SubmitPlan extends RegistryActor {
     readonly commitSha: string;
     readonly allowedTools: readonly string[];
   };
+  /**
+   * U10 (ADR-M113, #559): a Low-risk (or configured Medium-risk) plan uploaded directly to
+   * SeaweedFS without merging a PR to the default branch before G3. Mutually exclusive with `file`.
+   */
+  readonly uploaded?: {
+    readonly storageUri: string;
+    readonly allowedTools: readonly string[];
+  };
 }
 
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -44,6 +52,8 @@ const SCALAR_COLUMNS = [
   'commit_sha',
   'allowed_tools',
   'submitted_by',
+  'plan_source',
+  'storage_uri',
   'created_at',
 ] as const;
 // `pg` does not parse arrays of custom enum types; read them as text[].
@@ -70,9 +80,22 @@ export class PlanRepository extends TenantRepository {
     const flags = [...new Set(input.changeFlags ?? [])];
     if (flags.some((flag) => !CHANGE_FLAGS.includes(flag))) throw invalid('unknown change flag');
     const file = input.file;
-    if (file) {
-      const tools: readonly unknown[] = file.allowedTools;
-      if (!COMMIT_SHA.test(file.commitSha)) throw invalid('commitSha must be a 40-hex commit SHA');
+    const uploaded = input.uploaded;
+    if (file && uploaded) throw invalid('file and uploaded plan sources are mutually exclusive');
+    const sourced = file ?? uploaded;
+    if (sourced) {
+      const tools: readonly unknown[] = sourced.allowedTools;
+      if (file && !COMMIT_SHA.test(file.commitSha)) {
+        throw invalid('commitSha must be a 40-hex commit SHA');
+      }
+      if (
+        uploaded &&
+        (typeof uploaded.storageUri !== 'string' ||
+          uploaded.storageUri.length === 0 ||
+          uploaded.storageUri.length > 512)
+      ) {
+        throw invalid('storageUri must be a non-empty string up to 512 characters');
+      }
       if (
         tools.length === 0 ||
         tools.some(
@@ -117,8 +140,10 @@ export class PlanRepository extends TenantRepository {
             proposed_by_type: input.actorType,
             change_flags: flags,
             commit_sha: file?.commitSha ?? null,
-            allowed_tools: file ? [...file.allowedTools] : null,
-            submitted_by: file ? input.actorId : null,
+            allowed_tools: sourced ? [...sourced.allowedTools] : null,
+            submitted_by: sourced ? input.actorId : null,
+            plan_source: uploaded ? 'uploaded' : 'repo',
+            storage_uri: uploaded?.storageUri ?? null,
           })
           .returning([...SCALAR_COLUMNS, changeFlags])
           .executeTakeFirstOrThrow();
@@ -132,6 +157,7 @@ export class PlanRepository extends TenantRepository {
             version: plan.version,
             plan_sha256: plan.plan_sha256,
             ...(plan.commit_sha === null ? {} : { commit_sha: plan.commit_sha }),
+            ...(plan.plan_source === 'uploaded' ? { plan_source: plan.plan_source } : {}),
           },
         });
         return plan;

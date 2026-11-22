@@ -1112,6 +1112,8 @@
   "plan.error.not_on_default_branch": "The plan file at this commit differs from the file at the head of the default branch. Submit the plan as it is on the default branch, or leave out the commit.",
   "plan.error.repository_invalid": "The project's repository name is not valid (owner/name).",
   "plan.error.git_host_unavailable": "The Git host could not be read. Nothing was submitted. Try again later.",
+  "plan.error.uploaded_plan_not_allowed": "Uploaded plans are not allowed for this intent's risk tier. Merge the plan file on the default branch instead.",
+  "plan.error.plan_store_unavailable": "The evidence store is unavailable, so the uploaded plan could not be stored. Try again later.",
   "plan.refusal.missing": "there is no file .sdlc/plans/<intent code>.yaml at the head of the default branch.",
   "plan.refusal.not_a_file": "the plan path is not a file.",
   "plan.refusal.too_large": "the plan file is larger than 64 KiB.",

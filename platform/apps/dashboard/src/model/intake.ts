@@ -22,6 +22,8 @@ export const PLAN_ERROR_KEYS: Readonly<Record<string, string>> = {
   not_on_default_branch: 'plan.error.not_on_default_branch',
   repository_invalid: 'plan.error.repository_invalid',
   git_host_unavailable: 'plan.error.git_host_unavailable',
+  uploaded_plan_not_allowed: 'plan.error.uploaded_plan_not_allowed',
+  plan_store_unavailable: 'plan.error.plan_store_unavailable',
 };
 
 /** Why a plan file was refused (core `PlanRefusal`), inside `plan.error.plan_invalid`. */

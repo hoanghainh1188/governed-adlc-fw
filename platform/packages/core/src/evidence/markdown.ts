@@ -148,7 +148,13 @@ export function renderPackMarkdown(input: MarkdownInput): string {
       ],
       source.plans.map((p) => [
         c(p.version),
-        c(p.commit_sha === null ? null : planFilePath(intent.code)),
+        c(
+          p.plan_source === 'uploaded'
+            ? 'uploaded'
+            : p.commit_sha === null
+              ? null
+              : planFilePath(intent.code),
+        ),
         c(p.commit_sha),
         c(p.plan_sha256),
         c(p.planned_files.length),

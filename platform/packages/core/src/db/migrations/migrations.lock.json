@@ -59,5 +59,6 @@
   "0058-lesson-follow-up.ts": "e1f25aa1accd3d737c2ef78d0f032d5b1df49fc90a0c121eda7263d40215812b",
   "0059-auth-tenant-lookups.ts": "a35e2ab6d7f0b429d7e8f664e28621dc64f8ef8dd4752d4344e54051c81bf26e",
   "0060-row-level-security.ts": "9d795a6628aae5f496526e582abb55dfa2042e9c68bcb75c4e436a086e097d6c",
-  "0061-break-glass.ts": "0464a7ab77abd76909281bf0aac1dc929221d1199bb0cf5cbf7596a688a52aa8"
+  "0061-break-glass.ts": "0464a7ab77abd76909281bf0aac1dc929221d1199bb0cf5cbf7596a688a52aa8",
+  "0062-uploaded-plans.ts": "e90116f5e7c4670d8a30dd4884fe50eea3646dfe451d21ab3b9ae618668ffc2d"
 }
