@@ -100,6 +100,8 @@ Generated from the backlog (`scripts/generate-backlog.py`, the same source as [d
 - **U07** Dashboard wave 1: kill a run, gate decisions, escalations (done, v0.8.0)
 - **U08** Dashboard wave 2: create an intent with its spec, submit a plan, evidence packs (done, v0.8.0)
 - **U09** Dashboard wave 3: administration (done, v0.14.0)
+- **V23** Five-minute local demo mode (`pnpm demo:up`, no GitHub App required)
+- **V24** One-command dev models bootstrap (`pnpm dev:models:up`)
 - **V14** Human-effort baseline for the agent report (done, v0.14.0)
 - **H06** An optional stronger sandbox runtime (gVisor or Kata) (done, v0.14.0)
 - **X05** Documents outside the repository (Office, PDF, Confluence, Drive, Backlog)

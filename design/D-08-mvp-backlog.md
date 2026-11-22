@@ -50,8 +50,8 @@
 | EXT | Other Git hosts first, then other agents, tools for agents, document knowledge: v0.6.0, X12 in v0.7.0 (QUESTIONS #361, #420, #424; v0.5.0 has the X09 spike) | 9 | S×5 · M×2 · L×2 |
 | Models | Self-hosted models: L01 PR 1 and L03 in v0.6.0; then L01 PR 2 and the L03b measurement (QUESTIONS #362, #424) | 3 | S×2 · M×1 |
 | Server | A team on a server: v0.7.0 with O01, O02, H04, H05, V15; v0.8.0 with H02, H03, V16; O03 in v0.10.0; O04, O05 in v0.11.0; toward v1.0 (QUESTIONS #363) | 20 | S×6 · M×14 |
-| Later | Not scheduled yet (was "MVP+1"; U01–U03 were started early there and are done; U07 and U08 are done in v0.8.0) | 21 | S×4 · M×11 · L×6 |
-| **Total** | | **133** | |
+| Later | Not scheduled yet (was "MVP+1"; U01–U03 were started early there and are done; U07 and U08 are done in v0.8.0) | 23 | S×5 · M×12 · L×6 |
+| **Total** | | **135** | |
 
 ### Order and dependencies between milestones
 
@@ -1869,6 +1869,34 @@ flowchart LR
 - [ ] AC3: Step-up for every admin change; API tokens stay in the CLI; Playwright tests per action and role
 
 > Note: MVP1-UI-SCOPE 1.2 §3.4. Ordered again from `design/M-E-REPORT.md` (§9). Done 2026-11-12 in three PRs: the step-up for every admin route (PR #513), the pages for projects, configuration, people and tenant admins (PR #514), then the agent register, the AI record, evidence holds, project archive, a person's passkeys and handbook Ch.19 (ADR-M73 1.7–1.9, ADR-M54 0.8; QUESTIONS #681–#686)
+
+#### V23. Five-minute local demo mode (`pnpm demo:up`, no GitHub App required)
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| M | V22 | NFR-01, NFR-08 | package.json, platform/deploy/demo/*, README.md, TRIAL.md, platform/tests/deploy/* |
+
+**Acceptance criteria**
+
+- [ ] AC1: `pnpm demo:up` reaches a working dashboard and CLI in under 5 minutes on Docker without requiring two GitHub accounts, a GitHub App or manual OpenBao setup
+- [ ] AC2: Pre-seeds `demo-person-a` and `demo-person-b` on a local fixture Git host so evaluators can walk an intent through G1–G8, verify separation of duties (Rule M21) and inspect a sealed Evidence Pack
+- [ ] AC3: Strictly refuses `NODE_ENV=production` and any existing non-demo `sdlc_*` volumes; `pnpm demo:down --wipe` cleans up all demo containers and volumes
+
+> Note: GitHub issue #561 (Harry, 2026-11-22). Lowers Time-to-First-Value for Japanese client demos and consulting evaluations (after M-F)
+
+#### V24. One-command dev models bootstrap (`pnpm dev:models:up`)
+
+| Size | Depends on | Requirements | Code area |
+|---|---|---|---|
+| S | V16 | NFR-01, NFR-03 | package.json, platform/deploy/scripts/*, platform/deploy/steps/*, platform/GETTING-STARTED.md, platform/tests/deploy/* |
+
+**Acceptance criteria**
+
+- [ ] AC1: On a fresh dev machine, `pnpm dev:models:up` runs `compose:env`, starts throw-away dev OpenBao, generates random LiteLLM master and salt keys inside the container, prompts once (hidden, TTY-only) for an Anthropic API key or local Ollama URL, delivers `litellm-credentials` and starts `pnpm compose:models`
+- [ ] AC2: Re-running `pnpm dev:models:up` after a reboot unseals dev OpenBao and restarts cleanly without wiping volumes so `pnpm test:agent-api` can run immediately
+- [ ] AC3: Refuses `NODE_ENV=production` and non-TTY stdin for secrets; never logs keys or tokens; revokes temporary root/admin tokens on exit or Ctrl-C; blocked by the Claude Code bash hook (R035)
+
+> Note: GitHub issue #562 (Harry, 2026-11-22). Replaces the six manual OpenBao + LiteLLM steps on developer machines (after M-F)
 
 #### V14. Human-effort baseline for the agent report
 
