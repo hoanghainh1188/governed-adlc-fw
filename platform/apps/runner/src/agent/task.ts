@@ -11,8 +11,21 @@
 // the cause). The text goes to the agent only: `plan_read` holds counts.
 import { createHash } from 'node:crypto';
 
-import type { AgentTask, PlanTaskTextBlock, RunContract } from '@sdlc/contracts';
-import { planPath, readPlanTaskTexts, type PlanTaskText, type TenantScope } from '@sdlc/core';
+import {
+  EvidenceError,
+  type AgentTask,
+  type EvidenceStore,
+  type PlanTaskTextBlock,
+  type RunContract,
+} from '@sdlc/contracts';
+import {
+  PLAN_MAX_BYTES,
+  planPath,
+  readPlanTaskTexts,
+  type Plan,
+  type PlanTaskText,
+  type TenantScope,
+} from '@sdlc/core';
 
 import type { PlanFileReader } from '../workspace/plan-file.js';
 import { AgentRunError } from './errors.js';
@@ -81,21 +94,17 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return left.length === right.length && left.every((item, i) => item === right[i]);
 }
 
-async function readPlanTaskText(
+function verifyAndRenderPlanBytes(
+  bytes: Buffer,
   intentCode: string,
-  commitSha: string,
   contract: RunContract,
-  reader: PlanFileReader | undefined,
-): Promise<{ block: PlanTaskTextBlock; skippedFields: number }> {
-  if (!reader) throw new PlanUnavailableError('no_clone');
-  const read = await reader(commitSha, planPath(intentCode));
-  if (read.kind === 'unreadable') throw new PlanUnavailableError(read.cause);
-  if (createHash('sha256').update(read.bytes).digest('hex') !== contract.plan_sha256) {
+): { block: PlanTaskTextBlock; skippedFields: number } {
+  if (createHash('sha256').update(bytes).digest('hex') !== contract.plan_sha256) {
     throw new PlanUnavailableError('hash_mismatch');
   }
   let text: string;
   try {
-    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(read.bytes);
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new PlanUnavailableError('not_utf8');
   }
@@ -111,25 +120,55 @@ async function readPlanTaskText(
   };
 }
 
+async function readPlanTaskText(
+  intentCode: string,
+  plan: Plan,
+  contract: RunContract,
+  reader: PlanFileReader | undefined,
+  planStore: Pick<EvidenceStore, 'get'> | undefined,
+): Promise<{ block: PlanTaskTextBlock; skippedFields: number }> {
+  if (plan.plan_source === 'uploaded' && plan.storage_uri !== null) {
+    if (!planStore) throw new PlanUnavailableError('missing');
+    let bytes: Buffer;
+    try {
+      bytes = await planStore.get(plan.storage_uri, { maxBytes: PLAN_MAX_BYTES });
+    } catch (error) {
+      if (error instanceof EvidenceError && error.code === 'too_large') {
+        throw new PlanUnavailableError('too_large');
+      }
+      throw new PlanUnavailableError('missing');
+    }
+    return verifyAndRenderPlanBytes(bytes, intentCode, contract);
+  }
+  if (!reader) throw new PlanUnavailableError('no_clone');
+  const read = await reader(plan.commit_sha!, planPath(intentCode));
+  if (read.kind === 'unreadable') throw new PlanUnavailableError(read.cause);
+  return verifyAndRenderPlanBytes(read.bytes, intentCode, contract);
+}
+
 /**
- * The task text of a plan read from a file, or undefined for a plan stored without one (before
- * B09: its `summary` is used). Records `plan_read`, or `plan_unavailable` and throws.
+ * The task text of a plan read from a repo file or uploaded to SeaweedFS, or undefined for a
+ * legacy plan stored without one (before B09: its `summary` is used). Records `plan_read`, or
+ * `plan_unavailable` and throws.
  */
 async function loadPlanTaskText(
   scope: TenantScope,
   contract: RunContract,
-  commitSha: string | null,
+  plan: Plan,
   reader: PlanFileReader | undefined,
+  planStore: Pick<EvidenceStore, 'get'> | undefined,
 ): Promise<PlanTaskTextBlock | undefined> {
-  if (commitSha === null) return undefined;
+  const isUploaded = plan.plan_source === 'uploaded' && plan.storage_uri !== null;
+  if (!isUploaded && plan.commit_sha === null) return undefined;
   const intent = await scope.intents.getById(contract.intent_id);
   if (!intent) throw new AgentRunError('task_unavailable');
   try {
     const { block, skippedFields } = await readPlanTaskText(
       intent.code,
-      commitSha,
+      plan,
       contract,
       reader,
+      planStore,
     );
     await scope.runEvents.append(contract.run_id, 'plan_read', {
       tasks: block.tasks,
@@ -159,6 +198,7 @@ export async function loadAgentTask(
   contract: RunContract,
   feedback: FeedbackAccess = {},
   planFile?: PlanFileReader,
+  planStore?: Pick<EvidenceStore, 'get'>,
 ): Promise<AgentTask> {
   // E01 PR 2: the feedback of a request for changes at G7, read before the agent starts. Throws
   // `feedback_unavailable` itself (fail closed).
@@ -178,7 +218,7 @@ export async function loadAgentTask(
     ) {
       throw new AgentRunError('task_unavailable');
     }
-    const taskText = await loadPlanTaskText(scope, contract, plan.commit_sha ?? null, planFile);
+    const taskText = await loadPlanTaskText(scope, contract, plan, planFile, planStore);
     return {
       spec: {
         path: spec.path,

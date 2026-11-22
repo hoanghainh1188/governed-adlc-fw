@@ -166,7 +166,11 @@ export interface ApiDeps {
    * `api-evidence`. Undefined (no credential, or dev mode without OpenBao): building or reading a
    * pack file answers `evidence_unavailable`.
    */
-  readonly evidence?: { readonly store: EvidenceStore; readonly maxItemBytes: number };
+  readonly evidence?: {
+    readonly store: EvidenceStore;
+    readonly planStore?: EvidenceStore;
+    readonly maxItemBytes: number;
+  };
   /**
    * The read-only dashboard's built files (U01, ADR-M54), served under `/dashboard/`. Undefined
    * (`SDLC_API_DASHBOARD_DIR=off`): no dashboard routes.
@@ -323,6 +327,7 @@ class ApiModule {
             deps.gitHost ? { gitHost: deps.gitHost } : undefined,
             signals,
             wakeLogger,
+            deps.evidence?.planStore,
           ),
         },
         {

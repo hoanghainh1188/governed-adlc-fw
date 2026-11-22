@@ -200,7 +200,7 @@ export async function submitUploadedPlan(
     return existingLatest;
   }
 
-  const objectPath = `plans/${intent.id}/${sha256}.yaml`;
+  const objectPath = `${intent.id}/${sha256}.yaml`;
   let storageUri: string;
   try {
     const stored = await store.put(scope.tenantId, objectPath, bytes, 'application/yaml');

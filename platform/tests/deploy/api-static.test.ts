@@ -133,7 +133,7 @@ describe('sdlc-api service', () => {
     const fn = /^pack_evidence_credentials\(\) \{[\s\S]*?^\}$/m.exec(bootstrap)?.[0] ?? '';
     // Read proposals and diffs (the hash re-check), read and write packs; nothing else.
     expect(fn).toContain(
-      "'Read:evidence/proposals/*,Read:evidence/diffs/*,Read:evidence/packs/*,Write:evidence/packs/*'",
+      "'Read:evidence/proposals/*,Read:evidence/diffs/*,Read:evidence/packs/*,Write:evidence/packs/*,Read:evidence/plans/*,Write:evidence/plans/*'",
     );
     expect(fn).toMatch(/s3_credentials "\$1" evidence "\$2"/);
     const helper = /^s3_credentials\(\) \{[\s\S]*?^\}$/m.exec(bootstrap)?.[0] ?? '';

@@ -137,6 +137,8 @@ export interface AgentDriveDeps {
    * Without it a run whose plan was read from a file fails (`task_unavailable`, `no_clone`).
    */
   readonly planFile?: PlanFileReader;
+  /** U10 (ADR-M113): reads uploaded Low-risk plans from SeaweedFS (`evidence/plans/*`). */
+  readonly planStore?: Pick<import('@sdlc/contracts').EvidenceStore, 'get'>;
   /** X13 PR 2: the memory notes of the run's kept clone (ADR-M74 §2.6). */
   readonly memoryFiles?: MemoryFilesReader;
 }
@@ -459,7 +461,7 @@ export async function driveAgent(
     );
     condensing = condenser.state;
     taskLoading = true; // from here `readRunFeedback` uses or revokes the token
-    const loaded = await loadAgentTask(scope, contract, feedback, deps.planFile);
+    const loaded = await loadAgentTask(scope, contract, feedback, deps.planFile, deps.planStore);
     // X13 PR 2 (ADR-M74 §2.6): approved memory notes, or none; never fails the run.
     const memory = await loadMemory(scope, contract, config.memory, deps.memoryFiles);
     const task = {

@@ -18,6 +18,8 @@ import {
 
 export interface ApiEvidence {
   readonly store: S3EvidenceStore;
+  /** U10 (ADR-M113): writes uploaded plans under `evidence/plans/<tenant>/...`. */
+  readonly planStore?: S3EvidenceStore;
   readonly maxItemBytes: number;
 }
 
@@ -53,6 +55,13 @@ export async function openEvidenceStore(
       endpoint: settings.url,
       bucket: settings.bucket,
       keyPrefix: EVIDENCE_PACK_KEY_PREFIX,
+      accessKeyId,
+      secretAccessKey,
+    }),
+    planStore: new S3EvidenceStore({
+      endpoint: settings.url,
+      bucket: settings.bucket,
+      keyPrefix: 'plans/',
       accessKeyId,
       secretAccessKey,
     }),

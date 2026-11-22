@@ -5,6 +5,8 @@
 // only; the text stays in the repository. `--commit` is optional and must hold the same file as
 // the head (409 `plan_not_on_default_branch`). Who may submit: project config
 // `access.plan_submit_roles` (default Person A); the submitter never approves G3.
+import fs from 'node:fs';
+
 import { t } from '@sdlc/messages';
 
 import { planListSchema, submittedPlanSchema, type PlanVersionView } from '../api/schemas.js';
@@ -16,6 +18,7 @@ import { draft } from './plan-draft.js';
 import { sayNextHint } from './next/hint.js';
 
 const COMMIT = /^[0-9a-f]{40}$/;
+const PLAN_MAX_BYTES = 64 * 1024;
 
 export async function runPlan(args: readonly string[], ctx: CliContext): Promise<number> {
   const [command, ...rest] = args;
@@ -31,26 +34,46 @@ function flags(plan: PlanVersionView): string {
 }
 
 async function submit(args: readonly string[], ctx: CliContext): Promise<number> {
-  const parsed = parseCommand(args, { commit: { type: 'string' } }, 1);
+  const parsed = parseCommand(args, { commit: { type: 'string' }, file: { type: 'string' } }, 1);
   const ref = parsed ? intentRef(parsed.positionals[0] ?? '') : undefined;
   const values = parsed?.values;
   const commit = values?.commit;
-  if (!values || ref === undefined || (typeof commit === 'string' && !COMMIT.test(commit))) {
+  const file = values?.file;
+  if (
+    !values ||
+    ref === undefined ||
+    (typeof commit === 'string' && typeof file === 'string') ||
+    (typeof commit === 'string' && !COMMIT.test(commit)) ||
+    (typeof file === 'string' && file.trim() === '')
+  ) {
     return usage(ctx);
+  }
+  let body: Record<string, unknown> = {};
+  if (typeof commit === 'string') {
+    body = { commit_sha: commit };
+  } else if (typeof file === 'string') {
+    let raw: Buffer;
+    try {
+      raw = fs.readFileSync(file);
+    } catch {
+      ctx.stderr(t('plan.refusal.missing'));
+      return EXIT.usage;
+    }
+    if (raw.byteLength > PLAN_MAX_BYTES) {
+      ctx.stderr(t('plan.refusal.too_large'));
+      return EXIT.usage;
+    }
+    body = { plan_yaml: raw.toString('utf8') };
   }
   const json = values.json === true;
   return withApi(ctx, json, async (client) => {
-    const plan = await client.post(
-      `/v1/intents/${segment(ref)}/plans`,
-      submittedPlanSchema,
-      typeof commit === 'string' ? { commit_sha: commit } : {},
-    );
+    const plan = await client.post(`/v1/intents/${segment(ref)}/plans`, submittedPlanSchema, body);
     if (json) ctx.stdout(toJson(plan));
     else {
       say(ctx, 'cli.plan.submitted', {
         intent: plan.intent,
         version: plan.version,
-        commit: plan.commit_sha ?? '-',
+        commit: plan.plan_source === 'uploaded' ? 'uploaded' : (plan.commit_sha ?? '-'),
         sha256: plan.plan_sha256,
         paths: plan.planned_files.length,
         tools: (plan.allowed_tools ?? []).join(',') || '-',
