@@ -278,6 +278,15 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
       evidenceVersion: 1,
     });
     expect(
+      calls.some(
+        (c) =>
+          c.who === 'person-a' &&
+          c.argv[0] === 'intent' &&
+          c.argv.includes('--data-class') &&
+          c.argv.includes('internal'),
+      ),
+    ).toBe(true);
+    expect(
       calls.some((c) => c.who === 'person-a' && c.argv[0] === 'plan' && c.argv.includes('--file')),
     ).toBe(true);
     expect(
