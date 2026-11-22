@@ -66,9 +66,7 @@ oversight:
     const saturday = new Date('2026-10-03T05:00:00Z');
     expect(blockWindowEnd(saturday, custom.config, 'G6')).toEqual(saturday);
     // G2 has no override, so it falls back to the 4 working-hour default (Monday 09:00 + 4h = 13:00 local = 06:00 UTC).
-    expect(blockWindowEnd(saturday, custom.config, 'G2')).toEqual(
-      new Date('2026-10-05T06:00:00Z'),
-    );
+    expect(blockWindowEnd(saturday, custom.config, 'G2')).toEqual(new Date('2026-10-05T06:00:00Z'));
   });
 
   it('rejects invalid gates and negative durations in hotl_block_window_by_gate (V21, #557)', () => {
