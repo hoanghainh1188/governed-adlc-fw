@@ -16,6 +16,9 @@ trial-openbao-keys.age
 .trial-openbao-keys.age.*
 # The 5-minute local demo stack's state (.env, openbao-tls, person-a/b logins; V23, pnpm demo:up): never committed.
 platform/deploy/.demo/
+# Dev models OpenBao unseal shares, encrypted with passphrase (V24, pnpm dev:models:up): never committed.
+dev-openbao-keys.age
+.dev-openbao-keys.age.*
 # `pnpm server:setup` progress (D-08 V16): step names only, no secret, but local to the machine.
 server-setup-progress.json
 server-setup-progress.json.tmp

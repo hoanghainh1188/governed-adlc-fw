@@ -27,6 +27,8 @@
     "demo:up": "pnpm build && node platform/deploy/demo/dist/main.js up",
     "demo:walkthrough": "tsc -b platform/deploy/demo && node platform/deploy/demo/dist/main.js walkthrough",
     "demo:down": "tsc -b platform/deploy/demo && node platform/deploy/demo/dist/main.js down",
+    "dev:models:up": "tsc -b platform/deploy/dev-models && node platform/deploy/dev-models/dist/main.js up",
+    "dev:models:down": "tsc -b platform/deploy/dev-models && node platform/deploy/dev-models/dist/main.js down",
     "doctor": "tsc -b platform/deploy/doctor && node platform/deploy/doctor/dist/main.js",
     "alerts": "tsc -b platform/deploy/alerts && node platform/deploy/alerts/dist/main.js",
     "github-app:create": "tsc -b platform/deploy/github-app && node platform/deploy/github-app/dist/main.js",

@@ -30,6 +30,7 @@
     { "path": "platform/deploy/steps" },
     { "path": "platform/deploy/trial" },
     { "path": "platform/deploy/demo" },
+    { "path": "platform/deploy/dev-models" },
     { "path": "platform/deploy/server-setup" },
     { "path": "platform/deploy/doctor" },
     { "path": "platform/deploy/docker-authz" },

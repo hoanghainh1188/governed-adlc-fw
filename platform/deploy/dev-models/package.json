@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "pnpm dev:models:up and dev:models:down (D-08 V24, issue #562). Not a workspace package: built by tsc -b from the root tsconfig."
+}

@@ -56,6 +56,7 @@ describe('workspace structure (D-03 section 11)', () => {
         'platform/deploy/steps',
         'platform/deploy/trial',
         'platform/deploy/demo',
+        'platform/deploy/dev-models',
         'platform/deploy/server-setup',
         'platform/deploy/doctor',
         'platform/deploy/github-app',

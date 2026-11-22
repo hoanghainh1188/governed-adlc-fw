@@ -183,6 +183,8 @@ function checkPackageManager(cmd, args) {
   if (script === 'github-app:create') return 'R035';
   // `pnpm server:setup` shows key shares and asks for tokens (D-08 V16, QUESTIONS #616).
   if (script === 'server:setup') return 'R035';
+  // `pnpm dev:models:up` prompts for an API key and unseals dev OpenBao (D-08 V24, R035).
+  if (script === 'dev:models:up') return 'R035';
   if (/^test:.*-live$/.test(script ?? '')) return 'R035';
   if (
     script === 'compose:down' &&
