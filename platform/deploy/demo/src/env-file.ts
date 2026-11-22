@@ -8,11 +8,12 @@ export { envSecrets, envValue, hostPort };
 /** Isolated Compose project for local demo: volumes are `sdlc-demo_*`, never `sdlc_*`. */
 export const DEMO_PROJECT = 'sdlc-demo';
 
-/** Profiles started by `pnpm demo:up` (Lite Mode: core stores + API/worker/dashboard only). */
-export const DEMO_PROFILES = ['core', 'platform'] as const;
+/** Profiles started by `pnpm demo:up` (Lite Mode: core stores, LiteLLM, and API/worker/dashboard). */
+export const DEMO_PROFILES = ['core', 'models', 'platform'] as const;
 
-/** OpenBao credentials commands required by `core` + `platform`. */
+/** OpenBao credentials commands required by `core` + `models` + `platform`. */
 export const DEMO_CREDENTIALS_COMMANDS = [
+  'litellm-credentials',
   'api-credentials',
   'worker-credentials',
   'api-evidence-credentials',
