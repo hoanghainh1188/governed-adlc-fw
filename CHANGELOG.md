@@ -2,13 +2,29 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-22
+
+**Low-risk governance simplification, Lite Mode, uploaded plans, 5-minute local demo, and one-command dev models bootstrap**
+
 ### Added
+- **Per-gate HOTL block window** (task V21, closes #557). Project configuration gains `oversight.hotl_block_window_by_gate` (optional map for `G2` and `G3`) so teams can tune the HOTL objection window per gate (e.g. `15 minutes` on `G2` while keeping `1 working_hour` on `G3`), falling back to `oversight.hotl_block_window` when unset.
+- **Lite Mode server deployment** (task V22, closes #558). New scripts `pnpm server:up:lite` and `pnpm server:up:lite:access` start `core`, `models`, `platform`, and `sandbox` without `observability` or `knowledge` (saving ~2–4 GB RAM on pilot/small-team hosts). `SDLC_OBSERVABILITY_ENABLED=false` suppresses optional observability warnings in `pnpm doctor`.
+- **Uploaded plans without a Git commit** (task U10, ADR-M113, closes #559). Low-risk (and optionally medium-risk via `oversight.uploaded_plan_risks`, default `[low]`, never `high` or `critical`) intents can submit a validated YAML plan directly without committing it to Git: `POST /v1/intents/:id/plans` accepts mutually-exclusive `plan_yaml`, `adlc plan submit <INT> --file <path>` uploads from disk, plans are stored immutably in SeaweedFS under `evidence/plans/<tenant>/<intent>/<sha256>.yaml` (migration `0062-uploaded-plans`), the runner reads uploaded plans from `EvidenceStore` with fail-closed `plan_sha256` and `planned_files` verification, and Evidence Packs record `plan_source`.
+- **Five-minute local demo mode** (task V23, closes #561). New scripts `pnpm demo:up`, `pnpm demo:walkthrough`, and `pnpm demo:down [--wipe]` (`platform/deploy/demo/`) start an isolated Lite Mode stack (`sdlc-demo`, throw-away OpenBao, pre-seeded `demo-person-a` and `demo-person-b`, U10 uploaded plans) with no GitHub account, GitHub App, or LLM key required, demonstrating Rule M21 separation of duties and real Evidence Pack generation. Refuses `NODE_ENV=production` and any existing `sdlc_*` volumes.
+- **One-command dev models bootstrap** (task V24, closes #562). New scripts `pnpm dev:models:up` and `pnpm dev:models:down` (`platform/deploy/dev-models/`) automate dev OpenBao init/unseal (persisting encrypted unseal shares in `dev-openbao-keys.age`), LiteLLM key generation, hidden TTY-only provider key entry, `litellm-credentials` delivery, and `core` + `models` startup for `pnpm test:agent-api`. Refuses `NODE_ENV=production` and non-TTY stdin, revokes temporary tokens on exit or Ctrl-C, and is blocked in `guard-bash.mjs` under R035.
 - **Preparing the first deployment on a server** (task A10 PR 3a, ADR-M63 0.5, QUESTIONS #756–#760).
   - `pnpm openbao:bootstrap rekey [--pgp-keys=<file>,<file>,<file>]` makes a new set of key shares when a key holder changes (runbook T11 §8.3). The old shares stay valid until two holders typed their new share back, so a miscopied share locks nobody out; any stop drops the rekey, and `rekey --cancel` drops one left open. Owner's terminal only.
   - `pnpm measure` prints the memory and CPU of every container of a running deployment (mean and peak), the images in use and the volumes, as a Markdown table. Read only; it prints no env value (deploy README "Resource estimate").
   - Runbook T11 §3.3: one checklist for the first deployment on the server, the first agent run, the recovery drill and the rekey drill.
 
+### Fixed
+- **Sandbox image `node24`:** upgraded Debian security snapshot to `2026-11-22` and `linux-libc-dev` to `6.12.117-1` to resolve CRITICAL `CVE-2026-99362` (PR #568).
+
 ### Upgrade notes
+- **On a running stack:** (1) `pnpm install`; (2) `pnpm db:migrate`: migration `0062-uploaded-plans`; (3) run `pnpm openbao:bootstrap api-evidence-credentials`, `pnpm openbao:bootstrap worker-evidence-credentials` and `pnpm openbao:bootstrap runner-evidence-credentials` to grant `evidence/plans/*` for U10 uploaded plans; (4) pull or rebuild `sdlc-api`, `sdlc-worker` and `sdlc-runner` images (and rebuild the `node24` sandbox image for `linux-libc-dev` `6.12.117-1`, CVE-2026-99362); (5) `npm install -g @hoanghainh/governed-adlc@0.18.0` for `adlc plan submit --file`. Optional `.env` setting `SDLC_OBSERVABILITY_ENABLED=false` for Lite Mode (`pnpm compose:env --add-missing`).
+- **U10 (Uploaded plans):** migration `0062-uploaded-plans` adds `plan_source` (`git` default) and `storage_uri` on `plans` (existing rows stay `git`). The default project configuration gains `oversight.uploaded_plan_risks: [low]`, so its hash changes; nothing to do.
+- **V21 (Per-gate HOTL window):** `oversight.hotl_block_window_by_gate` is optional and unset by default; existing configurations behave identically.
+- **V22 / V23 / V24 (Lite Mode, local demo, dev models):** additive operator/developer commands only; nothing to do on an existing server.
 - **A10 PR 3a:** nothing to do. No migration, no image change, no new `.env` key.
 
 ## [0.17.0] - 2026-11-16
