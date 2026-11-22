@@ -1,0 +1,18 @@
+plan:
+  intent_id: INT-2026-0001
+tasks:
+  - id: T1
+    summary: Fix tax rounding in order total calculation
+    owner_agent: coder
+    depends_on: []
+    input: spec AC1
+    output: updated pricing logic and unit tests
+    allowed_paths:
+      - src/orders/pricing.ts
+      - tests/orders/pricing.test.ts
+    tools: [file_editor, terminal]
+    environments: [sandbox]
+    definition_of_done: [Unit tests pass]
+    required_evidence: [unit_tests]
+    escalate_when: [a change outside allowed_paths is needed]
+    checkpoint: after each passing test run

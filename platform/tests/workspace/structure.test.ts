@@ -55,6 +55,7 @@ describe('workspace structure (D-03 section 11)', () => {
         ...EXPECTED_PACKAGES.map((p) => p.dir),
         'platform/deploy/steps',
         'platform/deploy/trial',
+        'platform/deploy/demo',
         'platform/deploy/server-setup',
         'platform/deploy/doctor',
         'platform/deploy/github-app',
