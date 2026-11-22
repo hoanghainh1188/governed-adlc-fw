@@ -14,6 +14,8 @@ openbao-tls/
 # The trial stack's OpenBao key shares, encrypted with the person's passphrase (V08, pnpm trial:up): never committed.
 trial-openbao-keys.age
 .trial-openbao-keys.age.*
+# The 5-minute local demo stack's state (.env, openbao-tls, person-a/b logins; V23, pnpm demo:up): never committed.
+platform/deploy/.demo/
 # `pnpm server:setup` progress (D-08 V16): step names only, no secret, but local to the machine.
 server-setup-progress.json
 server-setup-progress.json.tmp

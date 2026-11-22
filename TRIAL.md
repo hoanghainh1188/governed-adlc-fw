@@ -8,6 +8,8 @@ The platform is built and tested, but no team has used it on a project yet. **We
 - **No real data.** The sample project is fictional. Never use client code or real personal data in the trial.
 
 > **Status (2026-11-16):** the latest release is **v0.17.0** ([CHANGELOG](CHANGELOG.md)). Start the trial from the latest release. The trial does not turn on the dashboard's GitHub sign-in and actions; without them the dashboard only reads, and you decide gates with comments and the CLI. To add them later: [Fresh deployment, step 7](platform/deploy/README.md#7-start-the-platform), the optional dashboard sign-in with GitHub and the dashboard actions.
+>
+> **Just want a 5-minute local demo first (no GitHub accounts, no GitHub App, no LLM key)?** Run `pnpm demo:up`, then `pnpm demo:walkthrough` (demonstrates `demo-person-a` / `demo-person-b` separation of duties under Rule M21, an uploaded plan, and a real Evidence Pack in SeaweedFS), and clean up with `pnpm demo:down --wipe`. Demo mode refuses `NODE_ENV=production` and any existing `sdlc_*` volumes.
 
 The full plan behind this page, with every measure and rule: [`design/M-E-TRIAL-PLAN.md`](design/M-E-TRIAL-PLAN.md).
 

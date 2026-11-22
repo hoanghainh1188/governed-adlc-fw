@@ -64,6 +64,14 @@ XDG_CONFIG_HOME=<Person A's config folder> pnpm adlc doctor
 ```
 Then take the first sample task through the gates: [TRIAL.md §5](TRIAL.md#5-run-the-tasks). The step-by-step guide, with what each step does and how to start the stack again after a reboot: [TRIAL.md](TRIAL.md).
 
+**Want a 5-minute local demo without a GitHub account or GitHub App?** Run Lite Mode (`core` + `platform`, throw-away OpenBao, pre-seeded `demo-person-a` and `demo-person-b`, and an uploaded plan):
+
+```bash
+pnpm demo:up            # starts the isolated sdlc-demo stack (refuses NODE_ENV=production and sdlc_* volumes)
+pnpm demo:walkthrough   # walks an intent through G1-G3, Rule M21 separation of duties, and Evidence Pack build
+pnpm demo:down --wipe   # removes all demo containers, volumes, and platform/deploy/.demo/
+```
+
 ---
 
 ## 1. In one sentence

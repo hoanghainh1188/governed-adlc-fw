@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "pnpm demo:up, demo:walkthrough, and demo:down (D-08 V23). Not a workspace package: built by tsc -b from the root tsconfig."
+}
