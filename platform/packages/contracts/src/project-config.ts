@@ -98,6 +98,9 @@ export interface SecurityFindingsPolicy {
 /** Gates that may define a per-gate HOTL block window override (V21, #557). */
 export type HotlBlockWindowGate = 'G2' | 'G3' | 'G5' | 'G6';
 
+/** Risk tiers that may submit an uploaded plan without a PR to main (U10, #559, ADR-M113). */
+export type UploadedPlanRisk = 'low' | 'medium';
+
 export interface ProjectConfig {
   readonly schema_version: 1;
   readonly oversight: {
@@ -112,6 +115,11 @@ export interface ProjectConfig {
     readonly hotl_block_window: Duration;
     /** Optional per-gate HOTL block window overrides (V21, #557); `value: 0` disables waiting. */
     readonly hotl_block_window_by_gate?: Readonly<Partial<Record<HotlBlockWindowGate, Duration>>>;
+    /**
+     * Risk tiers allowed to submit `plan_source: 'uploaded'` (U10, #559, ADR-M113). Defaults to
+     * `['low']` when omitted; `high` and `critical` are never allowed.
+     */
+    readonly uploaded_plan_risks?: readonly UploadedPlanRisk[];
     readonly approval_expiry: Duration;
     /** Escalation raised when a gate passes `hitl_gate_deadline` (FR-12, FR-18; QUESTIONS #90). */
     readonly gate_overdue: {

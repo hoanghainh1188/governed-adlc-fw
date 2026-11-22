@@ -18,7 +18,11 @@ export type PlanErrorCode =
   /** The project's repository name is not `owner/name`. */
   | 'repository_invalid'
   /** The Git host could not be read (`gitHostCode`); nothing was submitted. */
-  | 'git_host_unavailable';
+  | 'git_host_unavailable'
+  /** Uploaded plans are not allowed for the intent's risk tier (U10, #559, ADR-M113). */
+  | 'uploaded_plan_not_allowed'
+  /** The evidence store could not store the uploaded plan; nothing was submitted. */
+  | 'plan_store_unavailable';
 
 export class PlanError extends Error {
   override readonly name = 'PlanError';
@@ -46,6 +50,8 @@ export const PLAN_ERROR_MESSAGES = {
   not_on_default_branch: 'plan.error.not_on_default_branch',
   repository_invalid: 'plan.error.repository_invalid',
   git_host_unavailable: 'plan.error.git_host_unavailable',
+  uploaded_plan_not_allowed: 'plan.error.uploaded_plan_not_allowed',
+  plan_store_unavailable: 'plan.error.plan_store_unavailable',
 } as const satisfies Record<PlanErrorCode, MessageKey>;
 
 /** Catalog keys of the reasons a plan file is refused. */

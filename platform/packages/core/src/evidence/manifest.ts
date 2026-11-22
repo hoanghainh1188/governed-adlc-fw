@@ -202,6 +202,7 @@ export function buildManifestContent(source: PackSource): Record<string, unknown
       id: p.id,
       version: p.version,
       path: p.commit_sha === null ? null : planFilePath(intent.code),
+      ...(p.plan_source === 'uploaded' ? { plan_source: p.plan_source } : {}),
       commit_sha: p.commit_sha,
       plan_sha256: p.plan_sha256,
       path_patterns: p.planned_files.length,

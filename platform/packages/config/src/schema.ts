@@ -188,6 +188,7 @@ export const projectConfigSchema = z.strictObject({
         G6: hotlBlockWindowGateDuration.optional(),
       })
       .optional(),
+    uploaded_plan_risks: uniqueList(z.enum(['low', 'medium'])).optional(),
     approval_expiry: duration,
     gate_overdue: z.strictObject({
       severity: z.enum(SEVERITIES),

@@ -412,6 +412,8 @@ const PLAN: Readonly<Record<PlanError['code'], [number, ApiErrorCode]>> = {
   submit_not_allowed: [409, 'plan_submit_not_allowed'],
   repository_invalid: [409, 'plan_submit_not_allowed'],
   git_host_unavailable: [503, 'git_host_unavailable'],
+  uploaded_plan_not_allowed: [409, 'plan_submit_not_allowed'],
+  plan_store_unavailable: [503, 'evidence_unavailable'],
 };
 
 export function planApiError(error: PlanError): ApiError {

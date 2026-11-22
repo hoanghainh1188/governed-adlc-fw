@@ -34,11 +34,14 @@ export {
   type PlanUnreadableCause,
 } from './rules.js';
 export {
+  allowedUploadedPlanRisks,
   planAccess,
   planSubmittable,
   submitPlanFromGitHost,
+  submitUploadedPlan,
   type PlanAccess,
   type SubmitPlanRequest,
+  type SubmitUploadedPlanRequest,
 } from './submit.js';
 export {
   DRAFT_CHECK_VALUES,

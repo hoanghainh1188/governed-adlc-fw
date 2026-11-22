@@ -11,7 +11,15 @@
 //   (ADR-M39 §2.1). The commit is optional; a given commit must hold the same file as the head.
 //   The stored commit is always the head the platform read (QUESTIONS #212).
 // - Submitting the same file again changes nothing (the latest version is returned).
-import { GitHostError, type ProjectRole } from '@sdlc/contracts';
+import {
+  EvidenceError,
+  GitHostError,
+  type EvidenceStore,
+  type ProjectConfig,
+  type ProjectRole,
+  type RiskTier,
+  type UploadedPlanRisk,
+} from '@sdlc/contracts';
 
 import { CommandError } from '../commands/errors.js';
 import type { Intent, Plan } from '../db/schema.js';
@@ -22,6 +30,7 @@ import { projectRepoRef } from '../workflow/g4-proposal.js';
 import { PlanError } from './errors.js';
 import { parsePlanFile, type ParsedPlan } from './parse.js';
 import { readPlanFile } from './read.js';
+import { PLAN_MAX_BYTES, planFileSha256 } from './rules.js';
 
 export interface PlanAccess {
   /** Active roles of the user on the project. Empty: the intent is invisible to the user. */
@@ -117,6 +126,132 @@ export async function submitPlanFromGitHost(
       // caller's `commit` (which only has to hold the same file): the runner reads the plan file
       // at this commit from its clone (ADR-M40 §2.7), and every default-branch commit is there.
       file: { commitSha: read.head, allowedTools: read.plan.allowedTools },
+    });
+  });
+}
+
+/** Risk tiers allowed to use `plan_source: 'uploaded'` (U10, #559, ADR-M113). */
+export function allowedUploadedPlanRisks(config: ProjectConfig): readonly UploadedPlanRisk[] {
+  return config.oversight.uploaded_plan_risks ?? ['low'];
+}
+
+function isUploadedPlanRiskAllowed(config: ProjectConfig, risk: RiskTier): boolean {
+  return (allowedUploadedPlanRisks(config) as readonly RiskTier[]).includes(risk);
+}
+
+export interface SubmitUploadedPlanRequest {
+  readonly intent: Intent;
+  /** Raw YAML text or UTF-8 bytes of the plan file. */
+  readonly content: string | Buffer;
+  /** The person who submits; holds a role in `access.plan_submit_roles`. */
+  readonly actorId: string;
+}
+
+/**
+ * Validates and stores a Low-risk (or configured Medium-risk) plan directly in the evidence store
+ * without requiring a PR to the default branch before G3 (U10, #559, ADR-M113).
+ */
+export async function submitUploadedPlan(
+  scope: TenantScope,
+  store: EvidenceStore,
+  request: SubmitUploadedPlanRequest,
+): Promise<Plan> {
+  const { intent } = request;
+  const access = await planAccess(scope, intent.project_id, request.actorId);
+  if (!access.canRead) {
+    throw new CommandError('intent_not_found', `intent ${intent.code} not found`);
+  }
+  if (!access.canSubmit) throw new CommandError('forbidden', 'the caller may not submit a plan');
+  if (!planSubmittable(intent)) {
+    throw new PlanError('submit_not_allowed', `${intent.code} does not take a plan now`);
+  }
+  const { config } = await loadEffectiveConfig(scope.projectConfigs, intent.project_id);
+  if (!isUploadedPlanRiskAllowed(config, intent.risk_tier)) {
+    throw new PlanError(
+      'uploaded_plan_not_allowed',
+      `uploaded plans are not allowed for risk tier ${intent.risk_tier}`,
+    );
+  }
+
+  const bytes = Buffer.isBuffer(request.content)
+    ? request.content
+    : Buffer.from(request.content, 'utf8');
+  if (bytes.byteLength > PLAN_MAX_BYTES) {
+    throw new PlanError('plan_invalid', 'plan exceeds maximum size', 'too_large');
+  }
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new PlanError('plan_invalid', 'plan is not valid UTF-8', 'not_utf8');
+  }
+  const parsed = parsePlanFile(text, intent.code);
+  if (!parsed.ok) {
+    throw new PlanError('plan_invalid', 'plan refused', parsed.reason, undefined, parsed.field);
+  }
+  const sha256 = planFileSha256(text);
+
+  const existingLatest = await scope.plans.latest(intent.id);
+  if (
+    existingLatest &&
+    existingLatest.plan_source === 'uploaded' &&
+    existingLatest.plan_sha256 === sha256
+  ) {
+    return existingLatest;
+  }
+
+  const objectPath = `plans/${intent.id}/${sha256}.yaml`;
+  let storageUri: string;
+  try {
+    const stored = await store.put(scope.tenantId, objectPath, bytes, 'application/yaml');
+    storageUri = stored.uri;
+  } catch (error) {
+    if (error instanceof EvidenceError && error.code === 'exists') {
+      // Content-addressed by sha256: reuse an earlier uploaded version's URI if present.
+      const earlier = (await scope.plans.list(intent.id)).find(
+        (p) => p.plan_source === 'uploaded' && p.plan_sha256 === sha256 && p.storage_uri !== null,
+      );
+      if (earlier?.storage_uri) {
+        storageUri = earlier.storage_uri;
+      } else {
+        throw new PlanError('plan_store_unavailable', 'plan object already exists without record');
+      }
+    } else if (error instanceof EvidenceError) {
+      throw new PlanError('plan_store_unavailable', `evidence store error: ${error.code}`);
+    } else {
+      throw error;
+    }
+  }
+
+  return scope.transaction(async (tx) => {
+    const locked = await tx.intents.lockAndGet(intent.id);
+    if (!locked || !planSubmittable(locked)) {
+      throw new PlanError('submit_not_allowed', `${intent.code} does not take a plan now`);
+    }
+    if (!(await planAccess(tx, intent.project_id, request.actorId)).canSubmit) {
+      throw new CommandError('forbidden', 'the caller may not submit a plan');
+    }
+    const { config: currentConfig } = await loadEffectiveConfig(
+      tx.projectConfigs,
+      intent.project_id,
+    );
+    if (!isUploadedPlanRiskAllowed(currentConfig, locked.risk_tier)) {
+      throw new PlanError(
+        'uploaded_plan_not_allowed',
+        `uploaded plans are not allowed for risk tier ${locked.risk_tier}`,
+      );
+    }
+    const latest = await tx.plans.latest(intent.id);
+    if (latest && latest.plan_source === 'uploaded' && latest.plan_sha256 === sha256) {
+      return latest;
+    }
+    return tx.plans.submit(intent.id, {
+      actorType: 'human',
+      actorId: request.actorId,
+      plannedFiles: parsed.plan.plannedFiles,
+      planSha256: sha256,
+      changeFlags: parsed.plan.changeFlags,
+      uploaded: { storageUri, allowedTools: parsed.plan.allowedTools },
     });
   });
 }

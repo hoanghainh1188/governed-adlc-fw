@@ -226,7 +226,13 @@ export const AUDIT_ACTIONS = {
    */
   'plan.submitted': {
     entityType: 'intent',
-    fields: { plan_id: 'uuid', version: 'version', plan_sha256: 'sha256', commit_sha: 'code?' },
+    fields: {
+      plan_id: 'uuid',
+      version: 'version',
+      plan_sha256: 'sha256',
+      commit_sha: 'code?',
+      plan_source: 'code?',
+    },
   },
   /**
    * The plan file at the head of the default branch is no longer the submitted plan (B09,
