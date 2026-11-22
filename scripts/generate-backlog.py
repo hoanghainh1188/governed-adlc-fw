@@ -571,6 +571,18 @@ t("U10","UX","Low-risk uploaded plan (`plan_source: uploaded`, no PR to main bef
   "Separation of duties (Rule M21), file scope enforcement (`planned_files`), tool allow-lists and `change_flags` work identically to repo-backed plans",
   "Unit, DB, API, CLI (`adlc plan submit <INT> --file <path>`) and runner integration tests pass"],
  "GitHub issue #559 (Harry, 2026-11-22). Removes the largest developer friction on Low-risk tasks (QUESTIONS #230)")
+t("V23","Later","Five-minute local demo mode (`pnpm demo:up`, no GitHub App required)","M",["V22"],"NFR-01, NFR-08",
+ "package.json, platform/deploy/demo/*, README.md, TRIAL.md, platform/tests/deploy/*",
+ ["`pnpm demo:up` reaches a working dashboard and CLI in under 5 minutes on Docker without requiring two GitHub accounts, a GitHub App or manual OpenBao setup",
+  "Pre-seeds `demo-person-a` and `demo-person-b` on a local fixture Git host so evaluators can walk an intent through G1–G8, verify separation of duties (Rule M21) and inspect a sealed Evidence Pack",
+  "Strictly refuses `NODE_ENV=production` and any existing non-demo `sdlc_*` volumes; `pnpm demo:down --wipe` cleans up all demo containers and volumes"],
+ "GitHub issue #561 (Harry, 2026-11-22). Lowers Time-to-First-Value for Japanese client demos and consulting evaluations (after M-F)")
+t("V24","Later","One-command dev models bootstrap (`pnpm dev:models:up`)","S",["V16"],"NFR-01, NFR-03",
+ "package.json, platform/deploy/scripts/*, platform/deploy/steps/*, platform/GETTING-STARTED.md, platform/tests/deploy/*",
+ ["On a fresh dev machine, `pnpm dev:models:up` runs `compose:env`, starts throw-away dev OpenBao, generates random LiteLLM master and salt keys inside the container, prompts once (hidden, TTY-only) for an Anthropic API key or local Ollama URL, delivers `litellm-credentials` and starts `pnpm compose:models`",
+  "Re-running `pnpm dev:models:up` after a reboot unseals dev OpenBao and restarts cleanly without wiping volumes so `pnpm test:agent-api` can run immediately",
+  "Refuses `NODE_ENV=production` and non-TTY stdin for secrets; never logs keys or tokens; revokes temporary root/admin tokens on exit or Ctrl-C; blocked by the Claude Code bash hook (R035)"],
+ "GitHub issue #562 (Harry, 2026-11-22). Replaces the six manual OpenBao + LiteLLM steps on developer machines (after M-F)")
 t("V14","Later","Human-effort baseline for the agent report","S",["V13"],"FR-53",
  "platform/packages/core (intents), migrations, platform/apps/api, platform/apps/cli, platform/tests/*, design/D-05",
  ["A person with a write role may record an estimate of the human effort for an intent (hours, a number; codes and numbers only, no text); empty by default",
