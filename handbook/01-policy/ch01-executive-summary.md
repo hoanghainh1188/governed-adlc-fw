@@ -135,7 +135,7 @@ The full list of core principles (14) is in [0.4 Core principles](../00-introduc
 |---|---|
 | Approach | We **build our own** platform, and reuse open-source software for the infrastructure |
 | Order | Build the platform first, try it on a sample project, adjust, then try it on a real internal tool |
-| Users | Internal use first, then **offer it to clients** |
+| Users | Open for everyone (MIT code, CC BY 4.0 documentation); internal use first, with any commercial revenue from services and AI-governed delivery ([POSITIONING.md §7](../../design/POSITIONING.md)) |
 | Hosting | Everything self-hosted, on **one internal server** of moderate size |
 | AI models | Works with both AI services over the internet (API) and AI running on our own servers. The first stage uses API only |
 | Code hosting | GitHub first, GitLab later |
@@ -148,7 +148,7 @@ The full list of core principles (14) is in [0.4 Core principles](../00-introduc
 | Gates | 8 gates kept; how strictly each is checked depends on risk |
 | Escalation | Critical 15 minutes, High 1 hour, Medium 1 working day, Low 3 working days |
 
-Platform technical details are in the `design/` folder. **Coding is paused** until this handbook is agreed; the platform design will then be updated to follow it.
+Platform technical details are in the `design/` folder. For the current platform release and capabilities, see the root [README.md](../../README.md) and [CHANGELOG.md](../../CHANGELOG.md).
 
 ---
 

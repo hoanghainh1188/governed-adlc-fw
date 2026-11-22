@@ -76,7 +76,7 @@ What `trial:up` refuses and keeps safe:
 - `pnpm trial:down` stops the stack and keeps its key file; `--wipe` removes its volumes, its env file, its key file and the two logins, after you type the project name (`sdlc-trial`). It never touches another Compose project.
 - In a script (not a terminal), give the passphrase on the first line of standard input with `--passphrase-stdin`; never as an argument or an environment variable (other users of the machine can see both).
 
-The stack is for the trial only. It can never hold client data. For a server, follow [Fresh deployment](platform/deploy/README.md#fresh-deployment-operator) by hand, with real key holders (runbook T11).
+The stack is for the trial only. It can never hold client data. For a server, use `pnpm server:setup` (guided setup, steps 2–13) or follow [Fresh deployment](platform/deploy/README.md#fresh-deployment-operator) by hand, with real key holders (runbook T11).
 
 **By hand instead (the fallback).** Follow [Fresh deployment](platform/deploy/README.md#fresh-deployment-operator), steps 1–14, with these values:
 

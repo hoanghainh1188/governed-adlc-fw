@@ -2,6 +2,18 @@
 
 This folder runs the infrastructure that the platform reuses, on one server, with Docker Compose (D-03 section 10, task A02). Image versions, licences and trade-offs: [ADR-M17](../../design/ADR-M17-compose-infrastructure.md).
 
+## Quick navigation by environment
+
+| Environment | Start here |
+|---|---|
+| **Try on one laptop (macOS / Linux)** | [TRIAL.md](../../TRIAL.md) (`pnpm trial:up` — 20–40 min) |
+| **Linux production server (Ubuntu 22.04/24.04)** | [Requirements](#requirements) → [Create the GitHub App](#create-the-github-app-operator) → [Fresh deployment](#fresh-deployment-operator) (`pnpm server:setup`) |
+| **Isolated runner (rootless Docker / separate VM)** | [The runner on its own Docker Engine](#the-runner-on-its-own-docker-engine-operator) (`runner-host-setup.sh`) |
+| **Self-hosted GPU models (vLLM)** | [Self-hosted model](#self-hosted-model-operator) (`models-local`) or [Separate GPU host](#self-hosted-model-on-a-separate-gpu-host-operator) (`models-remote`) |
+| **Day-2 operations** | [Restart after a reboot](#restart-after-a-reboot) · [Team access](#team-access-operator) · [GitHub webhooks](#github-webhooks-operator) · [Backup and restore](#backup-and-restore) · [Upgrade](#upgrade) · [Doctor](#doctor-pnpm-doctor) · [Alerts](#alerts) · [Troubleshooting](#troubleshooting) |
+| **Developer machine (working on platform code)** | [GETTING-STARTED.md](../GETTING-STARTED.md) |
+| **Windows users** | The server requires Linux + Docker; team members on Windows install the CLI (`npm install -g @hoanghainh/governed-adlc`, [USER-GUIDE §2](../USER-GUIDE.md#install-the-adlc-command)) and use the web dashboard |
+
 ## Profiles
 
 | Profile | Services | When to use |
@@ -30,8 +42,8 @@ Three one-shot jobs run at every start and then exit: `temporal-schema` (creates
 
 | Item | Recommendation |
 |---|---|
-| Host | One internal Linux server (or VM) with Docker Engine and Docker Compose. Docker Desktop on a laptop is for development and the trial only |
-| Network | Outbound HTTPS only: to GitHub, the model providers, the npm registry and the image registries ([Network and data flows](#network-and-data-flows)). No inbound connection from the internet: the platform polls GitHub and needs no webhook |
+| Host | One internal Linux server (or VM) with Docker Engine and Docker Compose (tested on Ubuntu 22.04/24.04; on RHEL/Rocky with SELinux enabled, verify bind-mount labels `:z`/`:Z` and rootless subuid/subgid configuration before running `runner-host-setup.sh`). Docker Desktop on a laptop is for development and the trial only |
+| Network | Outbound HTTPS only by default: to GitHub, the model providers, the npm registry and the image registries ([Network and data flows](#network-and-data-flows)). Polling is the default and needs no inbound port; optional [GitHub webhooks](#github-webhooks-operator) can be enabled to reduce latency |
 | Size | See [Resource estimate](#resource-estimate): about 3 GiB RAM and 2 vCPU for `core`, 6 GiB and 4 vCPU with `observability`, plus up to 2 GiB per running sandbox. Estimates only, not measured on a server yet (A10) |
 | GPU | Not needed with API models. Only for a self-hosted model on the same machine (D-07 §3): the profile `models-local`, an NVIDIA GPU with the NVIDIA Container Toolkit ([Self-hosted model](#self-hosted-model-operator)) |
 | Sandboxes | 1 by default (`SDLC_RUNNER_MAX_SANDBOXES`); 2 on a larger server. Evaluation runs use free slots only, at most `SDLC_RUNNER_MAX_EVAL_SANDBOXES` (default 1, never above the line before; 0 turns them off) and give a slot back to a real run that waits |
@@ -55,7 +67,7 @@ pnpm github-app:create --out ~/secrets/sdlc-app.private-key.pem
 
 - Add `--org <organization>` to create the App in an organization you administer, `--name <name>` to choose its name (default `sdlc-<random>`, at most 34 characters), `--callback-url <url>` (repeat it, at most 10) for the dashboard's sign-in callbacks (default `http://localhost:8090/v1/auth/github/callback`; `https://…/v1/auth/github/callback` for another origin), `--force` to replace existing files.
 - It prints a local page (`http://127.0.0.1:<port>/`). Open it in the browser where you are signed in to GitHub and press the button; GitHub shows the App with its permissions; confirm with **Create GitHub App**. GitHub sends the browser back to `127.0.0.1`, and the command finishes the App (`POST /app-manifests/{code}/conversions`).
-- It saves the private key to `--out` and the App's **client secret** to `<--out>.client-secret`, both with mode 600 (never inside the repository, never over an existing file without `--force`), and prints only the App ID, the **Client ID** (`Iv…`, not a secret), the file names and the install link. Neither secret is printed. The client secret is only for the dashboard's GitHub sign-in (U05, `design/ADR-M73-dashboard-actions.md` §2.2): store it in OpenBao ([Fresh deployment, step 7](#7-start-the-platform)), then delete the file. GitHub also returns a webhook secret: the platform uses no webhook, so it is dropped at once (`design/QUESTIONS.md` #351).
+- It saves the private key to `--out` and the App's **client secret** to `<--out>.client-secret`, both with mode 600 (never inside the repository, never over an existing file without `--force`), and prints only the App ID, the **Client ID** (`Iv…`, not a secret), the file names and the install link. Neither secret is printed. The client secret is only for the dashboard's GitHub sign-in (U05, `design/ADR-M73-dashboard-actions.md` §2.2): store it in OpenBao ([Fresh deployment, step 7](#7-start-the-platform)), then delete the file. GitHub also returns a webhook secret, which is dropped during manifest creation (polling is the default; if you later enable optional webhooks, configure a webhook secret per [GitHub webhooks](#github-webhooks-operator)).
 - If the browser cannot open `127.0.0.1` after GitHub (a remote desktop, a browser on another machine), copy the whole address from the browser's address bar and paste it at the command's hidden prompt (QUESTIONS #350). The code from GitHub works once, within one hour; the command waits at most 15 minutes.
 - Then **install** the App with the printed link: "Only select repositories", the project's application repository (step 6 below).
 
