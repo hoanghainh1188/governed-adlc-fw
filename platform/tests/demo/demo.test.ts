@@ -247,7 +247,10 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
       if (argv[0] === 'intent' && argv[1] === 'show') {
         return Promise.resolve({
           status: 0,
-          stdout: JSON.stringify({ current_gate: currentGate, gate_input_sha256: 'abc123' }),
+          stdout: JSON.stringify({
+            current_gate: currentGate,
+            gate_entered_at: '2026-11-23T00:00:00.000Z',
+          }),
           stderr: '',
         });
       }
@@ -255,9 +258,8 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
         currentGate = 'G2';
         return Promise.resolve({ status: 0, stdout: '{}', stderr: '' });
       }
-      if (argv[0] === 'gate' && argv[1] === 'approve' && argv[2] === 'G2') {
-        currentGate = 'G3';
-        return Promise.resolve({ status: 0, stdout: '{}', stderr: '' });
+      if (argv[0] === 'admin' && argv[1] === 'role' && argv[2] === 'grant' && who === 'person-a') {
+        return Promise.resolve({ status: 1, stdout: '', stderr: 'conflicting_role: Rule M21' });
       }
       if (argv[0] === 'gate' && argv[2] === 'G3' && who === 'person-a') {
         return Promise.resolve({ status: 1, stdout: '', stderr: 'self_approval: Rule M21' });
@@ -306,7 +308,10 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
       calls.some((c) => c.who === 'person-a' && c.argv[0] === 'plan' && c.argv.includes('--file')),
     ).toBe(true);
     expect(
-      calls.some((c) => c.who === 'person-b' && c.argv[0] === 'gate' && c.argv[2] === 'G3'),
+      calls.some((c) => c.who === 'person-a' && c.argv[0] === 'admin' && c.argv[1] === 'role'),
+    ).toBe(true);
+    expect(
+      calls.some((c) => c.who === 'person-b' && c.argv[0] === 'intent' && c.argv[1] === 'show'),
     ).toBe(true);
     expect(
       calls.some((c) => c.who === 'person-b' && c.argv[0] === 'evidence' && c.argv[1] === 'build'),
