@@ -128,12 +128,17 @@ export async function demoUp(deps: DemoUpDeps): Promise<DemoUpResult> {
     bag.drop(rootToken);
   }
 
-  // Step 3: Store throw-away GitHub App placeholder key + issue API/worker credentials.
+  // Step 3: Store throw-away GitHub App placeholder key + LiteLLM keys + issue process credentials.
   deps.log('[3/6] Provisioning throw-away OpenBao secrets and process credentials...');
   try {
     const throwawayKey = bag.keep(generateThrowawayGithubKey());
     await deploy.storeGithubApp(adminToken, 'demo-no-github-app', throwawayKey);
     bag.drop(throwawayKey);
+    await deploy.storeLitellmKeys(adminToken);
+    await deploy.storeProvider(adminToken, {
+      provider: 'ollama',
+      apiBase: 'http://127.0.0.1:11434',
+    });
     for (const command of DEMO_CREDENTIALS_COMMANDS) {
       await deploy.credentials(adminToken, command);
     }

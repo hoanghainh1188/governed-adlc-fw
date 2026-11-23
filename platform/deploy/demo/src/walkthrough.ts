@@ -51,6 +51,8 @@ export async function runWalkthrough(deps: WalkthroughDeps): Promise<Walkthrough
       DEMO_PROJECT_SLUG,
       '--risk',
       'low',
+      '--data-class',
+      'internal',
       '--title',
       'Demo: Fix tax rounding in order total',
     ]),
@@ -112,7 +114,7 @@ export async function runWalkthrough(deps: WalkthroughDeps): Promise<Walkthrough
   deps.log('');
   deps.log(`Inspect ${intent} in the Dashboard: ${deps.apiUrl}`);
   deps.log(
-    `Export pack.md: XDG_CONFIG_HOME="${deps.personBConfigHome}" pnpm adlc evidence export ${intent} --file pack.md`,
+    `Export pack.md: XDG_CONFIG_HOME="${deps.personBConfigHome}" pnpm adlc evidence export ${intent} --output pack.md`,
   );
 
   return { intent, selfApprovalBlocked, evidenceVersion };

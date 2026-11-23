@@ -91,7 +91,7 @@ describe('V23 demo env, project config, and sample plan (#561)', () => {
     expect(out).toMatch(/^LITELLM_MASTER_KEY=$/m);
     expect(out).toMatch(/^LITELLM_SALT_KEY=$/m);
     expect(demoApiUrl(out)).toBe('http://127.0.0.1:8090');
-    expect(DEMO_PROFILES).toEqual(['core', 'platform']);
+    expect(DEMO_PROFILES).toEqual(['core', 'models', 'platform']);
   });
 
   it('produces a valid project config with U10 uploaded plans enabled', () => {
@@ -220,7 +220,7 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
     expect(res.composeProject).toBe(DEMO_PROJECT);
     expect(res.apiUrl).toBe('http://127.0.0.1:8090');
     expect(
-      execCalls.some((c) => c.cmd.endsWith('up.sh') && c.args.join(',') === 'core,platform'),
+      execCalls.some((c) => c.cmd.endsWith('up.sh') && c.args.join(',') === 'core,models,platform'),
     ).toBe(true);
     expect(execCalls.some((c) => c.env?.SDLC_OPENBAO_THROWAWAY === '1')).toBe(true);
     expect(sdlcCalls.some((c) => c.argv.includes(DEMO_PERSON_A.email))).toBe(true);
@@ -277,6 +277,15 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
       selfApprovalBlocked: true,
       evidenceVersion: 1,
     });
+    expect(
+      calls.some(
+        (c) =>
+          c.who === 'person-a' &&
+          c.argv[0] === 'intent' &&
+          c.argv.includes('--data-class') &&
+          c.argv.includes('internal'),
+      ),
+    ).toBe(true);
     expect(
       calls.some((c) => c.who === 'person-a' && c.argv[0] === 'plan' && c.argv.includes('--file')),
     ).toBe(true);
