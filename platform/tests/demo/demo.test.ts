@@ -232,6 +232,7 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
     const calls: { argv: readonly string[]; who: string }[] = [];
     const personAHome = '/tmp/demo/person-a';
     const personBHome = '/tmp/demo/person-b';
+    let currentGate = 'G1';
 
     const sdlc: Sdlc = (argv, env) => {
       const who = env.XDG_CONFIG_HOME === personAHome ? 'person-a' : 'person-b';
@@ -242,6 +243,21 @@ describe('V23 demo:up and walkthrough orchestration (#561)', () => {
           stdout: JSON.stringify({ code: 'INT-1' }),
           stderr: '',
         });
+      }
+      if (argv[0] === 'intent' && argv[1] === 'show') {
+        return Promise.resolve({
+          status: 0,
+          stdout: JSON.stringify({ current_gate: currentGate, gate_input_sha256: 'abc123' }),
+          stderr: '',
+        });
+      }
+      if (argv[0] === 'gate' && argv[1] === 'approve' && argv[2] === 'G1') {
+        currentGate = 'G2';
+        return Promise.resolve({ status: 0, stdout: '{}', stderr: '' });
+      }
+      if (argv[0] === 'gate' && argv[1] === 'approve' && argv[2] === 'G2') {
+        currentGate = 'G3';
+        return Promise.resolve({ status: 0, stdout: '{}', stderr: '' });
       }
       if (argv[0] === 'gate' && argv[2] === 'G3' && who === 'person-a') {
         return Promise.resolve({ status: 1, stdout: '', stderr: 'self_approval: Rule M21' });

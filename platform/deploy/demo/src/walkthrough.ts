@@ -41,6 +41,28 @@ export async function runWalkthrough(deps: WalkthroughDeps): Promise<Walkthrough
     return JSON.parse(r.stdout) as Record<string, unknown>;
   };
 
+  // Temporal enters each gate asynchronously after intent creation / gate decision.
+  // Poll `intent show` briefly until the workflow has entered one of `targetGates`.
+  const waitForGate = async (
+    intent: string,
+    targetGates: readonly string[],
+    timeoutMs = 15_000,
+  ): Promise<string> => {
+    const deadline = Date.now() + timeoutMs;
+    let lastGate = '';
+    while (Date.now() < deadline) {
+      const shown = mustJson(await asA(['intent', 'show', intent]), `intent show ${intent}`);
+      const gate = typeof shown.current_gate === 'string' ? shown.current_gate : '';
+      const hasInput = shown.gate_input_sha256 !== null && shown.gate_input_sha256 !== undefined;
+      lastGate = gate;
+      if (targetGates.includes(gate) && hasInput) return gate;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error(
+      `Timed out waiting for ${intent} to enter ${targetGates.join('/')} (last gate: ${lastGate || 'none'})`,
+    );
+  };
+
   // Step 1: demo-person-a creates a low-risk intent.
   deps.log('[1/6] demo-person-a creates a low-risk intent...');
   const created = mustJson(
@@ -68,8 +90,13 @@ export async function runWalkthrough(deps: WalkthroughDeps): Promise<Walkthrough
 
   // Step 2: Advance G1 and G2.
   deps.log(`[2/6] demo-person-a approves G1 and G2 for ${intent}...`);
+  await waitForGate(intent, ['G1']);
   mustJson(await asA(['gate', 'approve', 'G1', intent]), 'gate approve G1');
-  mustJson(await asA(['gate', 'approve', 'G2', intent]), 'gate approve G2');
+  const gateAfterG1 = await waitForGate(intent, ['G2', 'G3']);
+  if (gateAfterG1 === 'G2') {
+    mustJson(await asA(['gate', 'approve', 'G2', intent]), 'gate approve G2');
+    await waitForGate(intent, ['G3']);
+  }
 
   // Step 3: demo-person-a submits the uploaded plan (U10, no GitHub commit needed).
   deps.log(`[3/6] demo-person-a submits uploaded plan (${path.basename(planFile)})...`);
