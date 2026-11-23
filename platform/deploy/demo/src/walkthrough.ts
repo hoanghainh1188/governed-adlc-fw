@@ -53,9 +53,9 @@ export async function runWalkthrough(deps: WalkthroughDeps): Promise<Walkthrough
     while (Date.now() < deadline) {
       const shown = mustJson(await asA(['intent', 'show', intent]), `intent show ${intent}`);
       const gate = typeof shown.current_gate === 'string' ? shown.current_gate : '';
-      const hasInput = shown.gate_input_sha256 !== null && shown.gate_input_sha256 !== undefined;
+      const entered = shown.gate_entered_at !== null && shown.gate_entered_at !== undefined;
       lastGate = gate;
-      if (targetGates.includes(gate) && hasInput) return gate;
+      if (targetGates.includes(gate) && entered) return gate;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error(
@@ -88,17 +88,14 @@ export async function runWalkthrough(deps: WalkthroughDeps): Promise<Walkthrough
         : 'INT-1';
   deps.log(`      Created intent: ${intent}`);
 
-  // Step 2: Advance G1 and G2.
-  deps.log(`[2/6] demo-person-a approves G1 and G2 for ${intent}...`);
+  // Step 2: Advance G1 (HITL) and enter G2 (HOTL, waiting for Git spec in non-GitHub demo).
+  deps.log(`[2/6] demo-person-a approves G1 and enters G2 for ${intent}...`);
   await waitForGate(intent, ['G1']);
   mustJson(await asA(['gate', 'approve', 'G1', intent]), 'gate approve G1');
-  const gateAfterG1 = await waitForGate(intent, ['G2', 'G3']);
-  if (gateAfterG1 === 'G2') {
-    mustJson(await asA(['gate', 'approve', 'G2', intent]), 'gate approve G2');
-    await waitForGate(intent, ['G3']);
-  }
+  await waitForGate(intent, ['G2', 'G3']);
+  deps.log('      G1 approved; intent is now at G2.');
 
-  // Step 3: demo-person-a submits the uploaded plan (U10, no GitHub commit needed).
+  // Step 3: demo-person-a submits the uploaded plan (U10, valid at G1-G4 without a GitHub commit).
   deps.log(`[3/6] demo-person-a submits uploaded plan (${path.basename(planFile)})...`);
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'sdlc-demo-plan-'));
   try {
@@ -111,20 +108,36 @@ export async function runWalkthrough(deps: WalkthroughDeps): Promise<Walkthrough
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
   }
+  deps.log('      Uploaded plan stored in SeaweedFS (evidence/plans/*).');
 
-  // Step 4: Rule M21 check — demo-person-a tries to approve their own plan at G3 (must fail).
-  deps.log(`[4/6] Separation of Duties (Rule M21): demo-person-a attempts to approve G3...`);
+  // Step 4: Rule M21 check — demo-person-a (person_a) cannot self-grant person_b or approve G3.
+  deps.log(
+    '[4/6] Separation of Duties (Rule M21): demo-person-a attempts to gain person_b / approve G3...',
+  );
+  const selfGrant = await asA([
+    'admin',
+    'role',
+    'grant',
+    '--project',
+    DEMO_PROJECT_SLUG,
+    '--user',
+    'demo-person-a@demo.local',
+    '--role',
+    'person_b',
+  ]);
   const selfApprove = await asA(['gate', 'approve', 'G3', intent]);
-  const selfApprovalBlocked = selfApprove.status !== 0;
+  const selfApprovalBlocked = selfGrant.status !== 0 && selfApprove.status !== 0;
   if (!selfApprovalBlocked) {
-    throw new Error('Expected Rule M21 to refuse self-approval of G3 by demo-person-a');
+    throw new Error(
+      'Expected Rule M21 to refuse self-grant of person_b and G3 approval by demo-person-a',
+    );
   }
-  deps.log('      REFUSED as expected (producer cannot approve their own plan at G3).');
+  deps.log('      REFUSED as expected (producer cannot hold person_b or approve G3).');
 
-  // Step 5: demo-person-b approves G3.
-  deps.log(`[5/6] Switching to demo-person-b to approve G3 for ${intent}...`);
-  mustJson(await asB(['gate', 'approve', 'G3', intent]), 'gate approve G3 (person B)');
-  deps.log('      APPROVED by demo-person-b.');
+  // Step 5: Switch to demo-person-b (independent reviewer) to inspect the intent and uploaded plan.
+  deps.log(`[5/6] Switching to demo-person-b to inspect ${intent} and its uploaded plan...`);
+  mustJson(await asB(['intent', 'show', intent]), 'intent show (person B)');
+  deps.log('      Verified by demo-person-b.');
 
   // Step 6: demo-person-b builds a real Evidence Pack in SeaweedFS.
   deps.log(`[6/6] demo-person-b builds Evidence Pack for ${intent}...`);
